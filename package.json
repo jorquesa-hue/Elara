@@ -1,0 +1,17 @@
+{
+  "name": "unified-stay-os",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "description": "Unified Stay OS — event-sourced PMS kernel (nightly → monthly → lease) with policy-gated agent runtime",
+  "scripts": {
+    "test": "tsx --test tests/*.test.ts",
+    "demo": "tsx demo.ts",
+    "gen-seed": "tsx scripts/gen-seed.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "tsx": "^4.23.0",
+    "typescript": "^5.9.3"
+  }
+}

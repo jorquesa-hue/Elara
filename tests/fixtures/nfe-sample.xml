@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
+  <NFe>
+    <infNFe Id="NFe44310112345678000199550010000000011000000015" versao="4.00">
+      <ide>
+        <cUF>44</cUF>
+        <natOp>Venda de mercadoria</natOp>
+        <mod>55</mod>
+        <serie>1</serie>
+        <nNF>1</nNF>
+        <dhEmi>2026-07-05T09:30:00-03:00</dhEmi>
+      </ide>
+      <emit>
+        <CNPJ>12345678000199</CNPJ>
+        <xNome>Lavanderia Central LTDA</xNome>
+      </emit>
+      <dest>
+        <CNPJ>98765432000155</CNPJ>
+        <xNome>Unified Stay OS</xNome>
+      </dest>
+      <total>
+        <ICMSTot>
+          <vProd>1250.00</vProd>
+          <vNF>1250.00</vNF>
+        </ICMSTot>
+      </total>
+    </infNFe>
+  </NFe>
+</nfeProc>
