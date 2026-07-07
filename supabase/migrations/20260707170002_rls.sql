@@ -8,7 +8,9 @@
 
 -- Helper: the caller's tenant, from the JWT. Null when unauthenticated.
 create or replace function current_tenant_id() returns text
-language sql stable as $$
+language sql stable
+set search_path = public, pg_temp
+as $$
   select nullif(current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id', '')
 $$;
 

@@ -14,9 +14,10 @@ Read docs/unified-stay-os-spec.md before structural changes. Execute CLAUDE-CODE
 ## State (as of 2026-07-07)
 - Kernel v0.4 complete: 15/15 tests. Run: `npx tsx --test tests/*.test.ts`
 - Lifecycle acceptance script: `npx tsx demo.ts` — P0 is DONE when this runs unchanged against the live stack. Runs green in-process today.
-- Migrations 20260707170000/1/2 written under supabase/migrations/. Application to Supabase pending (see below).
-- Supabase access: the claude.ai MCP grant only reaches org `egwfnjsuscakiajegbmx` (Travel Agency), which does NOT contain the old PMS project shplrbhwpttsukwgaxli. Decision: provision a NEW PMS project inside the reachable org and treat it as the DB target. shplrbhwpttsukwgaxli is abandoned.
-- RLS migration = deny-by-default on all 12 tenant tables; anon sees nothing until a tenant_id JWT claim exists. Intentional.
+- Migrations 20260707170000/1/2/3 APPLIED to Supabase project `shplrbhwpttsukwgaxli` ("Elara PMS", org `llqaczctlhlphhdmyeml` / jorquesa@icloud.com). The earlier "wrong org" issue was resolved by reconnecting the Supabase connector to the account that owns the project; shplrbhwpttsukwgaxli is the live DB target (NOT abandoned).
+- DB-level invariants verified against the live DB: calendar_hold EXCLUDE rejects overlapping holds (inv 4); deferred balance trigger rejects unbalanced entries (inv 6); append-only trigger rejects UPDATE/DELETE on journal_line (inv 1). Seed loaded: 18 policy rules, 5 collection stages.
+- RLS: deny-by-default on all 12 tenant tables (anon sees nothing until a tenant_id JWT claim exists) PLUS migration 3 locks journal_line + operational tables (policy_rule, collection_stage, action_log, exception_item) — RLS forced, no anon policy, service-role only.
+- Security advisor: 0 ERROR/WARN of concern. Remaining = 6 INFO rls_enabled_no_policy (intentional deny-by-default) + 1 WARN btree_gist-in-public (left in place; the live EXCLUDE constraint depends on its opclass, moving it risks breaking inv 4).
 
 ## Layout
 - src/ — domain kernel: agreement (state machine + conversion + Calendar), ledger, policy-envelope,

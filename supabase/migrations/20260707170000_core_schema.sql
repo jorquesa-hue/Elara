@@ -106,7 +106,9 @@ create index on journal_line (agreement_id);
 
 -- Deferred balance check: each entry_id must net to zero at COMMIT.
 create or replace function assert_entry_balances() returns trigger
-language plpgsql as $$
+language plpgsql
+set search_path = public, pg_temp
+as $$
 declare
   imbalance bigint;
 begin
@@ -221,7 +223,9 @@ create table exception_item (
 -- Append-only enforcement for the three event streams (invariant 1)
 -- ---------------------------------------------------------------------------
 create or replace function forbid_mutation() returns trigger
-language plpgsql as $$
+language plpgsql
+set search_path = public, pg_temp
+as $$
 begin
   raise exception 'table % is append-only: % is not permitted', tg_table_name, tg_op;
 end $$;
