@@ -113,6 +113,47 @@ for anyone who doesn't opt in.
   applied to the live project, the deferred balance trigger validated (trial
   balance 0), state confirmed, transaction rolled back clean.
 
+## 15. Agent tool layer (P1)
+
+`AgentToolCatalog` (`src/agent/tools.ts`) exposes the kernel's operations to an
+LLM as tools and routes every invocation through `App.dispatch` — so an agent
+tool-call passes `PolicyEnvelope.decide()` before any effect (invariant 2) over
+the same authenticated surface everything else uses (invariant 3). There is no
+path from the catalog to the kernel except through dispatch.
+
+- `catalog.specs()` returns **Anthropic tool-use compatible** definitions
+  (`{ name, description, input_schema, strict }`, closed schemas with
+  `additionalProperties: false`) — drop straight into the Anthropic SDK's
+  `tools` parameter.
+- `catalog.invoke(name, input, bearer)` dispatches the mapped request and
+  returns `{ content, isError, status }` — `content` is JSON for a
+  `tool_result` block, `isError` mirrors a 4xx/5xx so the model can react.
+- Escalations (lease execution, large refunds, eviction) come back as their
+  own tool results; the agent can `list_exceptions` but `approve_exception`
+  requires a non-agent role — an agent bearer is refused.
+
+The module is provider-agnostic: it builds definitions and dispatches results;
+it never calls an LLM API and holds no provider credentials (behavioral
+guardrail). Wiring it to Claude via the SDK's tool runner (executor-side):
+
+```ts
+import Anthropic from '@anthropic-ai/sdk';
+import { App, StaticTokenAuthenticator, AgentToolCatalog } from './src/index.ts';
+
+const app = new App({ authenticator: auth });
+const catalog = new AgentToolCatalog(app);
+const client = new Anthropic();
+
+const response = await client.messages.create({
+  model: 'claude-opus-4-8',
+  max_tokens: 16000,
+  tools: catalog.specs(),               // Anthropic-compatible defs
+  messages: [{ role: 'user', content: 'Book unit u-1 for Ana, Jul 1–10, R$200/night.' }],
+});
+// For each tool_use block: catalog.invoke(block.name, block.input, agentBearer)
+// → return { type:'tool_result', tool_use_id: block.id, content, is_error } and loop.
+```
+
 ## 13. Gates (resolved 2026-07-07)
 
 These strategic gates block P1+ structural work. Answers below are the standing

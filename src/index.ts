@@ -20,3 +20,4 @@ export * from './subscription.ts';
 export * from './api/context.ts';
 export * from './api/app.ts';
 export * from './api/http.ts';
+export * from './agent/tools.ts';
