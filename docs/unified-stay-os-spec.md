@@ -113,18 +113,48 @@ for anyone who doesn't opt in.
   applied to the live project, the deferred balance trigger validated (trial
   balance 0), state confirmed, transaction rolled back clean.
 
-## 13. Open gates (block later phases)
+## 13. Gates (resolved 2026-07-07)
 
-These strategic gates are intentionally unresolved and block advancing past P0
-into later phases; they are product/leadership decisions, not code:
+These strategic gates block P1+ structural work. Answers below are the standing
+decisions the build now assumes; revisit deliberately, not by drift.
 
-- **Purpose gate** — the single sentence describing who this is for and why now.
-- **Wedge gate** — the first beachhead segment (short-stay operators vs.
-  student housing vs. corporate serviced apartments) that the nightly→lease
-  conversion story serves first.
-- **Revenue gate** — pricing model (per-unit SaaS vs. take-rate on GMV vs.
-  per-agreement) and the number that makes the unit economics work.
-- **Capital gate** — whether deposit float and payment settlement are ever held
-  on balance sheet (regulated) or always passed through to a licensed provider.
+- **Purpose gate** — one system for operators running *mixed-tenure* portfolios,
+  so a single unit can move nightly → monthly → lease without a system change or
+  ledger break.
+- **Wedge gate — RESOLVED: unified operator (mixed portfolio).** Serve operators
+  who already straddle **short-stay (incl. self-operated), corporate/serviced
+  apartments, and multifamily** simultaneously. The conversion spine is their
+  native pain, and the platform stays segment-general rather than specializing to
+  one vertical. Implication for P1: no segment-specific assumptions in the API;
+  the agreement kind (nightly/monthly/lease) is the axis of variation.
+- **Revenue gate — RESOLVED: per-unit SaaS.** Flat monthly fee per managed unit.
+  Modeled by `src/subscription.ts` (metering: managed unit count × per-unit rate)
+  and surfaced at `GET /billing/subscription`. This is the platform's charge to
+  the operator — distinct from guest billing, which flows through the ledger.
+- **Capital gate — RESOLVED: always pass-through.** Never hold guest funds or
+  deposit float on balance sheet. A licensed provider settles directly to the
+  operator; the kernel only records already-settled facts (Payments is
+  provider-agnostic and takes settled inputs — no provider credentials in the
+  kernel). Keeps regulatory scope minimal and matches the current design.
 
-No P1+ structural work proceeds until each gate has a written answer here.
+P1 build order (keyed off the above): **Public API surface** (§14) → agent tool
+layer → live PgExecutor read/write backend.
+
+## 14. Public API surface (P1)
+
+The Public API is the only API (invariant 3). Its core is a transport-agnostic
+`dispatch(request) → response` router (`src/api/app.ts`); `src/api/http.ts` binds
+it to `node:http` (no third-party deps). Agents, portal, and website all consume
+this one surface.
+
+- **Auth** — a bearer token resolves to an `AuthContext { actor, tenantId, role }`
+  (`src/api/context.ts`). Missing/unknown token → 401. Every resource is
+  tenant-scoped; cross-tenant reads return 404 (existence is not leaked),
+  mirroring the DB's deny-by-default RLS.
+- **Policy** — every *mutation* is executed through `AgentRuntime.execute()`, so
+  `PolicyEnvelope.decide()` runs before the operation (invariant 2). Mapping:
+  `allow` → 200/201, `deny` → 403, `escalate` → 202 `{ exceptionId }`.
+- **Endpoints** — agreements (create / activate / convert / read), invoices,
+  payments, deposits (hold / refund), ledger trial-balance (tenant-scoped),
+  exceptions (list / approve — approval requires a non-agent role), billing
+  subscription (per-unit SaaS), health.
