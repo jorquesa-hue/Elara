@@ -7,6 +7,7 @@
   "scripts": {
     "test": "tsx --test tests/*.test.ts",
     "demo": "tsx demo.ts",
+    "demo:live": "tsx demo-live.ts",
     "gen-seed": "tsx scripts/gen-seed.mjs"
   },
   "devDependencies": {

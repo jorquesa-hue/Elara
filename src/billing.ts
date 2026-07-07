@@ -118,4 +118,8 @@ export class Billing {
       .filter((i) => i.status === 'open' || i.status === 'partially_paid')
       .map((i) => this.get(i.id));
   }
+
+  allInvoices(): readonly Invoice[] {
+    return [...this.invoices.values()].map((i) => this.get(i.id));
+  }
 }

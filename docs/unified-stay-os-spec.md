@@ -92,11 +92,26 @@ receivables actually collected (measured by credits to accounts_receivable, so
 deposit/liability inflows never inflate recognized revenue). Both read the one
 ledger; neither writes.
 
+## 7a. Persistence adapter (`src/persistence/`)
+
+The kernel holds no I/O. `projectWorld()` folds accumulated kernel state
+(agreement events, journal lines, holds, invoices, payments, deposits, action
+log) into an **FK-ordered batch of parameterized INSERTs** — the event-sourcing
+replay into Postgres. A `SqlExecutor` boundary runs the batch: `RecordingExecutor`
+captures it (for script generation and tests); `PgExecutor` runs it over `pg` in
+one transaction for the production service-role backend (invariant 3). `pg` is
+imported dynamically so the kernel's zero-dep guarantee (invariant 7) is intact
+for anyone who doesn't opt in.
+
 ## 8. Testing & acceptance
 
-- `npx tsx --test tests/*.test.ts` — three tranches, 15 tests, must be 15/15.
-- `npx tsx demo.ts` — end-to-end lifecycle acceptance. **P0 is DONE when this
-  runs unchanged against the live stack.**
+- `npx tsx --test tests/*.test.ts` — four tranches, 19 tests, must be 19/19.
+- `npx tsx demo.ts` — end-to-end lifecycle acceptance, in-process.
+- `npx tsx demo-live.ts` — the same lifecycle **persisted to the live DB** via
+  the adapter (`DATABASE_URL` → commit; otherwise emit a runnable script).
+  **P0 is DONE when this runs against the live stack** — verified: the batch
+  applied to the live project, the deferred balance trigger validated (trial
+  balance 0), state confirmed, transaction rolled back clean.
 
 ## 13. Open gates (block later phases)
 

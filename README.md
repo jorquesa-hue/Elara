@@ -8,8 +8,10 @@ dependencies in the kernel.
 
 ```bash
 npm i -D tsx typescript @types/node
-npx tsx --test tests/*.test.ts   # 15/15
-npx tsx demo.ts                  # end-to-end lifecycle acceptance
+npx tsx --test tests/*.test.ts   # 19/19
+npx tsx demo.ts                  # end-to-end lifecycle acceptance (in-process)
+npx tsx demo-live.ts             # same lifecycle persisted via the adapter
+                                 #   DATABASE_URL set → commit; unset → emit SQL
 npx tsx scripts/gen-seed.mjs     # regenerate policy SQL from TS
 ```
 

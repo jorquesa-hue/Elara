@@ -228,4 +228,9 @@ export class Calendar {
   activeHolds(): readonly CalendarHold[] {
     return [...this.holds.values()].filter((h) => h.status === 'active').map((h) => ({ ...h }));
   }
+
+  /** All holds (active + released), for persistence projection. */
+  allHolds(): readonly CalendarHold[] {
+    return [...this.holds.values()].map((h) => ({ ...h }));
+  }
 }

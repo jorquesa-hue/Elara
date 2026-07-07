@@ -108,4 +108,8 @@ export class Deposits {
     if (!d) throw new DepositError(`unknown deposit: ${id}`);
     return { ...d, deductions: d.deductions.map((x) => ({ ...x })) };
   }
+
+  all(): readonly Deposit[] {
+    return [...this.deposits.values()].map((d) => this.get(d.id));
+  }
 }

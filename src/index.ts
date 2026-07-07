@@ -14,3 +14,5 @@ export * from './collections.ts';
 export * from './multigaap.ts';
 export * from './metrics.ts';
 export * from './group-block.ts';
+export * from './persistence/executor.ts';
+export * from './persistence/project.ts';

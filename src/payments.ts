@@ -77,4 +77,8 @@ export class Payments {
     if (!p) throw new PaymentError(`unknown payment: ${id}`);
     return { ...p };
   }
+
+  all(): readonly Payment[] {
+    return [...this.payments.values()].map((p) => ({ ...p }));
+  }
 }
