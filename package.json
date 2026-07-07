@@ -8,6 +8,7 @@
     "test": "tsx --test tests/*.test.ts",
     "demo": "tsx demo.ts",
     "demo:live": "tsx demo-live.ts",
+    "portal": "tsx demo-portal.ts",
     "gen-seed": "tsx scripts/gen-seed.mjs"
   },
   "devDependencies": {

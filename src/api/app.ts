@@ -1,12 +1,18 @@
 // The Public API is the only API (invariant 3). Its core is a transport-agnostic
 // router: dispatch(request) -> response. src/api/http.ts binds it to node:http.
 //
-// Two rules hold for every request:
-//   - Auth first: no valid bearer -> 401; every resource is tenant-scoped, and
-//     cross-tenant reads return 404 (existence is never leaked).
-//   - Policy before effect: every MUTATION runs through AgentRuntime.execute so
-//     PolicyEnvelope.decide() precedes the operation (invariant 2). allow ->
-//     2xx, deny -> 403, escalate -> 202 { exceptionId }.
+// Every request passes three gates in order:
+//   1. Auth      — no valid bearer -> 401.
+//   2. RBAC      — the route's required Permission must be in the caller's role
+//                  (src/rbac.ts). Missing -> 403. Answers "may this user do this?"
+//   3. Policy    — every MUTATION runs through AgentRuntime.execute so
+//                  PolicyEnvelope.decide() precedes the effect (invariant 2).
+//                  Answers "is this action safe to auto-execute?" allow -> 2xx,
+//                  deny -> 403, escalate -> 202. RBAC and policy are orthogonal.
+//
+// Every resource is tenant-scoped; cross-tenant reads return 404 (existence is
+// never leaked). Money is stored in integer minor units of the tenant's
+// configured currency; the *Cents field names mean "minor units".
 
 import { Ledger } from '../ledger.ts';
 import { Agreement, Calendar, DoubleInventoryError, type AgreementKind } from '../agreement.ts';
@@ -17,6 +23,16 @@ import { Billing, type InvoiceLine } from '../billing.ts';
 import { Payments, type PaymentMethod } from '../payments.ts';
 import { Deposits, type Deduction } from '../deposits.ts';
 import { meterSubscription, type SubscriptionPlan } from '../subscription.ts';
+import {
+  ConfigStore,
+  SUPPORTED_LOCALES,
+  SUPPORTED_CURRENCIES,
+  BUSINESS_STRUCTURES,
+  type TenantConfig,
+} from '../config.ts';
+import { RoleRegistry, PERMISSIONS, type Permission } from '../rbac.ts';
+import { MasterData } from '../master-data.ts';
+import { catalog } from '../i18n.ts';
 import { StaticTokenAuthenticator, type Authenticator, type AuthContext } from './context.ts';
 
 export interface ApiRequest {
@@ -40,14 +56,12 @@ class HttpError extends Error {
   }
 }
 
-// Domain errors -> HTTP status. Unknown domain errors are 400 (client-caused),
-// not 500 (which is reserved for genuine bugs).
 function statusForError(e: unknown): number {
   if (e instanceof HttpError) return e.status;
   if (e instanceof DoubleInventoryError) return 409;
   const name = e instanceof Error ? e.constructor.name : '';
   if (/Error$/.test(name) && name !== 'Error' && name !== 'TypeError' && name !== 'RangeError') {
-    return 409; // LedgerError/BillingError/PaymentError/AgreementError/… — conflict with current state
+    return 409; // Ledger/Billing/Payment/Agreement/Config/Rbac/MasterData errors — conflict with state
   }
   return 500;
 }
@@ -56,6 +70,7 @@ interface Route {
   method: string;
   regex: RegExp;
   keys: string[];
+  permission: Permission | null;
   handler: (ctx: AuthContext, params: Record<string, string>, body: Record<string, unknown>) => ApiResponse;
 }
 
@@ -75,9 +90,12 @@ function compile(pattern: string): { regex: RegExp; keys: string[] } {
 export interface AppConfig {
   authenticator?: Authenticator;
   subscriptionPlan?: SubscriptionPlan;
-  /** Seed units so agreement.create can validate ownership + subscription can meter. */
+  /** Shared stores — pass pre-seeded instances (portal), or omit for fresh ones. */
+  config?: ConfigStore;
+  roles?: RoleRegistry;
+  masterData?: MasterData;
+  /** Back-compat convenience: seed units as master data. */
   units?: Array<{ id: string; tenantId: string }>;
-  /** Server clock; overridable for deterministic tests. */
   now?: () => string;
 }
 
@@ -90,10 +108,13 @@ export class App {
   readonly payments: Payments;
   readonly deposits: Deposits;
 
+  readonly config: ConfigStore;
+  readonly roles: RoleRegistry;
+  readonly masterData: MasterData;
+
   private readonly auth: Authenticator;
   private readonly plan: SubscriptionPlan;
   private readonly now: () => string;
-  private readonly units = new Map<string, { id: string; tenantId: string }>();
   private readonly agreements = new Map<string, { agreement: Agreement; tenantId: string }>();
   private readonly invoiceTenant = new Map<string, string>();
   private readonly depositTenant = new Map<string, string>();
@@ -106,8 +127,15 @@ export class App {
     this.deposits = new Deposits(this.ledger);
     this.auth = config.authenticator ?? new StaticTokenAuthenticator();
     this.plan = config.subscriptionPlan ?? { perUnitCents: 5000, currency: 'BRL' };
+    this.config = config.config ?? new ConfigStore();
+    this.roles = config.roles ?? new RoleRegistry();
+    this.masterData = config.masterData ?? new MasterData();
     this.now = config.now ?? (() => new Date().toISOString());
-    for (const u of config.units ?? []) this.units.set(u.id, { ...u });
+    for (const u of config.units ?? []) {
+      if (!this.masterData.units.get(u.tenantId, u.id)) {
+        this.masterData.units.add({ id: u.id, tenantId: u.tenantId, code: u.id, label: u.id, active: true });
+      }
+    }
     this.registerRoutes();
   }
 
@@ -120,28 +148,30 @@ export class App {
       if (route.method !== req.method) continue;
       const m = route.regex.exec(req.path);
       if (!m) continue;
+
+      if (route.permission) {
+        const perms = this.roles.permissionsFor(ctx.tenantId, ctx.role);
+        if (!perms.has(route.permission)) {
+          return { status: 403, body: { error: 'forbidden', permission: route.permission } };
+        }
+      }
+
       const params: Record<string, string> = {};
       route.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1]!)));
       try {
         return route.handler(ctx, params, req.body ?? {});
       } catch (e) {
-        const status = statusForError(e);
-        return { status, body: { error: e instanceof Error ? e.message : String(e) } };
+        return { status: statusForError(e), body: { error: e instanceof Error ? e.message : String(e) } };
       }
     }
     return { status: 404, body: { error: 'not found' } };
   }
 
-  private add(
-    method: string,
-    pattern: string,
-    handler: Route['handler'],
-  ): void {
+  private add(method: string, pattern: string, permission: Permission | null, handler: Route['handler']): void {
     const { regex, keys } = compile(pattern);
-    this.routes.push({ method, regex, keys, handler });
+    this.routes.push({ method, regex, keys, permission, handler });
   }
 
-  // Run a mutation through the policy envelope and map the outcome to HTTP.
   private gated<T>(
     action: string,
     ctx: AuthContext,
@@ -174,6 +204,10 @@ export class App {
     return v;
   }
 
+  private optString(body: Record<string, unknown>, key: string): string | undefined {
+    return typeof body[key] === 'string' ? (body[key] as string) : undefined;
+  }
+
   private agreementSummary(a: Agreement) {
     return { id: a.id, kind: a.kind, status: a.status, rateCents: a.rateCents, period: a.period };
   }
@@ -185,14 +219,126 @@ export class App {
   }
 
   private registerRoutes(): void {
-    this.add('GET', '/health', () => ({ status: 200, body: { ok: true } }));
+    this.add('GET', '/health', null, () => ({ status: 200, body: { ok: true } }));
+
+    // --- session / config --------------------------------------------------
+    // Who am I + my permissions — the first call the portal makes.
+    this.add('GET', '/me', null, (ctx) => ({
+      status: 200,
+      body: {
+        actor: ctx.actor,
+        tenantId: ctx.tenantId,
+        role: ctx.role,
+        permissions: [...this.roles.permissionsFor(ctx.tenantId, ctx.role)],
+      },
+    }));
+
+    this.add('GET', '/config', 'config.read', (ctx) => ({
+      status: 200,
+      body: {
+        config: this.config.get(ctx.tenantId),
+        options: {
+          locales: SUPPORTED_LOCALES,
+          currencies: SUPPORTED_CURRENCIES,
+          businessStructures: BUSINESS_STRUCTURES,
+        },
+      },
+    }));
+
+    // Setup-time: change language, currency, timezone, business structure.
+    this.add('PUT', '/config', 'config.manage', (ctx, _p, body) => {
+      const patch: Partial<Omit<TenantConfig, 'tenantId'>> = {};
+      for (const k of ['displayName', 'locale', 'currency', 'timezone', 'businessStructure'] as const) {
+        const v = this.optString(body, k);
+        if (v !== undefined) patch[k] = v;
+      }
+      return { status: 200, body: this.config.update(ctx.tenantId, patch) };
+    });
+
+    this.add('GET', '/i18n/:locale', null, (_ctx, p) => ({ status: 200, body: catalog(p['locale']!) }));
+
+    // --- roles & users (access profiling) ---------------------------------
+    this.add('GET', '/permissions', 'role.read', () => ({ status: 200, body: { permissions: PERMISSIONS } }));
+
+    this.add('GET', '/roles', 'role.read', (ctx) => ({
+      status: 200,
+      body: {
+        roles: this.roles.listRoles(ctx.tenantId).map((r) => ({
+          id: r.id,
+          name: r.name,
+          builtin: r.builtin,
+          description: r.description,
+          permissions: r.permissions === '*' ? [...PERMISSIONS] : r.permissions,
+        })),
+      },
+    }));
+
+    this.add('POST', '/roles', 'role.manage', (ctx, _p, body) => {
+      const id = this.requireString(body, 'id');
+      const name = this.requireString(body, 'name');
+      const perms = Array.isArray(body['permissions']) ? (body['permissions'] as Permission[]) : [];
+      const role = this.roles.defineRole(ctx.tenantId, { id, name, permissions: perms, description: this.optString(body, 'description') });
+      return { status: 201, body: role };
+    });
+
+    this.add('GET', '/users', 'user.read', (ctx) => ({ status: 200, body: { users: this.masterData.users.list(ctx.tenantId) } }));
+
+    this.add('POST', '/users', 'user.manage', (ctx, _p, body) => {
+      const roleId = this.requireString(body, 'roleId');
+      if (!this.roles.resolve(ctx.tenantId, roleId)) throw new HttpError(400, `unknown role: ${roleId}`);
+      const user = this.masterData.users.add({
+        id: this.requireString(body, 'id'),
+        tenantId: ctx.tenantId,
+        code: this.requireString(body, 'code'),
+        displayName: this.requireString(body, 'displayName'),
+        roleId,
+        active: body['active'] !== false,
+      });
+      return { status: 201, body: user };
+    });
+
+    // --- master data (reporting + API connectivity anchors) ---------------
+    this.add('GET', '/master-data', 'masterdata.read', (ctx) => ({ status: 200, body: this.masterData.snapshot(ctx.tenantId) }));
+
+    this.add('POST', '/units', 'masterdata.manage', (ctx, _p, body) => ({
+      status: 201,
+      body: this.masterData.units.add({
+        id: this.requireString(body, 'id'),
+        tenantId: ctx.tenantId,
+        code: this.requireString(body, 'code'),
+        label: this.requireString(body, 'label'),
+        active: body['active'] !== false,
+      }),
+    }));
+
+    this.add('POST', '/guests', 'masterdata.manage', (ctx, _p, body) => ({
+      status: 201,
+      body: this.masterData.guests.add({
+        id: this.requireString(body, 'id'),
+        tenantId: ctx.tenantId,
+        code: this.requireString(body, 'code'),
+        fullName: this.requireString(body, 'fullName'),
+        email: this.optString(body, 'email'),
+      }),
+    }));
+
+    this.add('POST', '/rate-plans', 'masterdata.manage', (ctx, _p, body) => ({
+      status: 201,
+      body: this.masterData.ratePlans.add({
+        id: this.requireString(body, 'id'),
+        tenantId: ctx.tenantId,
+        code: this.requireString(body, 'code'),
+        name: this.requireString(body, 'name'),
+        kind: this.requireString(body, 'kind') as 'nightly' | 'monthly' | 'lease',
+        baseMinor: this.requireInt(body, 'baseMinor'),
+      }),
+    }));
 
     // --- agreements --------------------------------------------------------
-    this.add('POST', '/agreements', (ctx, _p, body) => {
+    this.add('POST', '/agreements', 'agreement.book', (ctx, _p, body) => {
       const id = this.requireString(body, 'id');
       const unitId = this.requireString(body, 'unitId');
-      const unit = this.units.get(unitId);
-      if (this.units.size > 0 && (!unit || unit.tenantId !== ctx.tenantId)) {
+      if (this.tenantHasUnits(ctx.tenantId) && !this.masterData.units.get(ctx.tenantId, unitId)) {
         throw new HttpError(404, 'unit not found for tenant');
       }
       const guestId = this.requireString(body, 'guestId');
@@ -200,7 +346,8 @@ export class App {
       const start = this.requireString(body, 'start');
       const end = this.requireString(body, 'end');
       const rateCents = this.requireInt(body, 'rateCents');
-      const at = typeof body['at'] === 'string' ? (body['at'] as string) : this.now();
+      const at = this.optString(body, 'at') ?? this.now();
+      const currency = this.optString(body, 'currency') ?? this.config.get(ctx.tenantId).currency;
       if (this.agreements.has(id)) throw new HttpError(409, `agreement ${id} already exists`);
 
       return this.gated(
@@ -208,20 +355,8 @@ export class App {
         ctx,
         { unitId },
         () => {
-          const a = Agreement.create({
-            id,
-            tenantId: ctx.tenantId,
-            guestId,
-            unitId,
-            kind,
-            start,
-            end,
-            rateCents,
-            currency: typeof body['currency'] === 'string' ? (body['currency'] as string) : undefined,
-            at,
-          });
-          // Hold inventory now so double-booking fails here (invariant 4).
-          this.calendar.hold({ id: `${id}-hold`, unitId, holderId: id, start, end });
+          const a = Agreement.create({ id, tenantId: ctx.tenantId, guestId, unitId, kind, start, end, rateCents, currency, at });
+          this.calendar.hold({ id: `${id}-hold`, unitId, holderId: id, start, end }); // invariant 4
           this.agreements.set(id, { agreement: a, tenantId: ctx.tenantId });
           return a;
         },
@@ -229,55 +364,55 @@ export class App {
       );
     });
 
-    this.add('POST', '/agreements/:id/activate', (ctx, p, body) => {
+    this.add('POST', '/agreements/:id/activate', 'agreement.activate', (ctx, p, body) => {
       const a = this.ownedAgreement(ctx, p['id']!);
-      const at = typeof body['at'] === 'string' ? (body['at'] as string) : this.now();
-      return this.gated('agreement.activate', ctx, {}, () => a.activate(at), () => ({
-        status: 200,
-        body: this.agreementSummary(a),
-      }));
+      const at = this.optString(body, 'at') ?? this.now();
+      return this.gated('agreement.activate', ctx, {}, () => a.activate(at), () => ({ status: 200, body: this.agreementSummary(a) }));
     });
 
-    this.add('POST', '/agreements/:id/convert', (ctx, p, body) => {
+    this.add('POST', '/agreements/:id/convert', 'agreement.convert', (ctx, p, body) => {
       const a = this.ownedAgreement(ctx, p['id']!);
       const to = this.requireString(body, 'to') as AgreementKind;
-      const at = typeof body['at'] === 'string' ? (body['at'] as string) : this.now();
+      const at = this.optString(body, 'at') ?? this.now();
       const opts: { rateCents?: number; end?: string } = {};
       if (typeof body['rateCents'] === 'number') opts.rateCents = body['rateCents'] as number;
       if (typeof body['end'] === 'string') opts.end = body['end'] as string;
-      return this.gated('agreement.convert', ctx, { to }, () => a.convert(to, at, opts), () => ({
-        status: 200,
-        body: this.agreementSummary(a),
-      }));
+      return this.gated('agreement.convert', ctx, { to }, () => a.convert(to, at, opts), () => ({ status: 200, body: this.agreementSummary(a) }));
     });
 
-    this.add('GET', '/agreements/:id', (ctx, p) => {
+    this.add('GET', '/agreements', 'agreement.read', (ctx) => ({
+      status: 200,
+      body: {
+        agreements: [...this.agreements.values()]
+          .filter((e) => e.tenantId === ctx.tenantId)
+          .map((e) => this.agreementSummary(e.agreement)),
+      },
+    }));
+
+    this.add('GET', '/agreements/:id', 'agreement.read', (ctx, p) => {
       const a = this.ownedAgreement(ctx, p['id']!);
       return { status: 200, body: { ...this.agreementSummary(a), history: a.history } };
     });
 
     // --- invoices ----------------------------------------------------------
-    this.add('POST', '/invoices', (ctx, _p, body) => {
+    this.add('POST', '/invoices', 'invoice.issue', (ctx, _p, body) => {
       const id = this.requireString(body, 'id');
       const agreementId = this.requireString(body, 'agreementId');
-      this.ownedAgreement(ctx, agreementId); // tenant check
+      this.ownedAgreement(ctx, agreementId);
       const dueAt = this.requireString(body, 'dueAt');
-      const issuedAt = typeof body['issuedAt'] === 'string' ? (body['issuedAt'] as string) : this.now();
+      const issuedAt = this.optString(body, 'issuedAt') ?? this.now();
+      const currency = this.config.get(ctx.tenantId).currency;
       const rawLines = Array.isArray(body['lines']) ? (body['lines'] as unknown[]) : [];
       const lines: InvoiceLine[] = rawLines.map((l) => {
         const o = l as Record<string, unknown>;
-        return {
-          description: String(o['description'] ?? ''),
-          account: String(o['account'] ?? ''),
-          amountCents: Number(o['amountCents']),
-        };
+        return { description: String(o['description'] ?? ''), account: String(o['account'] ?? ''), amountCents: Number(o['amountCents']) };
       });
       return this.gated(
         'invoice.issue',
         ctx,
         { agreementId },
         () => {
-          const inv = this.billing.issue({ id, agreementId, tenantId: ctx.tenantId, issuedAt, dueAt, lines });
+          const inv = this.billing.issue({ id, agreementId, tenantId: ctx.tenantId, issuedAt, dueAt, currency, lines });
           this.invoiceTenant.set(id, ctx.tenantId);
           return inv;
         },
@@ -285,19 +420,19 @@ export class App {
       );
     });
 
-    this.add('GET', '/invoices/:id', (ctx, p) => {
+    this.add('GET', '/invoices/:id', 'invoice.read', (ctx, p) => {
       if (this.invoiceTenant.get(p['id']!) !== ctx.tenantId) throw new HttpError(404, 'invoice not found');
       return { status: 200, body: this.billing.get(p['id']!) };
     });
 
     // --- payments ----------------------------------------------------------
-    this.add('POST', '/payments', (ctx, _p, body) => {
+    this.add('POST', '/payments', 'payment.record', (ctx, _p, body) => {
       const id = this.requireString(body, 'id');
       const invoiceId = this.requireString(body, 'invoiceId');
       if (this.invoiceTenant.get(invoiceId) !== ctx.tenantId) throw new HttpError(404, 'invoice not found');
       const amountCents = this.requireInt(body, 'amountCents');
       const method = this.requireString(body, 'method') as PaymentMethod;
-      const receivedAt = typeof body['receivedAt'] === 'string' ? (body['receivedAt'] as string) : this.now();
+      const receivedAt = this.optString(body, 'receivedAt') ?? this.now();
       return this.gated(
         'payment.record',
         ctx,
@@ -308,18 +443,19 @@ export class App {
     });
 
     // --- deposits ----------------------------------------------------------
-    this.add('POST', '/deposits', (ctx, _p, body) => {
+    this.add('POST', '/deposits', 'deposit.hold', (ctx, _p, body) => {
       const id = this.requireString(body, 'id');
       const agreementId = this.requireString(body, 'agreementId');
       this.ownedAgreement(ctx, agreementId);
       const amountCents = this.requireInt(body, 'amountCents');
-      const heldAt = typeof body['heldAt'] === 'string' ? (body['heldAt'] as string) : this.now();
+      const heldAt = this.optString(body, 'heldAt') ?? this.now();
+      const currency = this.config.get(ctx.tenantId).currency;
       return this.gated(
         'deposit.hold',
         ctx,
         { agreementId, amountCents },
         () => {
-          const d = this.deposits.hold({ id, agreementId, amountCents, heldAt });
+          const d = this.deposits.hold({ id, agreementId, amountCents, currency, heldAt });
           this.depositTenant.set(id, ctx.tenantId);
           return d;
         },
@@ -327,63 +463,76 @@ export class App {
       );
     });
 
-    this.add('POST', '/deposits/:id/refund', (ctx, p, body) => {
+    this.add('POST', '/deposits/:id/refund', 'deposit.refund', (ctx, p, body) => {
       const id = p['id']!;
       if (this.depositTenant.get(id) !== ctx.tenantId) throw new HttpError(404, 'deposit not found');
-      const at = typeof body['at'] === 'string' ? (body['at'] as string) : this.now();
+      const at = this.optString(body, 'at') ?? this.now();
       const rawDeductions = Array.isArray(body['deductions']) ? (body['deductions'] as unknown[]) : [];
       const deductions: Deduction[] = rawDeductions.map((d) => {
         const o = d as Record<string, unknown>;
         return { reason: String(o['reason'] ?? ''), amountCents: Number(o['amountCents']) };
       });
-      return this.gated(
-        'deposit.refund',
-        ctx,
-        { depositId: id },
-        () => this.deposits.refund(id, at, deductions),
-        (d) => ({ status: 200, body: d }),
-      );
+      return this.gated('deposit.refund', ctx, { depositId: id }, () => this.deposits.refund(id, at, deductions), (d) => ({ status: 200, body: d }));
     });
 
     // --- ledger (tenant-scoped) -------------------------------------------
-    this.add('GET', '/ledger/trial-balance', (ctx) => {
-      const tenantAgreementIds = new Set(
-        [...this.agreements.values()].filter((e) => e.tenantId === ctx.tenantId).map((e) => e.agreement.id),
-      );
-      const balances: Record<string, number> = {};
-      for (const line of this.ledger.allLines) {
-        if (!line.agreementId || !tenantAgreementIds.has(line.agreementId)) continue;
-        balances[line.account] = (balances[line.account] ?? 0) + line.debitCents - line.creditCents;
-      }
-      const net = Object.values(balances).reduce((s, v) => s + v, 0);
-      return { status: 200, body: { balances, net, balanced: net === 0 } };
-    });
+    this.add('GET', '/ledger/trial-balance', 'ledger.read', (ctx) => ({ status: 200, body: this.trialBalance(ctx.tenantId) }));
 
     // --- exceptions --------------------------------------------------------
-    this.add('GET', '/exceptions', (ctx) => {
-      const pending = this.exceptions
-        .pending()
-        .filter((i) => (i.ctx as { tenantId?: string }).tenantId === ctx.tenantId);
-      return { status: 200, body: { pending } };
-    });
+    this.add('GET', '/exceptions', 'exception.read', (ctx) => ({
+      status: 200,
+      body: { pending: this.exceptions.pending().filter((i) => (i.ctx as { tenantId?: string }).tenantId === ctx.tenantId) },
+    }));
 
-    this.add('POST', '/exceptions/:id/approve', (ctx, p, body) => {
-      if (ctx.role === 'agent' || ctx.role === 'guest') {
-        throw new HttpError(403, 'approving an escalation requires a staff or service role');
-      }
+    this.add('POST', '/exceptions/:id/approve', 'exception.approve', (ctx, p, body) => {
       const item = this.exceptions.get(p['id']!); // throws -> 409 if unknown
-      if ((item.ctx as { tenantId?: string }).tenantId !== ctx.tenantId) {
-        throw new HttpError(404, 'exception not found');
-      }
-      const note = typeof body['note'] === 'string' ? (body['note'] as string) : undefined;
-      const result = this.exceptions.approve(p['id']!, ctx.actor, this.now(), note);
+      if ((item.ctx as { tenantId?: string }).tenantId !== ctx.tenantId) throw new HttpError(404, 'exception not found');
+      const result = this.exceptions.approve(p['id']!, ctx.actor, this.now(), this.optString(body, 'note'));
       return { status: 200, body: { status: 'approved', result: result ?? null } };
     });
 
-    // --- billing (per-unit SaaS: platform charge to the operator) ----------
-    this.add('GET', '/billing/subscription', (ctx) => {
-      const unitCount = [...this.units.values()].filter((u) => u.tenantId === ctx.tenantId).length;
-      return { status: 200, body: meterSubscription(unitCount, this.plan) };
+    // --- billing / reporting ----------------------------------------------
+    this.add('GET', '/billing/subscription', 'subscription.read', (ctx) => ({
+      status: 200,
+      body: meterSubscription(this.masterData.units.list(ctx.tenantId).length, this.plan),
+    }));
+
+    // A reporting-friendly rollup: agreements by kind/status, ledger, master-data
+    // counts, subscription — a single call for dashboards and exports.
+    this.add('GET', '/reporting/summary', 'ledger.read', (ctx) => {
+      const mine = [...this.agreements.values()].filter((e) => e.tenantId === ctx.tenantId).map((e) => e.agreement);
+      const byKind: Record<string, number> = {};
+      const byStatus: Record<string, number> = {};
+      for (const a of mine) {
+        byKind[a.kind] = (byKind[a.kind] ?? 0) + 1;
+        byStatus[a.status] = (byStatus[a.status] ?? 0) + 1;
+      }
+      const md = this.masterData.snapshot(ctx.tenantId);
+      return {
+        status: 200,
+        body: {
+          tenant: this.config.get(ctx.tenantId),
+          agreements: { total: mine.length, byKind, byStatus },
+          ledger: this.trialBalance(ctx.tenantId),
+          subscription: meterSubscription(md.units.length, this.plan),
+          masterDataCounts: { units: md.units.length, guests: md.guests.length, users: md.users.length, ratePlans: md.ratePlans.length },
+        },
+      };
     });
+  }
+
+  private tenantHasUnits(tenantId: string): boolean {
+    return this.masterData.units.list(tenantId).length > 0;
+  }
+
+  private trialBalance(tenantId: string) {
+    const ids = new Set([...this.agreements.values()].filter((e) => e.tenantId === tenantId).map((e) => e.agreement.id));
+    const balances: Record<string, number> = {};
+    for (const line of this.ledger.allLines) {
+      if (!line.agreementId || !ids.has(line.agreementId)) continue;
+      balances[line.account] = (balances[line.account] ?? 0) + line.debitCents - line.creditCents;
+    }
+    const net = Object.values(balances).reduce((s, v) => s + v, 0);
+    return { balances, net, balanced: net === 0 };
   }
 }

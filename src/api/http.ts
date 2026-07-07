@@ -3,6 +3,7 @@
 
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { App } from './app.ts';
+import { portalHtml } from './portal.ts';
 
 async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
@@ -22,6 +23,12 @@ export function createHttpServer(app: App): Server {
   return createServer((req: IncomingMessage, res: ServerResponse) => {
     void (async () => {
       const path = (req.url ?? '/').split('?')[0]!;
+      // Serve the operator portal SPA at the root; everything else is the API.
+      if (req.method === 'GET' && (path === '/' || path === '/index.html' || path === '/portal')) {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.end(portalHtml());
+        return;
+      }
       let response;
       try {
         const body = req.method === 'GET' || req.method === 'HEAD' ? {} : await readJsonBody(req);

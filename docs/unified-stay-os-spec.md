@@ -113,6 +113,47 @@ for anyone who doesn't opt in.
   applied to the live project, the deferred balance trigger validated (trial
   balance 0), state confirmed, transaction rolled back clean.
 
+## 17. Platform layer — configuration, access profiling, master data (P1)
+
+Three cross-cutting concerns make the system deployable by any operator:
+
+**Setup-time configuration (`src/config.ts`, `src/i18n.ts`).** A `TenantConfig`
+carries `locale`, `currency` (with correct minor-unit handling — 2 for USD/BRL,
+0 for JPY), `timezone`, and `businessStructure` (presets + custom). One `ConfigStore.update`
+switches language or currency with immediate effect. Money is stored in integer
+**minor units** and is currency-agnostic in the ledger; presentation is a config
+concern — `formatMoney` renders via `Intl` for the tenant's locale. The
+configured currency **flows into the ledger**: booked agreements, invoices, and
+deposits post in the tenant currency. `i18n.ts` holds en / pt-BR / es catalogs
+with `t(locale, key, vars)`; the portal fetches a catalog and renders in the
+configured language.
+
+**Access profiling (`src/rbac.ts`).** Granular `resource.action` **permissions**;
+**roles** bundle them; **users** hold a role. Built-in roles cover the common org
+chart (owner, manager, front_desk, accountant, agent, read_only, guest,
+service), and tenants **define custom roles** — well-defined yet flexible for any
+business structure. This is a second, orthogonal gate to the policy envelope:
+RBAC answers "may this user do this at all?", the envelope answers "is this
+action safe to auto-execute?". The API enforces a required permission per route.
+
+**Master data (`src/master-data.ts`).** Units, guests, users, and rate plans as
+flat, id-stable, tenant-scoped records, each with a `code` (the external/reporting
+join key distinct from the internal id, unique per tenant). The shapes map
+cleanly onto API payloads and report rows; `GET /reporting/summary` is a single
+call for dashboards and exports.
+
+## 18. Operator portal (P1)
+
+`src/api/portal.html` is a self-contained, **zero-dependency** vanilla-JS SPA
+(no build step) served by the http layer at `/`; everything else is the Public
+API it consumes (invariant 3). It opens on a **setup wizard** (workspace name,
+language, currency, timezone, business structure), then a dashboard (reporting
+rollup), agreements (book / activate / convert, money formatted per config),
+ledger (trial balance), and a Users & Roles admin (list/define custom roles,
+add users). The nav and labels are driven by the fetched i18n catalog; every
+button reflects the caller's permissions. Run it: `npx tsx demo-portal.ts`
+(four demo tokens exercise different roles).
+
 ## 16. Read layer (P1)
 
 `Repositories` (`src/persistence/repository.ts`) is the read side that mirrors

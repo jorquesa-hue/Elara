@@ -3,7 +3,19 @@
 // deny-by-default RLS — no tenant claim, no access). Roles gate sensitive
 // operations: an 'agent' cannot approve its own escalations.
 
-export type Role = 'agent' | 'staff' | 'guest' | 'service';
+// A role id. Built-in ids are suggested for autocomplete; any string is valid so
+// tenants can reference their own custom roles (see src/rbac.ts).
+export type Role =
+  | 'owner'
+  | 'service'
+  | 'manager'
+  | 'staff'
+  | 'front_desk'
+  | 'accountant'
+  | 'agent'
+  | 'read_only'
+  | 'guest'
+  | (string & {});
 
 export interface AuthContext {
   actor: string;

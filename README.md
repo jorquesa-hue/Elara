@@ -8,12 +8,18 @@ dependencies in the kernel.
 
 ```bash
 npm i -D tsx typescript @types/node
-npx tsx --test tests/*.test.ts   # 34/34
+npx tsx --test tests/*.test.ts   # 44/44
 npx tsx demo.ts                  # end-to-end lifecycle acceptance (in-process)
 npx tsx demo-live.ts             # same lifecycle persisted via the adapter
                                  #   DATABASE_URL set → commit; unset → emit SQL
+npx tsx demo-portal.ts           # operator portal + API → http://localhost:8787
 npx tsx scripts/gen-seed.mjs     # regenerate policy SQL from TS
 ```
+
+The portal opens on a setup wizard — pick a **language** (English / Português /
+Español) and **currency** and watch them flow through the whole app, including
+the ledger. Four demo tokens exercise the access-profiling roles (owner,
+front desk, AI agent, read-only).
 
 ## What's here
 
