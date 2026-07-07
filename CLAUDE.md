@@ -12,7 +12,7 @@ Read docs/unified-stay-os-spec.md before structural changes. Execute CLAUDE-CODE
 7. Kernel stays zero-runtime-dependency. New deps require written justification in the PR.
 
 ## State (as of 2026-07-07)
-- Kernel v0.4 complete: 30/30 tests (6 tranches). Run: `npx tsx --test tests/*.test.ts`
+- Kernel v0.4 complete: 34/34 tests (7 tranches). Run: `npx tsx --test tests/*.test.ts`
 - Lifecycle acceptance: `npx tsx demo.ts` runs the full lifecycle in-process (green). `npx tsx demo-live.ts` projects the accumulated kernel state to SQL and persists it via the persistence adapter — P0 acceptance against the live stack is DONE: the projected batch was applied to shplrbhwpttsukwgaxli in a transaction, the deferred balance trigger validated via SET CONSTRAINTS ALL IMMEDIATE (trial balance 0), state verified (1 agreement, 3 events, 1 active hold, 6 journal lines, invoice paid, 6 action-log rows), then ROLLED BACK to leave the DB clean.
 - Persistence adapter: src/persistence/ — zero-dep world projection (projectWorld) builds FK-ordered parameterized INSERTs; SqlExecutor boundary (RecordingExecutor for scripts/tests, optional PgExecutor over `pg` for the production service-role backend). demo-live uses PgExecutor when DATABASE_URL is set, else emits a runnable script.
 - Migrations 20260707170000/1/2/3 APPLIED to Supabase project `shplrbhwpttsukwgaxli` ("Elara PMS", org `llqaczctlhlphhdmyeml` / jorquesa@icloud.com). The earlier "wrong org" issue was resolved by reconnecting the Supabase connector to the account that owns the project; shplrbhwpttsukwgaxli is the live DB target (NOT abandoned).
@@ -23,8 +23,8 @@ Read docs/unified-stay-os-spec.md before structural changes. Execute CLAUDE-CODE
 ## Layout
 - src/ — domain kernel: agreement (state machine + conversion + Calendar), ledger, policy-envelope,
   agent-runtime, exception-queue, billing, rate-plan, payments, nfe-ingest, collections, multigaap,
-  deposits, amenity, metrics, group-block; src/persistence/ — executor + world projection
-- tests/ — six tranches (core, money, extended, persistence, api, agent) + fixtures (NF-e XML)
+  deposits, amenity, metrics, group-block; src/persistence/ — executor + world projection (write) + repository (read: Agreement.rehydrate, tenant-scoped trial balance; PgQueryExecutor)
+- tests/ — seven tranches (core, money, extended, persistence, api, agent, repository) + fixtures (NF-e XML)
 - schema.sql — Postgres persistence design (mirrored as migration 20260707170000)
 - supabase/migrations/ — 4 migrations (core schema, policy seed, RLS, RLS operational tables); supabase/policy_rule.seed.sql generated seed; scripts/gen-seed.mjs regenerates from TS
 - docs/unified-stay-os-spec.md — architecture; §13 gates RESOLVED (wedge = unified mixed-portfolio operator: short-stay/corporate/multifamily; revenue = per-unit SaaS; capital = always pass-through, never hold float). §14 = Public API surface, §15 = agent tool layer (both P1).
@@ -32,7 +32,7 @@ Read docs/unified-stay-os-spec.md before structural changes. Execute CLAUDE-CODE
 
 ## Commands
 - Setup: `npm i -D tsx typescript @types/node`
-- Tests: `npx tsx --test tests/*.test.ts` (must be 30/30 before any commit)
+- Tests: `npx tsx --test tests/*.test.ts` (must be 34/34 before any commit)
 - Typecheck: `npx tsc --noEmit`
 - Demo (in-process): `npx tsx demo.ts`
 - Demo (live persist): `DATABASE_URL=… npx tsx demo-live.ts` (no URL → emits SQL script)

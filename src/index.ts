@@ -16,6 +16,7 @@ export * from './metrics.ts';
 export * from './group-block.ts';
 export * from './persistence/executor.ts';
 export * from './persistence/project.ts';
+export * from './persistence/repository.ts';
 export * from './subscription.ts';
 export * from './api/context.ts';
 export * from './api/app.ts';

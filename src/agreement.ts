@@ -63,6 +63,25 @@ export class Agreement {
     return a;
   }
 
+  /**
+   * Reconstruct an aggregate from its persisted event stream (event sourcing).
+   * Trusts the stored events — no transition validation is re-run — so the
+   * fold (kind/status/rate/period) reproduces exactly what was persisted. The
+   * first event must be 'created'.
+   */
+  static rehydrate(
+    meta: { id: string; tenantId: string; guestId: string; unitId: string },
+    events: readonly AgreementEvent[],
+  ): Agreement {
+    const ordered = [...events].sort((x, y) => x.seq - y.seq);
+    if (ordered.length === 0 || ordered[0]!.type !== 'created') {
+      throw new AgreementError(`cannot rehydrate ${meta.id}: event stream must start with 'created'`);
+    }
+    const a = new Agreement(meta.id, meta.tenantId, meta.guestId, meta.unitId);
+    a.events = ordered.map((e) => Object.freeze({ ...e, payload: Object.freeze({ ...e.payload }) }));
+    return a;
+  }
+
   private append(type: AgreementEventType, at: string, payload: Record<string, unknown>): void {
     this.events.push(
       Object.freeze({

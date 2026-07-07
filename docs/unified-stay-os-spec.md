@@ -113,6 +113,30 @@ for anyone who doesn't opt in.
   applied to the live project, the deferred balance trigger validated (trial
   balance 0), state confirmed, transaction rolled back clean.
 
+## 16. Read layer (P1)
+
+`Repositories` (`src/persistence/repository.ts`) is the read side that mirrors
+`projectWorld`'s write side. It reconstructs kernel-facing views from persisted
+rows through a `QueryExecutor` boundary — `PgQueryExecutor` over `pg` in
+production (dynamic import; zero-dep guarantee intact), `FakeQueryExecutor` for
+tests.
+
+- `loadAgreement(id)` reads the `agreement` row + its ordered `agreement_event`
+  rows and calls `Agreement.rehydrate()` — **event-sourced rehydration**: the
+  fold reproduces kind/status/rate/period exactly as persisted (regression-
+  critical, since conversion preserves id and ledger continuity). Order-
+  independent: the events are sorted by `seq` before folding.
+- `loadTrialBalance()` computes the tenant-scoped net-per-account from
+  `journal_line` joined to the tenant's agreements.
+- Every query is tenant-scoped in its `WHERE`, mirroring deny-by-default RLS —
+  a repository built for one tenant cannot read another's rows.
+
+Verified against the live DB: the demo world was persisted in a transaction and
+the repository's exact SELECTs returned what rehydration consumes (3 events,
+folded kind `monthly`, rate 450000, trial balance 0, 1 active hold), then
+rolled back clean. Write path (`projectWorld` → executor) and read path
+(`Repositories`) now round-trip through real Postgres.
+
 ## 15. Agent tool layer (P1)
 
 `AgentToolCatalog` (`src/agent/tools.ts`) exposes the kernel's operations to an
