@@ -33,6 +33,19 @@ export interface EdgeClientOptions {
 }
 
 /**
+ * The App's durable write dependency. Kept abstract so the App never imports a
+ * transport: production injects the Edge-backed one below; tests inject a fake.
+ */
+export interface PersistenceBackend {
+  persist(world: WorldData): Promise<EdgePersistResult>;
+}
+
+/** A PersistenceBackend that flushes through the deployed persist-world function. */
+export function edgePersistenceBackend(opts: EdgeClientOptions): PersistenceBackend {
+  return { persist: (world) => persistWorldViaEdge(world, opts) };
+}
+
+/**
  * POST a projected world to persist-world. Resolves with the function's report
  * on success (HTTP 200); throws EdgePersistError on any non-200 so callers can
  * branch on status (409 duplicate, 422 constraint/unbalanced, 403 auth, …).

@@ -32,12 +32,17 @@ export function createHttpServer(app: App): Server {
       let response;
       try {
         const body = req.method === 'GET' || req.method === 'HEAD' ? {} : await readJsonBody(req);
-        response = app.dispatch({
+        const apiReq = {
           method: req.method ?? 'GET',
           path,
           body,
           bearer: req.headers['authorization'],
-        });
+        };
+        // /persist does durable I/O — the one async entry point on the App.
+        response =
+          apiReq.method === 'POST' && path === '/persist'
+            ? await app.persist(apiReq)
+            : app.dispatch(apiReq);
       } catch (e) {
         response = { status: 400, body: { error: e instanceof Error ? e.message : 'bad request' } };
       }

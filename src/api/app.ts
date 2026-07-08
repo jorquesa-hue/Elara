@@ -33,6 +33,8 @@ import {
 import { RoleRegistry, PERMISSIONS, type Permission } from '../rbac.ts';
 import { MasterData } from '../master-data.ts';
 import { catalog } from '../i18n.ts';
+import type { WorldData } from '../persistence/project.ts';
+import type { PersistenceBackend } from '../persistence/edge-client.ts';
 import { StaticTokenAuthenticator, type Authenticator, type AuthContext } from './context.ts';
 
 export interface ApiRequest {
@@ -97,6 +99,8 @@ export interface AppConfig {
   /** Back-compat convenience: seed units as master data. */
   units?: Array<{ id: string; tenantId: string }>;
   now?: () => string;
+  /** Durable write arm (persist-world Edge Function). Omit → /persist is 501. */
+  persistence?: PersistenceBackend;
 }
 
 export class App {
@@ -114,6 +118,7 @@ export class App {
 
   private readonly auth: Authenticator;
   private readonly plan: SubscriptionPlan;
+  private readonly persistence?: PersistenceBackend;
   private readonly now: () => string;
   private readonly agreements = new Map<string, { agreement: Agreement; tenantId: string }>();
   private readonly invoiceTenant = new Map<string, string>();
@@ -127,6 +132,7 @@ export class App {
     this.deposits = new Deposits(this.ledger);
     this.auth = config.authenticator ?? new StaticTokenAuthenticator();
     this.plan = config.subscriptionPlan ?? { perUnitCents: 5000, currency: 'BRL' };
+    this.persistence = config.persistence;
     this.config = config.config ?? new ConfigStore();
     this.roles = config.roles ?? new RoleRegistry();
     this.masterData = config.masterData ?? new MasterData();
@@ -545,5 +551,66 @@ export class App {
     }
     const net = Object.values(balances).reduce((s, v) => s + v, 0);
     return { balances, net, balanced: net === 0 };
+  }
+
+  // --- durable persistence (the persist-world Edge Function) ----------------
+  /**
+   * Fold this App's in-memory state for one tenant into a WorldData — the exact
+   * payload the persist-world function projects and writes. FK parents first;
+   * children filtered by ownership so the batch is self-consistent.
+   */
+  snapshotWorld(tenantId: string): WorldData {
+    const cfg = this.config.get(tenantId);
+    const mine = [...this.agreements.values()].filter((e) => e.tenantId === tenantId);
+    const agreementIds = new Set(mine.map((e) => e.agreement.id));
+    const invoices = this.billing.allInvoices().filter((i) => i.tenantId === tenantId);
+    const invoiceIds = new Set(invoices.map((i) => i.id));
+
+    return {
+      tenants: [{ id: tenantId, name: cfg.displayName ?? tenantId }],
+      units: this.masterData.units.list(tenantId).map((u) => ({ id: u.id, tenantId, label: u.label })),
+      guests: this.masterData.guests.list(tenantId).map((g) => ({ id: g.id, tenantId, fullName: g.fullName })),
+      ratePlans: this.masterData.ratePlans.list(tenantId).map((r) => ({
+        id: r.id, tenantId, name: r.name, kind: r.kind, baseCents: r.baseMinor, currency: cfg.currency,
+      })),
+      agreements: mine.map((e) => ({
+        id: e.agreement.id, tenantId, guestId: e.agreement.guestId, unitId: e.agreement.unitId,
+        events: e.agreement.history,
+      })),
+      holds: this.calendar.allHolds().filter((h) => agreementIds.has(h.holderId)),
+      journalLines: this.ledger.allLines.filter((l) => l.agreementId != null && agreementIds.has(l.agreementId)),
+      invoices,
+      payments: this.payments.all().filter((p) => invoiceIds.has(p.invoiceId)),
+      deposits: this.deposits.all().filter((d) => agreementIds.has(d.agreementId)),
+      actionLog: this.runtime.actionLog(),
+    };
+  }
+
+  /**
+   * Flush a tenant's world to durable storage through the injected backend
+   * (the persist-world Edge Function in production). Async because it does real
+   * I/O — kept off the synchronous dispatch() router and exposed directly so the
+   * HTTP layer can await it. Enforces the same auth + RBAC gates as dispatch.
+   */
+  async persist(req: ApiRequest): Promise<ApiResponse> {
+    const ctx = this.auth.authenticate(req.bearer);
+    if (!ctx) return { status: 401, body: { error: 'unauthenticated' } };
+    const perms = this.roles.permissionsFor(ctx.tenantId, ctx.role);
+    if (!perms.has('persistence.run')) {
+      return { status: 403, body: { error: 'forbidden', permission: 'persistence.run' } };
+    }
+    if (!this.persistence) {
+      return { status: 501, body: { error: 'no_persistence_backend', detail: 'App constructed without a persistence backend' } };
+    }
+    const world = this.snapshotWorld(ctx.tenantId);
+    try {
+      const result = await this.persistence.persist(world);
+      return { status: 200, body: result };
+    } catch (e) {
+      // EdgePersistError carries the function's HTTP status + body; surface it.
+      const status = (e as { status?: number }).status ?? 502;
+      const detail = (e as { body?: unknown }).body ?? (e instanceof Error ? e.message : String(e));
+      return { status, body: { error: 'persist_failed', detail } };
+    }
   }
 }

@@ -32,6 +32,7 @@ export const PERMISSIONS = [
   'role.manage',
   'masterdata.read',
   'masterdata.manage',
+  'persistence.run',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -63,7 +64,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'manager',
     name: 'Manager',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run'],
     builtin: true,
     description: 'Runs the property: all operations, approvals, staff and master data.',
   },
