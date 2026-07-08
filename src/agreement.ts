@@ -13,8 +13,30 @@ export type AgreementEventType =
   | 'activated'
   | 'converted'
   | 'amended'
+  | 'rent_adjusted'
+  | 'transferred'
   | 'completed'
   | 'terminated';
+
+/** A lease escalation rule: raise rent by a percent or a fixed minor-unit amount. */
+export interface EscalationRule {
+  mode: 'percent' | 'fixed';
+  value: number; // percent points (e.g. 5 = +5%) or minor units when fixed
+  capCents?: number; // optional ceiling on the resulting rate
+}
+
+/** Pure helper: the new rate after applying an escalation rule to the current one. */
+export function escalatedRate(currentCents: number, rule: EscalationRule): number {
+  let next =
+    rule.mode === 'percent'
+      ? Math.round(currentCents * (1 + rule.value / 100))
+      : currentCents + rule.value;
+  if (rule.capCents !== undefined) next = Math.min(next, rule.capCents);
+  if (!Number.isInteger(next) || next <= 0) {
+    throw new AgreementError(`escalated rate must be a positive integer, got ${next}`);
+  }
+  return next;
+}
 
 export interface AgreementEvent {
   seq: number;
@@ -122,11 +144,29 @@ export class Agreement {
   get rateCents(): number {
     let rate = this.events[0]!.payload['rateCents'] as number;
     for (const e of this.events) {
-      if ((e.type === 'converted' || e.type === 'amended') && e.payload['rateCents'] !== undefined) {
+      if (
+        (e.type === 'converted' || e.type === 'amended' || e.type === 'rent_adjusted' || e.type === 'transferred') &&
+        e.payload['rateCents'] !== undefined
+      ) {
         rate = e.payload['rateCents'] as number;
       }
     }
     return rate;
+  }
+
+  /**
+   * The unit the agreement currently occupies. Starts at the created unit and
+   * moves with each 'transferred' event — the agreement id and its ledger
+   * history are preserved across a transfer (behavioral guardrail).
+   */
+  get currentUnitId(): string {
+    let unit = this.unitId;
+    for (const e of this.events) {
+      if (e.type === 'transferred' && e.payload['toUnitId'] !== undefined) {
+        unit = e.payload['toUnitId'] as string;
+      }
+    }
+    return unit;
   }
 
   get period(): { start: string; end: string } {
@@ -177,6 +217,50 @@ export class Agreement {
       throw new AgreementError(`cannot amend agreement in status ${this.status}`);
     }
     this.append('amended', at, { ...changes });
+  }
+
+  /**
+   * Apply a rent adjustment (lease escalation, #8). The new rate is recorded as
+   * a 'rent_adjusted' event carrying the prior rate, so the increase is fully
+   * auditable. `basis` documents how the figure was reached (percent/fixed/manual).
+   */
+  adjustRent(
+    at: string,
+    input: { rateCents: number; basis?: 'percent' | 'fixed' | 'manual'; reason?: string },
+  ): void {
+    if (this.status !== 'active') {
+      throw new AgreementError(`cannot adjust rent on agreement in status ${this.status}`);
+    }
+    if (!Number.isInteger(input.rateCents) || input.rateCents <= 0) {
+      throw new AgreementError(`rateCents must be a positive integer, got ${input.rateCents}`);
+    }
+    this.append('rent_adjusted', at, {
+      from: this.rateCents,
+      rateCents: input.rateCents,
+      ...(input.basis ? { basis: input.basis } : {}),
+      ...(input.reason ? { reason: input.reason } : {}),
+    });
+  }
+
+  /**
+   * Move the resident to another unit/space (#23). The agreement id and ledger
+   * continuity are preserved; a 'transferred' event records from/to. An optional
+   * new rate rides along when the target space is priced differently.
+   */
+  transfer(toUnitId: string, at: string, opts: { rateCents?: number; reason?: string } = {}): void {
+    if (this.status !== 'active') {
+      throw new AgreementError(`cannot transfer agreement in status ${this.status}`);
+    }
+    const fromUnitId = this.currentUnitId;
+    if (!toUnitId || toUnitId === fromUnitId) {
+      throw new AgreementError(`transfer target must differ from current unit ${fromUnitId}`);
+    }
+    this.append('transferred', at, {
+      fromUnitId,
+      toUnitId,
+      ...(opts.rateCents !== undefined ? { rateCents: opts.rateCents } : {}),
+      ...(opts.reason ? { reason: opts.reason } : {}),
+    });
   }
 
   complete(at: string): void {

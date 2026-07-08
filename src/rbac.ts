@@ -33,6 +33,17 @@ export const PERMISSIONS = [
   'masterdata.read',
   'masterdata.manage',
   'persistence.run',
+  'agreement.adjust',
+  'agreement.transfer',
+  'party.read',
+  'party.manage',
+  'space.read',
+  'space.manage',
+  'entity.read',
+  'entity.manage',
+  'bill.read',
+  'bill.issue',
+  'bill.pay',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -52,8 +63,10 @@ export interface RoleDef {
 // Operational bundle shared by front-of-house/agent roles.
 const OPS: Permission[] = [
   'agreement.read', 'agreement.book', 'agreement.activate', 'agreement.convert',
+  'agreement.adjust', 'agreement.transfer',
   'invoice.read', 'invoice.issue', 'payment.record',
   'deposit.read', 'deposit.hold',
+  'party.read', 'party.manage', 'space.read', 'entity.read', 'bill.read', 'bill.issue',
   'ledger.read', 'exception.read', 'subscription.read',
   'masterdata.read', 'config.read',
 ];
@@ -64,7 +77,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'manager',
     name: 'Manager',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run', 'space.manage', 'entity.manage', 'bill.pay'],
     builtin: true,
     description: 'Runs the property: all operations, approvals, staff and master data.',
   },
@@ -72,7 +85,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'staff',
     name: 'Staff',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'masterdata.manage'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'masterdata.manage', 'space.manage', 'entity.manage', 'bill.pay'],
     builtin: true,
     description: 'Approvals and day-to-day management.',
   },
@@ -80,9 +93,9 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'accountant',
     name: 'Accountant',
-    permissions: ['invoice.read', 'payment.record', 'deposit.read', 'deposit.refund', 'ledger.read', 'subscription.read', 'masterdata.read', 'config.read'],
+    permissions: ['invoice.read', 'payment.record', 'deposit.read', 'deposit.refund', 'ledger.read', 'subscription.read', 'masterdata.read', 'config.read', 'party.read', 'entity.read', 'entity.manage', 'bill.read', 'bill.issue', 'bill.pay'],
     builtin: true,
-    description: 'Finance: ledger, payments, deposit refunds, reporting.',
+    description: 'Finance: ledger, payments, deposit refunds, accounts payable, reporting.',
   },
   {
     id: 'agent',

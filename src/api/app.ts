@@ -15,13 +15,17 @@
 // configured currency; the *Cents field names mean "minor units".
 
 import { Ledger } from '../ledger.ts';
-import { Agreement, Calendar, DoubleInventoryError, type AgreementKind } from '../agreement.ts';
+import { Agreement, Calendar, DoubleInventoryError, escalatedRate, type AgreementKind } from '../agreement.ts';
 import { PolicyEnvelope } from '../policy-envelope.ts';
 import { ExceptionQueue } from '../exception-queue.ts';
 import { AgentRuntime, type ToolCallResult } from '../agent-runtime.ts';
 import { Billing, type InvoiceLine } from '../billing.ts';
+import { Payables, type ApMethod } from '../payables.ts';
 import { Payments, type PaymentMethod } from '../payments.ts';
 import { Deposits, type Deduction } from '../deposits.ts';
+import { PartyDirectory, type PartyKind, type AgreementRole } from '../party.ts';
+import { SpaceTree, type SpaceType } from '../space.ts';
+import { EntityCatalog, type EntityRole } from '../entity.ts';
 import { meterSubscription, type SubscriptionPlan } from '../subscription.ts';
 import {
   ConfigStore,
@@ -122,8 +126,12 @@ export class App {
   readonly exceptions = new ExceptionQueue();
   readonly runtime: AgentRuntime;
   readonly billing: Billing;
+  readonly payables: Payables;
   readonly payments: Payments;
   readonly deposits: Deposits;
+  readonly parties = new PartyDirectory();
+  readonly spaces = new SpaceTree();
+  readonly entities = new EntityCatalog();
 
   readonly config: ConfigStore;
   readonly roles: RoleRegistry;
@@ -142,6 +150,7 @@ export class App {
   constructor(config: AppConfig = {}) {
     this.runtime = new AgentRuntime(new PolicyEnvelope(), this.exceptions);
     this.billing = new Billing(this.ledger);
+    this.payables = new Payables(this.ledger);
     this.payments = new Payments(this.ledger, this.billing);
     this.deposits = new Deposits(this.ledger);
     this.auth = config.authenticator ?? new StaticTokenAuthenticator();
@@ -229,7 +238,7 @@ export class App {
   }
 
   private agreementSummary(a: Agreement) {
-    return { id: a.id, kind: a.kind, status: a.status, rateCents: a.rateCents, period: a.period };
+    return { id: a.id, kind: a.kind, status: a.status, rateCents: a.rateCents, period: a.period, unitId: a.currentUnitId };
   }
 
   private ownedAgreement(ctx: AuthContext, id: string): Agreement {
@@ -434,16 +443,33 @@ export class App {
       const issuedAt = this.optString(body, 'issuedAt') ?? this.now();
       const currency = this.config.get(ctx.tenantId).currency;
       const rawLines = Array.isArray(body['lines']) ? (body['lines'] as unknown[]) : [];
+      // A line may name a charge code, which routes it to a GL account + a
+      // receiving entity (charge catalog). All charge-routed lines on one invoice
+      // must share the same receiving entity — one invoice, one entity (#11).
+      let receivingEntityId: string | undefined;
       const lines: InvoiceLine[] = rawLines.map((l) => {
         const o = l as Record<string, unknown>;
-        return { description: String(o['description'] ?? ''), account: String(o['account'] ?? ''), amountCents: Number(o['amountCents']) };
+        const chargeCode = this.optString(o, 'chargeCode');
+        let account = String(o['account'] ?? '');
+        let chargeType: string | undefined;
+        if (chargeCode) {
+          const r = this.entities.resolve(ctx.tenantId, chargeCode); // EntityError → 409
+          account = r.glAccount;
+          chargeType = chargeCode;
+          if (receivingEntityId && receivingEntityId !== r.receivingEntityId) {
+            throw new HttpError(400, 'invoice lines route to different receiving entities; issue one invoice per entity');
+          }
+          receivingEntityId = r.receivingEntityId;
+        }
+        return { description: String(o['description'] ?? ''), account, amountCents: Number(o['amountCents']), ...(chargeType ? { chargeType } : {}) };
       });
+      const billToPartyId = this.parties.billTo(agreementId) ?? undefined;
       return this.gated(
         'invoice.issue',
         ctx,
         { agreementId },
         () => {
-          const inv = this.billing.issue({ id, agreementId, tenantId: ctx.tenantId, issuedAt, dueAt, currency, lines });
+          const inv = this.billing.issue({ id, agreementId, tenantId: ctx.tenantId, issuedAt, dueAt, currency, lines, receivingEntityId, billToPartyId });
           this.invoiceTenant.set(id, ctx.tenantId);
           return inv;
         },
@@ -505,6 +531,200 @@ export class App {
       });
       return this.gated('deposit.refund', ctx, { depositId: id }, () => this.deposits.refund(id, at, deductions), (d) => ({ status: 200, body: d }));
     });
+
+    // --- parties (person/org, related to agreements by role) --------------
+    this.add('POST', '/parties', 'party.manage', (ctx, _p, body) => ({
+      status: 201,
+      body: this.parties.addParty({
+        id: this.requireString(body, 'id'),
+        tenantId: ctx.tenantId,
+        kind: this.requireString(body, 'kind') as PartyKind,
+        displayName: this.requireString(body, 'displayName'),
+        legalName: this.optString(body, 'legalName'),
+        taxId: this.optString(body, 'taxId'),
+        email: this.optString(body, 'email'),
+        phone: this.optString(body, 'phone'),
+        attributes: body['attributes'] && typeof body['attributes'] === 'object' ? (body['attributes'] as Record<string, unknown>) : undefined,
+      }),
+    }));
+
+    this.add('GET', '/parties', 'party.read', (ctx) => ({ status: 200, body: { parties: this.parties.listParties(ctx.tenantId) } }));
+
+    // Attach a party to an agreement in a role (resident, payer, guarantor …).
+    this.add('POST', '/agreements/:id/parties', 'party.manage', (ctx, p, body) => {
+      const agId = p['id']!;
+      this.ownedAgreement(ctx, agId);
+      const partyId = this.requireString(body, 'partyId');
+      if (!this.parties.getParty(ctx.tenantId, partyId)) throw new HttpError(404, 'party not found');
+      const link = this.parties.assign({
+        agreementId: agId,
+        partyId,
+        role: this.requireString(body, 'role') as AgreementRole,
+        sharePct: typeof body['sharePct'] === 'number' ? (body['sharePct'] as number) : undefined,
+        from: this.optString(body, 'from'),
+      });
+      return { status: 201, body: link };
+    });
+
+    this.add('GET', '/agreements/:id/parties', 'agreement.read', (ctx, p) => {
+      const agId = p['id']!;
+      this.ownedAgreement(ctx, agId);
+      return { status: 200, body: { parties: this.parties.partiesFor(agId), billToPartyId: this.parties.billTo(agId) } };
+    });
+
+    // --- spaces (property → building → unit → room → bed, + common/amenity) --
+    this.add('POST', '/spaces', 'space.manage', (ctx, _p, body) => ({
+      status: 201,
+      body: this.spaces.add({
+        id: this.requireString(body, 'id'),
+        tenantId: ctx.tenantId,
+        parentId: this.optString(body, 'parentId'),
+        type: this.requireString(body, 'type') as SpaceType,
+        code: this.requireString(body, 'code'),
+        label: this.requireString(body, 'label'),
+        leasable: body['leasable'] === true,
+        capacity: typeof body['capacity'] === 'number' ? (body['capacity'] as number) : undefined,
+      }),
+    }));
+
+    this.add('GET', '/spaces', 'space.read', (ctx) => ({ status: 200, body: { spaces: this.spaces.list(ctx.tenantId) } }));
+
+    // --- legal entities + charge catalog (money routing, #11) -------------
+    this.add('POST', '/legal-entities', 'entity.manage', (ctx, _p, body) => ({
+      status: 201,
+      body: this.entities.addEntity({
+        id: this.requireString(body, 'id'),
+        tenantId: ctx.tenantId,
+        role: this.requireString(body, 'role') as EntityRole,
+        name: this.requireString(body, 'name'),
+        taxId: this.optString(body, 'taxId'),
+      }),
+    }));
+
+    this.add('GET', '/legal-entities', 'entity.read', (ctx) => ({ status: 200, body: { entities: this.entities.listEntities(ctx.tenantId) } }));
+
+    this.add('POST', '/charge-types', 'entity.manage', (ctx, _p, body) => ({
+      status: 201,
+      body: this.entities.addChargeType({
+        id: this.requireString(body, 'id'),
+        tenantId: ctx.tenantId,
+        code: this.requireString(body, 'code'),
+        name: this.requireString(body, 'name'),
+        receivingEntityId: this.requireString(body, 'receivingEntityId'),
+        glAccount: this.requireString(body, 'glAccount'),
+        recurring: body['recurring'] === true,
+      }),
+    }));
+
+    this.add('GET', '/charge-types', 'entity.read', (ctx) => ({ status: 200, body: { chargeTypes: this.entities.listChargeTypes(ctx.tenantId) } }));
+
+    // --- lease escalation (#8) & unit transfer (#23) ----------------------
+    this.add('POST', '/agreements/:id/adjust-rent', 'agreement.adjust', (ctx, p, body) => {
+      const a = this.ownedAgreement(ctx, p['id']!);
+      const at = this.optString(body, 'at') ?? this.now();
+      const basis = this.optString(body, 'basis') as 'percent' | 'fixed' | 'manual' | undefined;
+      let rateCents: number;
+      if (typeof body['rateCents'] === 'number') {
+        rateCents = body['rateCents'] as number;
+      } else if (basis === 'percent' || basis === 'fixed') {
+        rateCents = escalatedRate(a.rateCents, {
+          mode: basis,
+          value: this.requireInt(body, 'value'),
+          capCents: typeof body['capCents'] === 'number' ? (body['capCents'] as number) : undefined,
+        });
+      } else {
+        throw new HttpError(400, "provide 'rateCents', or 'basis' (percent|fixed) with 'value'");
+      }
+      return this.gated(
+        'agreement.adjust_rent',
+        ctx,
+        { fromCents: a.rateCents, toCents: rateCents },
+        () => {
+          a.adjustRent(at, { rateCents, basis: basis ?? 'manual', reason: this.optString(body, 'reason') });
+          return a;
+        },
+        (ag) => ({ status: 200, body: this.agreementSummary(ag) }),
+      );
+    });
+
+    this.add('POST', '/agreements/:id/transfer', 'agreement.transfer', (ctx, p, body) => {
+      const a = this.ownedAgreement(ctx, p['id']!);
+      const toUnitId = this.requireString(body, 'toUnitId');
+      const known = this.masterData.units.get(ctx.tenantId, toUnitId) || this.spaces.get(ctx.tenantId, toUnitId);
+      if (this.tenantHasUnits(ctx.tenantId) && !known) throw new HttpError(404, 'transfer target unit/space not found');
+      const at = this.optString(body, 'at') ?? this.now();
+      const opts: { rateCents?: number; reason?: string } = {};
+      if (typeof body['rateCents'] === 'number') opts.rateCents = body['rateCents'] as number;
+      const reason = this.optString(body, 'reason');
+      if (reason) opts.reason = reason;
+      return this.gated(
+        'agreement.transfer',
+        ctx,
+        { toUnitId },
+        () => {
+          a.transfer(toUnitId, at, opts);
+          // Move the calendar hold to the target space for the remaining period.
+          for (const h of this.calendar.activeHolds()) {
+            if (h.holderId === a.id) this.calendar.release(h.id);
+          }
+          const { start, end } = a.period;
+          this.calendar.hold({ id: `${a.id}-hold-${a.history.length}`, unitId: toUnitId, holderId: a.id, start, end });
+          return a;
+        },
+        (ag) => ({ status: 200, body: this.agreementSummary(ag) }),
+      );
+    });
+
+    // --- accounts payable (bills + AP payments; refund = vendor payment) ---
+    this.add('POST', '/bills', 'bill.issue', (ctx, _p, body) => {
+      const id = this.requireString(body, 'id');
+      const payeeId = this.requireString(body, 'payeeId');
+      if (!this.parties.getParty(ctx.tenantId, payeeId)) throw new HttpError(404, 'payee party not found');
+      const entityId = this.optString(body, 'entityId');
+      if (entityId && !this.entities.getEntity(ctx.tenantId, entityId)) throw new HttpError(404, 'entity not found');
+      const dueAt = this.requireString(body, 'dueAt');
+      const issuedAt = this.optString(body, 'issuedAt') ?? this.now();
+      const currency = this.config.get(ctx.tenantId).currency;
+      const rawLines = Array.isArray(body['lines']) ? (body['lines'] as unknown[]) : [];
+      const lines = rawLines.map((l) => {
+        const o = l as Record<string, unknown>;
+        return { description: String(o['description'] ?? ''), account: String(o['account'] ?? ''), amountCents: Number(o['amountCents']) };
+      });
+      return this.gated(
+        'bill.issue',
+        ctx,
+        { payeeId },
+        () => this.payables.issue({ id, tenantId: ctx.tenantId, payeeId, entityId, issuedAt, dueAt, currency, lines, memo: this.optString(body, 'memo') }),
+        (bill) => ({ status: 201, body: bill }),
+      );
+    });
+
+    this.add('POST', '/bills/:id/pay', 'bill.pay', (ctx, p, body) => {
+      const billId = p['id']!;
+      let bill;
+      try {
+        bill = this.payables.get(billId);
+      } catch {
+        throw new HttpError(404, 'bill not found');
+      }
+      if (bill.tenantId !== ctx.tenantId) throw new HttpError(404, 'bill not found');
+      const amountCents = this.requireInt(body, 'amountCents');
+      const method = this.requireString(body, 'method') as ApMethod;
+      const paidAt = this.optString(body, 'paidAt') ?? this.now();
+      const payId = this.requireString(body, 'id');
+      return this.gated(
+        'bill.pay',
+        ctx,
+        { amountCents, billId },
+        () => this.payables.pay({ id: payId, billId, amountCents, method, paidAt }),
+        (pay) => ({ status: 201, body: pay }),
+      );
+    });
+
+    this.add('GET', '/bills', 'bill.read', (ctx) => ({
+      status: 200,
+      body: { bills: this.payables.allBills().filter((b) => b.tenantId === ctx.tenantId) },
+    }));
 
     // --- ledger (tenant-scoped) -------------------------------------------
     this.add('GET', '/ledger/trial-balance', 'ledger.read', (ctx) => ({ status: 200, body: this.trialBalance(ctx.tenantId) }));

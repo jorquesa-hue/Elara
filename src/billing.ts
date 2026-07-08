@@ -6,8 +6,9 @@ import { Ledger } from './ledger.ts';
 
 export interface InvoiceLine {
   description: string;
-  account: string; // revenue account credited
+  account: string; // revenue (or clearing) account credited
   amountCents: number;
+  chargeType?: string; // charge_type code this line came from, when routed
 }
 
 export type InvoiceStatus = 'open' | 'partially_paid' | 'paid' | 'void';
@@ -23,6 +24,10 @@ export interface Invoice {
   totalCents: number;
   paidCents: number;
   status: InvoiceStatus;
+  /** The legal entity that receives this invoice's money (charge routing, #11). */
+  receivingEntityId?: string;
+  /** The party who owes it — the payer, which may differ from the resident (#10). */
+  billToPartyId?: string;
 }
 
 export class BillingError extends Error {}
@@ -52,6 +57,8 @@ export class Billing {
     dueAt: string;
     currency?: string;
     lines: InvoiceLine[];
+    receivingEntityId?: string;
+    billToPartyId?: string;
   }): Invoice {
     if (this.invoices.has(input.id)) throw new BillingError(`duplicate invoice: ${input.id}`);
     if (input.lines.length === 0) throw new BillingError(`invoice ${input.id} has no lines`);
@@ -69,6 +76,8 @@ export class Billing {
       totalCents,
       paidCents: 0,
       status: 'open',
+      ...(input.receivingEntityId ? { receivingEntityId: input.receivingEntityId } : {}),
+      ...(input.billToPartyId ? { billToPartyId: input.billToPartyId } : {}),
     };
 
     this.ledger.post({
