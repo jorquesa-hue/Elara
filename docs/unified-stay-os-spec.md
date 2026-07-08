@@ -148,9 +148,13 @@ call for dashboards and exports.
 (no build step) served by the http layer at `/`; everything else is the Public
 API it consumes (invariant 3). It opens on a **setup wizard** (workspace name,
 language, currency, timezone, business structure), then a dashboard (reporting
-rollup), agreements (book / activate / convert, money formatted per config),
+rollup), agreements (book / activate / convert) with an **agreement-detail view**
+that operates the full money lifecycle — issue invoice, record payment,
+hold/refund deposit (each permission-gated) — plus invoices/payments/deposits
+tables and an event-history timeline (backed by `GET /agreements/:id/billing`),
 ledger (trial balance), and a Users & Roles admin (list/define custom roles,
-add users). The nav and labels are driven by the fetched i18n catalog; every
+add users). Money is formatted per the tenant's locale + currency. Brand mark
+plus persisted light/dark themes. The nav and labels are driven by the fetched i18n catalog; every
 button reflects the caller's permissions. Run it: `npx tsx demo-portal.ts`
 (four demo tokens exercise different roles).
 

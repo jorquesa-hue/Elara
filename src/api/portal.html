@@ -147,6 +147,25 @@
   .wizard .brand { justify-content: center; padding-bottom: 22px; }
   .wizard .mark { width: 34px; height: 34px; }
 
+  /* Agreement detail */
+  .backbar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .kv { display: flex; gap: 26px; flex-wrap: wrap; }
+  .kv .kk { color: var(--subtle); font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; font-weight: 600; }
+  .kv .vv { font-weight: 650; margin-top: 3px; font-size: 15px; }
+  .detail-actions { display: grid; grid-template-columns: repeat(auto-fit,minmax(230px,1fr)); gap: 14px; }
+  .mini { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 15px; }
+  .mini h4 { margin: 0 0 12px; font-size: 12.5px; font-weight: 650; }
+  .mini label { font-size: 11px; }
+  .mini .stack > * { margin-bottom: 9px; }
+  .timeline { display: flex; flex-direction: column; }
+  .tl-item { display: flex; gap: 13px; padding: 8px 0; }
+  .tl-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); margin-top: 5px; flex: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+  .tl-line { position: relative; }
+  .tl-line::before { content:""; position:absolute; left: 4px; top: 14px; bottom: -8px; width: 1px; background: var(--border); }
+  .tl-item:last-child .tl-line::before { display: none; }
+  .tl-ty { font-weight: 600; font-size: 13.5px; }
+  .tl-at { color: var(--subtle); font-size: 12px; }
+
   @media (max-width: 720px){ .app{ grid-template-columns: 1fr; } aside{ position: static; height: auto; flex-direction: column; } }
 </style>
 </head>
@@ -156,7 +175,7 @@
 "use strict";
 (function () {
   var TOKEN_KEY = "usos.token", THEME_KEY = "usos.theme";
-  var state = { token: localStorage.getItem(TOKEN_KEY) || "", me: null, config: null, options: null, cat: {}, view: "dashboard" };
+  var state = { token: localStorage.getItem(TOKEN_KEY) || "", me: null, config: null, options: null, cat: {}, view: "dashboard", detailId: null };
 
   function h(tag, attrs, children) {
     var el = document.createElement(tag);
@@ -321,7 +340,7 @@
       ["settings", t("nav.settings"), ICONS.settings]
     ];
     var nav = h("nav", {}, items.map(function (it) {
-      return h("button", { class: state.view === it[0] ? "active" : "", onclick: function () { state.view = it[0]; render(); } }, [ svg(it[2]), it[1] ]);
+      return h("button", { class: state.view === it[0] ? "active" : "", onclick: function () { state.view = it[0]; state.detailId = null; render(); } }, [ svg(it[2]), it[1] ]);
     }));
     var root = document.getElementById("root"); root.innerHTML = "";
     root.appendChild(h("div", { class: "app" }, [
@@ -367,6 +386,7 @@
   function prettyBiz(b){ return String(b).replace(/_/g," "); }
 
   function viewAgreements(main) {
+    if (state.detailId) return viewAgreementDetail(main, state.detailId);
     main.appendChild(h("h1", {}, [t("nav.agreements")]));
     main.appendChild(h("p", { class:"sub" }, [t("agreements.subtitle")]));
     var formSlot = h("div", {}, []); main.appendChild(formSlot);
@@ -407,6 +427,7 @@
       wrap.innerHTML="";
       var rows = (r.body.agreements||[]).map(function(a){
         var actions = h("div",{class:"row"},[]);
+        actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ state.detailId=a.id; render(); }},[t("action.open")]));
         if (a.status==="draft" && can("agreement.activate")) actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/agreements/"+a.id+"/activate",{method:"POST",body:{}}).then(function(x){handleMut(x,"agreements");}); }},[t("action.activate")]));
         if (a.status==="active" && a.kind!=="lease" && can("agreement.convert")) {
           var to = a.kind==="nightly" ? "monthly" : "lease";
@@ -416,6 +437,113 @@
       });
       wrap.appendChild(tableEl([th(t("field.id")),th(t("field.kind")),th(t("field.status")),th(t("field.rate")),th("")], rows, 5, t("dash.noAgreements")));
     });
+  }
+
+  // ---- agreement detail (billing lifecycle) ------------------------------
+  function viewAgreementDetail(main, id) {
+    main.appendChild(h("div",{class:"backbar"},[
+      h("button",{class:"btn ghost sm",onclick:function(){ state.detailId=null; render(); }},["← "+t("action.back")]),
+      h("h1",{style:"margin:0;font-size:19px"},[id])
+    ]));
+    var slot = h("div",{},[]); main.appendChild(slot);
+    Promise.all([api("/agreements/"+id), api("/agreements/"+id+"/billing")]).then(function(res){
+      var ar=res[0], br=res[1];
+      if (ar.status!==200){ toast(ar.body.error||t("msg.denied"),"err"); state.detailId=null; return render(); }
+      var a=ar.body, bill=(br.status===200?br.body:{invoices:[],payments:[],deposits:[]});
+      slot.innerHTML="";
+      slot.appendChild(h("div",{class:"panel"},[ h("div",{class:"kv"},[
+        cell(t("field.kind"), t("kind."+a.kind)),
+        cell(t("field.status"), h("span",{class:"pill "+a.status},[t("status."+a.status)])),
+        cell(t("field.start"), a.period.start),
+        cell(t("field.end"), a.period.end),
+        cell(t("field.rate"), fmt(a.rateCents))
+      ]) ]));
+      var acts = actionForms(id, bill);
+      if (acts){ slot.appendChild(h("h2",{},[t("section.actions")])); slot.appendChild(acts); }
+      slot.appendChild(h("h2",{},[t("section.invoices")])); slot.appendChild(invoicesTable(bill.invoices));
+      slot.appendChild(h("h2",{},[t("section.payments")])); slot.appendChild(paymentsTable(bill.payments));
+      slot.appendChild(h("h2",{},[t("section.deposits")])); slot.appendChild(depositsTable(bill.deposits));
+      slot.appendChild(h("h2",{},[t("section.history")])); slot.appendChild(timeline(a.history));
+    });
+  }
+  function cell(k,v){ return h("div",{},[h("div",{class:"kk"},[k]),h("div",{class:"vv"},[v])]); }
+  function mini(title, children){ return h("div",{class:"mini"},[h("h4",{},[title]), h("div",{class:"stack"}, children)]); }
+  function reloadDetail(){ var m=document.getElementById("main"); if(m){ clear(m); viewAgreementDetail(m, state.detailId); } }
+  function actThen(r){
+    if(r.status===202) return toast(t("msg.escalated"),"");
+    if(r.status>=400) return toast(r.body.error||("Error "+r.status),"err");
+    toast(t("msg.saved"),"ok"); reloadDetail();
+  }
+  function actionForms(id, bill){
+    var forms=[];
+    if (can("invoice.issue")) forms.push(issueInvoiceForm(id));
+    if (can("payment.record")) forms.push(recordPaymentForm(bill));
+    if (can("deposit.hold")) forms.push(holdDepositForm(id));
+    if (can("deposit.refund")){ var f=refundDepositForm(bill); if(f) forms.push(f); }
+    return forms.length ? h("div",{class:"detail-actions"}, forms) : null;
+  }
+  function issueInvoiceForm(id){
+    var desc=h("input",{placeholder:"9 nights"});
+    var acct=selectFrom([["revenue:room","revenue:room"],["revenue:amenity","revenue:amenity"],["revenue:late_fee","revenue:late_fee"]],"revenue:room");
+    var amt=h("input",{type:"number",value:"180000"}); var due=h("input",{type:"date",value:"2026-07-09"});
+    return mini(t("action.issueInvoice"),[
+      field(t("field.description"),desc), field(t("field.account"),acct), field(t("field.amount")+" (minor)",amt), field(t("field.dueAt"),due),
+      h("button",{class:"btn sm",onclick:function(){
+        api("/invoices",{method:"POST",body:{id:"inv-"+Date.now(),agreementId:id,dueAt:due.value,lines:[{description:desc.value||"Charge",account:acct.value,amountCents:parseInt(amt.value,10)}]}}).then(actThen);
+      }},[t("action.issueInvoice")])
+    ]);
+  }
+  function recordPaymentForm(bill){
+    var open=(bill.invoices||[]).filter(function(i){return i.status==="open"||i.status==="partially_paid";});
+    if(!open.length) return mini(t("action.recordPayment"),[h("div",{class:"muted",style:"font-size:12.5px"},[t("msg.none")])]);
+    var inv=selectFrom(open.map(function(i){return [i.id, i.id+" ("+fmt(i.totalCents-i.paidCents)+")"];}), open[0].id);
+    var amt=h("input",{type:"number",value:String(open[0].totalCents-open[0].paidCents)});
+    var method=selectFrom([["pix","pix"],["card","card"],["transfer","transfer"],["cash","cash"]],"pix");
+    return mini(t("action.recordPayment"),[
+      field(t("section.invoices"),inv), field(t("field.amount")+" (minor)",amt), field(t("field.method"),method),
+      h("button",{class:"btn sm",onclick:function(){
+        api("/payments",{method:"POST",body:{id:"pay-"+Date.now(),invoiceId:inv.value,amountCents:parseInt(amt.value,10),method:method.value}}).then(actThen);
+      }},[t("action.recordPayment")])
+    ]);
+  }
+  function holdDepositForm(id){
+    var amt=h("input",{type:"number",value:"50000"});
+    return mini(t("action.holdDeposit"),[ field(t("field.amount")+" (minor)",amt),
+      h("button",{class:"btn sm",onclick:function(){
+        api("/deposits",{method:"POST",body:{id:"dep-"+Date.now(),agreementId:id,amountCents:parseInt(amt.value,10)}}).then(actThen);
+      }},[t("action.holdDeposit")]) ]);
+  }
+  function refundDepositForm(bill){
+    var held=(bill.deposits||[]).filter(function(d){return d.status==="held";});
+    if(!held.length) return null;
+    var dep=selectFrom(held.map(function(d){return [d.id, d.id+" ("+fmt(d.amountCents)+")"];}), held[0].id);
+    var reason=h("input",{placeholder:"cleaning"}); var damt=h("input",{type:"number",value:"0"});
+    return mini(t("action.refundDeposit"),[
+      field(t("section.deposits"),dep), field(t("field.deduction"),reason), field(t("field.amount")+" (minor)",damt),
+      h("button",{class:"btn sm",onclick:function(){
+        var v=parseInt(damt.value,10); var ded=v>0?[{reason:reason.value||"deduction",amountCents:v}]:[];
+        api("/deposits/"+dep.value+"/refund",{method:"POST",body:{deductions:ded}}).then(actThen);
+      }},[t("action.refundDeposit")])
+    ]);
+  }
+  function invoicesTable(list){
+    var rows=(list||[]).map(function(i){ return h("tr",{},[ h("td",{class:"mono"},[i.id]),
+      h("td",{},[h("span",{class:"pill "+(i.status==="paid"?"active":i.status==="void"?"terminated":"draft")},[i.status])]),
+      h("td",{class:"mono"},[fmt(i.totalCents)]), h("td",{class:"mono"},[fmt(i.paidCents)]) ]); });
+    return tableEl([th(t("field.id")),th(t("field.status")),th(t("field.total")),th(t("field.paid"))], rows, 4, t("msg.none"));
+  }
+  function paymentsTable(list){
+    var rows=(list||[]).map(function(p){ return h("tr",{},[h("td",{class:"mono"},[p.id]),h("td",{class:"mono"},[fmt(p.amountCents)]),h("td",{},[p.method]),h("td",{class:"muted"},[p.status])]); });
+    return tableEl([th(t("field.id")),th(t("field.amount")),th(t("field.method")),th(t("field.status"))], rows, 4, t("msg.none"));
+  }
+  function depositsTable(list){
+    var rows=(list||[]).map(function(d){ return h("tr",{},[h("td",{class:"mono"},[d.id]),h("td",{class:"mono"},[fmt(d.amountCents)]),h("td",{},[h("span",{class:"pill "+(d.status==="held"?"draft":"completed")},[d.status])])]); });
+    return tableEl([th(t("field.id")),th(t("field.amount")),th(t("field.status"))], rows, 3, t("msg.none"));
+  }
+  function timeline(hist){
+    return h("div",{class:"timeline"}, (hist||[]).map(function(e){
+      return h("div",{class:"tl-item"},[ h("div",{class:"tl-line"},[h("div",{class:"tl-dot"})]), h("div",{},[h("div",{class:"tl-ty"},[e.type]), h("div",{class:"tl-at"},[e.at])]) ]);
+    }));
   }
 
   function viewLedger(main) {

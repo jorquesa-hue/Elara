@@ -77,6 +77,19 @@ const activate = page.locator('button:has-text("Activate")').first();
 if (await activate.count()) { await activate.click(); await page.waitForTimeout(300); }
 await shot('04-agreements-active');
 
+// Open the agreement detail and run the billing lifecycle.
+await page.click('button:has-text("Open")');
+await page.waitForSelector('text=Event history');
+await page.click('button:has-text("Issue invoice")');
+await page.waitForTimeout(450);
+await page.click('button:has-text("Record payment")');
+await page.waitForTimeout(450);
+await page.click('button:has-text("Hold deposit")');
+await page.waitForTimeout(450);
+await shot('04c-agreement-detail');
+await page.click('button:has-text("Back")');
+await page.waitForTimeout(250);
+
 // Ledger.
 await page.click('button:has-text("Ledger")');
 await page.waitForTimeout(300);

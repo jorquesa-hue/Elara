@@ -394,6 +394,17 @@ export class App {
       return { status: 200, body: { ...this.agreementSummary(a), history: a.history } };
     });
 
+    // Billing rollup for one agreement: invoices + their payments + deposits.
+    this.add('GET', '/agreements/:id/billing', 'invoice.read', (ctx, p) => {
+      const agId = p['id']!;
+      this.ownedAgreement(ctx, agId); // 404 if not this tenant's
+      const invoices = this.billing.allInvoices().filter((i) => i.agreementId === agId);
+      const invoiceIds = new Set(invoices.map((i) => i.id));
+      const payments = this.payments.all().filter((pm) => invoiceIds.has(pm.invoiceId));
+      const deposits = this.deposits.all().filter((d) => d.agreementId === agId);
+      return { status: 200, body: { invoices, payments, deposits } };
+    });
+
     // --- invoices ----------------------------------------------------------
     this.add('POST', '/invoices', 'invoice.issue', (ctx, _p, body) => {
       const id = this.requireString(body, 'id');
