@@ -138,6 +138,12 @@ export interface WorldData {
   apPayments?: Array<{
     id: string; billId: string; amountCents: number; method: string; paidAt: string; status: string;
   }>;
+  workOrders?: Array<{
+    id: string; tenantId: string; spaceId?: string; title: string; description?: string;
+    category?: string; priority: string; status: string; requestedByPartyId?: string;
+    assignedVendorPartyId?: string; billId?: string; openedAt: string; assignedAt?: string;
+    startedAt?: string; closedAt?: string; resolution?: string; cancelReason?: string;
+  }>;
 }
 
 function stmt(text: string, values: unknown[]): SqlStatement {
@@ -315,6 +321,14 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       stmt(
         'insert into ap_payment (id, bill_id, amount_cents, method, paid_at, status) values ($1, $2, $3, $4, $5, $6) on conflict (id) do update set status = excluded.status',
         [p.id, p.billId, p.amountCents, p.method, p.paidAt, p.status],
+      ),
+    );
+  }
+  for (const wo of w.workOrders ?? []) {
+    out.push(
+      stmt(
+        'insert into work_order (id, tenant_id, space_id, title, description, category, priority, status, requested_by_party_id, assigned_vendor_party_id, bill_id, opened_at, assigned_at, started_at, closed_at, resolution, cancel_reason) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) on conflict (id) do update set space_id = excluded.space_id, title = excluded.title, description = excluded.description, category = excluded.category, priority = excluded.priority, status = excluded.status, requested_by_party_id = excluded.requested_by_party_id, assigned_vendor_party_id = excluded.assigned_vendor_party_id, bill_id = excluded.bill_id, assigned_at = excluded.assigned_at, started_at = excluded.started_at, closed_at = excluded.closed_at, resolution = excluded.resolution, cancel_reason = excluded.cancel_reason',
+        [wo.id, wo.tenantId, wo.spaceId ?? null, wo.title, wo.description ?? null, wo.category ?? null, wo.priority, wo.status, wo.requestedByPartyId ?? null, wo.assignedVendorPartyId ?? null, wo.billId ?? null, wo.openedAt, wo.assignedAt ?? null, wo.startedAt ?? null, wo.closedAt ?? null, wo.resolution ?? null, wo.cancelReason ?? null],
       ),
     );
   }

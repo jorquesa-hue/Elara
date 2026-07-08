@@ -204,6 +204,7 @@
     people: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M16 6a3 3 0 0 1 0 6"/><path d="M20.5 20a5.5 5.5 0 0 0-4-5.3"/>',
     settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/>',
     bills: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.4"/><path d="M6 9.5v5M18 9.5v5"/>',
+    maintenance: '<path d="M15.5 7.5a4 4 0 0 0-5.2 5.2L4 19l1 1 6.3-6.3a4 4 0 0 0 5.2-5.2l-2.4 2.4-2-2z"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>',
     moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z"/>'
   };
@@ -341,6 +342,7 @@
       ["settings", t("nav.settings"), ICONS.settings]
     ];
     if (can("bill.read")) items.splice(3, 0, ["bills", "Bills", ICONS.bills]);
+    if (can("maintenance.read")) items.splice(can("bill.read") ? 4 : 3, 0, ["maintenance", "Maintenance", ICONS.maintenance]);
     var nav = h("nav", {}, items.map(function (it) {
       return h("button", { class: state.view === it[0] ? "active" : "", onclick: function () { state.view = it[0]; state.detailId = null; render(); } }, [ svg(it[2]), it[1] ]);
     }));
@@ -357,7 +359,7 @@
       h("main", { id: "main" }, [])
     ]));
     var main = document.getElementById("main");
-    ({ dashboard: viewDashboard, agreements: viewAgreements, ledger: viewLedger, bills: viewBills, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
+    ({ dashboard: viewDashboard, agreements: viewAgreements, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
   }
 
   // ---- views --------------------------------------------------------------
@@ -649,6 +651,53 @@
         return h("tr",{},[ h("td",{class:"mono"},[b.id]), h("td",{},[h("span",{class:"pill "+(b.status==="paid"?"active":"draft")},[b.status])]), h("td",{class:"mono"},[fmt(b.totalCents)]), h("td",{class:"mono"},[fmt(b.paidCents)]), h("td",{},[actions]) ]);
       });
       wrap.appendChild(tableEl([th(t("field.id")),th(t("field.status")),th(t("field.total")),th(t("field.paid")),th("")], rows, 5, t("msg.none")));
+    });
+  }
+
+  function viewMaintenance(main) {
+    main.appendChild(h("h1", {}, ["Maintenance"]));
+    main.appendChild(h("p",{class:"sub"},["Work orders on your spaces — assign a vendor, track to completion, link the repair bill."]));
+    var formSlot=h("div",{},[]); main.appendChild(formSlot);
+    var wrap=h("div",{},[]); main.appendChild(wrap);
+    Promise.all([api("/spaces"), api("/parties")]).then(function(res){
+      var spaces=((res[0].body||{}).spaces)||[]; var parties=((res[1].body||{}).parties)||[];
+      if (can("maintenance.manage")) formSlot.appendChild(workOrderForm(spaces));
+      refreshWorkOrders(wrap, parties);
+    });
+  }
+  function workOrderForm(spaces){
+    var title=h("input",{placeholder:"Leaky faucet"});
+    var space=selectFrom([["","— none —"]].concat(spaces.map(function(s){return [s.id, s.code+" — "+s.label];})),"");
+    var cat=selectFrom([["plumbing","plumbing"],["electrical","electrical"],["appliance","appliance"],["cleaning","cleaning"],["other","other"]],"plumbing");
+    var pri=selectFrom([["low","low"],["normal","normal"],["high","high"],["urgent","urgent"]],"normal");
+    return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
+      if(!title.value){ return toast("Enter a title","err"); }
+      api("/work-orders",{method:"POST",body:{id:"wo-"+Date.now(),title:title.value,spaceId:space.value||undefined,category:cat.value,priority:pri.value}}).then(function(r){ handleMut(r,"maintenance"); });
+    }},[ field("Title",title), field("Space",space), field("Category",cat), field("Priority",pri), h("div",{},[h("button",{class:"btn",type:"submit"},["Raise work order"])]) ]);
+  }
+  function woPill(s){ return (s==="completed"||s==="in_progress")?"active":s==="cancelled"?"terminated":"draft"; }
+  function woBtn(id,action,label){ return h("button",{class:"btn ghost sm",onclick:function(){ api("/work-orders/"+id+"/"+action,{method:"POST",body:{}}).then(function(x){handleMut(x,"maintenance");}); }},[label]); }
+  function refreshWorkOrders(wrap, parties){
+    api("/work-orders").then(function(r){
+      wrap.innerHTML="";
+      var rows=((r.body||{}).workOrders||[]).map(function(wo){
+        var actions=h("div",{class:"row"},[]);
+        if(can("maintenance.manage")){
+          if(wo.status==="open"||wo.status==="assigned"){
+            if(parties.length){
+              var vsel=selectFrom([["","— vendor —"]].concat(parties.map(function(p){return [p.id,p.displayName];})), wo.assignedVendorPartyId||"");
+              vsel.style.marginRight="6px";
+              actions.appendChild(vsel);
+              actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ if(!vsel.value) return toast("Pick a vendor","err"); api("/work-orders/"+wo.id+"/assign",{method:"POST",body:{vendorPartyId:vsel.value}}).then(function(x){handleMut(x,"maintenance");}); }},["Assign"]));
+            }
+            actions.appendChild(woBtn(wo.id,"start","Start"));
+          }
+          if(wo.status==="in_progress") actions.appendChild(woBtn(wo.id,"complete","Complete"));
+          if(wo.status!=="completed"&&wo.status!=="cancelled") actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/work-orders/"+wo.id+"/cancel",{method:"POST",body:{reason:"cancelled from portal"}}).then(function(x){handleMut(x,"maintenance");}); }},["Cancel"]));
+        }
+        return h("tr",{},[ h("td",{},[wo.title]), h("td",{class:"mono"},[wo.spaceId||"—"]), h("td",{},[h("span",{class:"pill "+woPill(wo.status)},[wo.status.replace(/_/g," ")])]), h("td",{},[wo.priority]), h("td",{},[actions]) ]);
+      });
+      wrap.appendChild(tableEl([th("Title"),th("Space"),th(t("field.status")),th("Priority"),th("")], rows, 5, "No work orders yet."));
     });
   }
 

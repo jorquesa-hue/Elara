@@ -83,6 +83,7 @@ function buildWorld(): WorldData {
     agreementParties: [{ agreementId: 'ag-1', partyId: 'p-1', role: 'resident' }],
     bills: [{ id: 'b-1', tenantId: 't-1', payeeId: 'p-1', issuedAt: '2026-07-01T00:00:00Z', dueAt: '2026-07-15T00:00:00Z', currency: 'BRL', totalCents: 5000, paidCents: 0, status: 'open', lines: [{ description: 'x', account: 'expenses:supplier', amountCents: 5000 }] }],
     apPayments: [{ id: 'ap-1', billId: 'b-1', amountCents: 5000, method: 'pix', paidAt: '2026-07-10T00:00:00Z', status: 'settled' }],
+    workOrders: [{ id: 'wo-1', tenantId: 't-1', spaceId: 's-u', title: 'Leak', priority: 'high', status: 'completed', assignedVendorPartyId: 'p-1', billId: 'b-1', openedAt: '2026-07-01T00:00:00Z', closedAt: '2026-07-03T00:00:00Z', resolution: 'fixed' }],
   };
 }
 

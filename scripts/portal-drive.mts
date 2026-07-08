@@ -105,6 +105,16 @@ const payBtn = page.locator('button:has-text("Pay")').first();
 if (await payBtn.count()) { await payBtn.click(); await page.waitForTimeout(400); }
 await shot('09-bills-ap');
 
+// Phase 2: maintenance — raise a work order, then start it.
+await page.click('button:has-text("Maintenance")');
+await page.waitForSelector('text=Work orders on your spaces');
+await page.fill('input[placeholder="Leaky faucet"]', 'Fix rooftop leak');
+await page.click('button:has-text("Raise work order")');
+await page.waitForTimeout(450);
+const startBtn = page.locator('button:has-text("Start")').first();
+if (await startBtn.count()) { await startBtn.click(); await page.waitForTimeout(400); }
+await shot('10-maintenance');
+
 // Ledger.
 await page.click('button:has-text("Ledger")');
 await page.waitForTimeout(300);

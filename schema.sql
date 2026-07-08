@@ -337,6 +337,23 @@ create table ap_payment (                  -- money out, settling a bill
   status       text not null default 'settled' check (status in ('settled','reversed'))
 );
 
+create table work_order (                   -- maintenance (Phase 2 module 1)
+  id                       text primary key,
+  tenant_id                text not null references tenant(id),
+  space_id                 text references space(id),
+  title                    text not null,
+  description              text,
+  category                 text,
+  priority                 text not null default 'normal' check (priority in ('low','normal','high','urgent')),
+  status                   text not null default 'open' check (status in ('open','assigned','in_progress','completed','cancelled')),
+  requested_by_party_id    text references party(id),
+  assigned_vendor_party_id text references party(id),
+  bill_id                  text references bill(id),   -- repair cost reuses AP
+  opened_at                timestamptz not null,
+  assigned_at              timestamptz, started_at timestamptz, closed_at timestamptz,
+  resolution               text, cancel_reason text
+);
+
 -- Charge routing + calendar generalisation (nullable → backward compatible).
 alter table invoice       add column if not exists receiving_entity_id text references legal_entity(id);
 alter table invoice_line  add column if not exists charge_type         text;

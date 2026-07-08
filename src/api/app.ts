@@ -929,6 +929,7 @@ export class App {
       // not yet flushed (bill_line is append-only, no natural key).
       bills: bills.map((b) => (since?.bills.includes(b.id) ? { ...b, lines: [] } : b)),
       apPayments: this.payables.allPayments().filter((p) => billIds.has(p.billId)),
+      workOrders: this.maintenance.list(tenantId),
     };
   }
 
