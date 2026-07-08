@@ -27,6 +27,7 @@ import { PartyDirectory, type PartyKind, type AgreementRole } from '../party.ts'
 import { SpaceTree, type SpaceType } from '../space.ts';
 import { EntityCatalog, type EntityRole } from '../entity.ts';
 import { WorkOrders, type WorkOrderPriority } from '../maintenance.ts';
+import { Reservations } from '../reservations.ts';
 import { meterSubscription, type SubscriptionPlan } from '../subscription.ts';
 import {
   ConfigStore,
@@ -136,6 +137,7 @@ export class App {
   readonly spaces = new SpaceTree();
   readonly entities = new EntityCatalog();
   readonly maintenance = new WorkOrders();
+  readonly reservations = new Reservations(this.calendar);
 
   readonly config: ConfigStore;
   readonly roles: RoleRegistry;
@@ -260,6 +262,17 @@ export class App {
     }
     if (wo.tenantId !== ctx.tenantId) throw new HttpError(404, 'work order not found');
     return wo;
+  }
+
+  private ownedReservation(ctx: AuthContext, id: string) {
+    let r;
+    try {
+      r = this.reservations.get(id);
+    } catch {
+      throw new HttpError(404, 'reservation not found');
+    }
+    if (r.tenantId !== ctx.tenantId) throw new HttpError(404, 'reservation not found');
+    return r;
   }
 
   private registerRoutes(): void {
@@ -806,6 +819,46 @@ export class App {
       const reason = this.requireString(body, 'reason');
       return this.gated('work_order.close', ctx, { id }, () => this.maintenance.cancel(id, at, reason), (wo) => ({ status: 200, body: wo }));
     });
+
+    // --- common-area reservations (#6) ------------------------------------
+    this.add('POST', '/reservations', 'reservation.manage', (ctx, _p, body) => {
+      const id = this.requireString(body, 'id');
+      const spaceId = this.requireString(body, 'spaceId');
+      const space = this.spaces.get(ctx.tenantId, spaceId);
+      if (!space) throw new HttpError(404, 'space not found');
+      if (space.type !== 'common' && space.type !== 'amenity') {
+        throw new HttpError(400, 'space is not bookable (only common/amenity spaces can be reserved)');
+      }
+      const holderPartyId = this.requireString(body, 'holderPartyId');
+      if (!this.parties.getParty(ctx.tenantId, holderPartyId)) throw new HttpError(404, 'holder party not found');
+      const start = this.requireString(body, 'start');
+      const end = this.requireString(body, 'end');
+      const reservedAt = this.optString(body, 'reservedAt') ?? this.now();
+      const priceCents = typeof body['priceCents'] === 'number' ? (body['priceCents'] as number) : undefined;
+      return this.gated(
+        'reservation.create',
+        ctx,
+        { spaceId },
+        () => this.reservations.reserve({
+          id, tenantId: ctx.tenantId, spaceId, holderPartyId, start, end, reservedAt,
+          priceCents, currency: this.config.get(ctx.tenantId).currency, note: this.optString(body, 'note'),
+        }),
+        (r) => ({ status: 201, body: r }),
+      );
+    });
+
+    this.add('POST', '/reservations/:id/cancel', 'reservation.manage', (ctx, p, body) => {
+      const id = this.ownedReservation(ctx, p['id']!).id;
+      const at = this.optString(body, 'at') ?? this.now();
+      return this.gated('reservation.cancel', ctx, { id }, () => this.reservations.cancel(id, at), (r) => ({ status: 200, body: r }));
+    });
+
+    this.add('GET', '/reservations', 'reservation.read', (ctx) => ({
+      status: 200,
+      body: { reservations: this.reservations.list(ctx.tenantId) },
+    }));
+
+    this.add('GET', '/reservations/:id', 'reservation.read', (ctx, p) => ({ status: 200, body: this.ownedReservation(ctx, p['id']!) }));
 
     // --- ledger (tenant-scoped) -------------------------------------------
     this.add('GET', '/ledger/trial-balance', 'ledger.read', (ctx) => ({ status: 200, body: this.trialBalance(ctx.tenantId) }));

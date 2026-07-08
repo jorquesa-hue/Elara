@@ -115,6 +115,12 @@ const startBtn = page.locator('button:has-text("Start")').first();
 if (await startBtn.count()) { await startBtn.click(); await page.waitForTimeout(400); }
 await shot('10-maintenance');
 
+// Phase 2: reservations — the demo tenant has no common space, so just confirm
+// the view renders its empty state without errors.
+await page.click('button:has-text("Reservations")');
+await page.waitForSelector('text=Book common areas and amenities');
+await shot('11-reservations');
+
 // Ledger.
 await page.click('button:has-text("Ledger")');
 await page.waitForTimeout(300);

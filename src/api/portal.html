@@ -205,6 +205,7 @@
     settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/>',
     bills: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.4"/><path d="M6 9.5v5M18 9.5v5"/>',
     maintenance: '<path d="M15.5 7.5a4 4 0 0 0-5.2 5.2L4 19l1 1 6.3-6.3a4 4 0 0 0 5.2-5.2l-2.4 2.4-2-2z"/>',
+    reservations: '<rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/><path d="M9 14.5l2 2 4-4"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>',
     moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z"/>'
   };
@@ -343,6 +344,7 @@
     ];
     if (can("bill.read")) items.splice(3, 0, ["bills", "Bills", ICONS.bills]);
     if (can("maintenance.read")) items.splice(can("bill.read") ? 4 : 3, 0, ["maintenance", "Maintenance", ICONS.maintenance]);
+    if (can("reservation.read")) items.splice(3, 0, ["reservations", "Reservations", ICONS.reservations]);
     var nav = h("nav", {}, items.map(function (it) {
       return h("button", { class: state.view === it[0] ? "active" : "", onclick: function () { state.view = it[0]; state.detailId = null; render(); } }, [ svg(it[2]), it[1] ]);
     }));
@@ -359,7 +361,7 @@
       h("main", { id: "main" }, [])
     ]));
     var main = document.getElementById("main");
-    ({ dashboard: viewDashboard, agreements: viewAgreements, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
+    ({ dashboard: viewDashboard, agreements: viewAgreements, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
   }
 
   // ---- views --------------------------------------------------------------
@@ -698,6 +700,44 @@
         return h("tr",{},[ h("td",{},[wo.title]), h("td",{class:"mono"},[wo.spaceId||"—"]), h("td",{},[h("span",{class:"pill "+woPill(wo.status)},[wo.status.replace(/_/g," ")])]), h("td",{},[wo.priority]), h("td",{},[actions]) ]);
       });
       wrap.appendChild(tableEl([th("Title"),th("Space"),th(t("field.status")),th("Priority"),th("")], rows, 5, "No work orders yet."));
+    });
+  }
+
+  function viewReservations(main) {
+    main.appendChild(h("h1", {}, ["Reservations"]));
+    main.appendChild(h("p",{class:"sub"},["Book common areas and amenities — overlapping bookings on a space are impossible."]));
+    var formSlot=h("div",{},[]); main.appendChild(formSlot);
+    var wrap=h("div",{},[]); main.appendChild(wrap);
+    Promise.all([api("/spaces"), api("/parties")]).then(function(res){
+      var bookable=(((res[0].body||{}).spaces)||[]).filter(function(s){return s.type==="common"||s.type==="amenity";});
+      var parties=((res[1].body||{}).parties)||[];
+      if (can("reservation.manage")) formSlot.appendChild(reservationForm(bookable, parties));
+      refreshReservations(wrap);
+    });
+  }
+  function reservationForm(spaces, parties){
+    if(!spaces.length) return h("div",{class:"panel muted"},["Add a common or amenity space first (Agreements → a space of type common/amenity)."]);
+    var space=selectFrom(spaces.map(function(s){return [s.id, s.code+" — "+s.label];}), spaces[0].id);
+    var holder=parties.length?selectFrom(parties.map(function(p){return [p.id, p.displayName];}), parties[0].id):h("input",{placeholder:"party id"});
+    var start=h("input",{type:"datetime-local",value:"2026-08-01T18:00"});
+    var end=h("input",{type:"datetime-local",value:"2026-08-01T22:00"});
+    var price=h("input",{type:"number",value:"5000"});
+    return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
+      api("/reservations",{method:"POST",body:{id:"rv-"+Date.now(),spaceId:space.value,holderPartyId:holder.value,start:start.value,end:end.value,priceCents:parseInt(price.value,10)}}).then(function(r){
+        if(r.status===409) return toast("That slot is already booked","err");
+        handleMut(r,"reservations");
+      });
+    }},[ field("Space",space), field("Reserved by",holder), field("Start",start), field("End",end), field("Price (minor)",price), h("div",{},[h("button",{class:"btn",type:"submit"},["Reserve"])]) ]);
+  }
+  function refreshReservations(wrap){
+    api("/reservations").then(function(r){
+      wrap.innerHTML="";
+      var rows=((r.body||{}).reservations||[]).map(function(rv){
+        var actions=h("div",{class:"row"},[]);
+        if(rv.status==="reserved" && can("reservation.manage")) actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/reservations/"+rv.id+"/cancel",{method:"POST",body:{}}).then(function(x){handleMut(x,"reservations");}); }},["Cancel"]));
+        return h("tr",{},[ h("td",{class:"mono"},[rv.spaceId]), h("td",{class:"mono"},[rv.start]), h("td",{class:"mono"},[rv.end]), h("td",{class:"mono"},[rv.priceCents!=null?fmt(rv.priceCents):"—"]), h("td",{},[h("span",{class:"pill "+(rv.status==="reserved"?"active":"terminated")},[rv.status])]), h("td",{},[actions]) ]);
+      });
+      wrap.appendChild(tableEl([th("Space"),th("Start"),th("End"),th("Price"),th(t("field.status")),th("")], rows, 6, "No reservations yet."));
     });
   }
 

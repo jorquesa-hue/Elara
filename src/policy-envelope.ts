@@ -74,6 +74,8 @@ export const POLICY_RULES: readonly PolicyRule[] = [
   { id: 'pol-workorder-open', action: 'work_order.open', effect: 'allow', description: 'Agents may raise maintenance work orders.' },
   { id: 'pol-workorder-update', action: 'work_order.update', effect: 'allow', description: 'Assigning a vendor and starting work are routine.' },
   { id: 'pol-workorder-close', action: 'work_order.close', effect: 'allow', description: 'Completing or cancelling a work order is routine.' },
+  { id: 'pol-reservation-create', action: 'reservation.create', effect: 'allow', description: 'Reserving a bookable common area or amenity is routine.' },
+  { id: 'pol-reservation-cancel', action: 'reservation.cancel', effect: 'allow', description: 'Cancelling a reservation and freeing the slot is routine.' },
   { id: 'pol-collections-remind', action: 'collections.remind', effect: 'allow', description: 'Payment reminders are routine.' },
   { id: 'pol-collections-latefee', action: 'collections.late_fee', effect: 'allow', description: 'Contractual late fees are routine.' },
   { id: 'pol-collections-suspend', action: 'collections.suspend', effect: 'escalate', description: 'Service suspension is guest-impacting: human confirms.' },

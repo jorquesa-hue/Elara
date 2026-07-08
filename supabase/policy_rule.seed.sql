@@ -26,12 +26,14 @@ insert into policy_rule (id, action, effect, description, condition_note, ordina
   ('pol-workorder-open', 'work_order.open', 'allow', 'Agents may raise maintenance work orders.', null, 17),
   ('pol-workorder-update', 'work_order.update', 'allow', 'Assigning a vendor and starting work are routine.', null, 18),
   ('pol-workorder-close', 'work_order.close', 'allow', 'Completing or cancelling a work order is routine.', null, 19),
-  ('pol-collections-remind', 'collections.remind', 'allow', 'Payment reminders are routine.', null, 20),
-  ('pol-collections-latefee', 'collections.late_fee', 'allow', 'Contractual late fees are routine.', null, 21),
-  ('pol-collections-suspend', 'collections.suspend', 'escalate', 'Service suspension is guest-impacting: human confirms.', null, 22),
-  ('pol-collections-evict', 'collections.evict', 'escalate', 'Eviction is irreversible and regulated: propose to human, never execute.', null, 23),
-  ('pol-groupblock-create', 'group_block.create', 'allow', 'Agents may place group blocks.', null, 24),
-  ('pol-groupblock-pickup', 'group_block.pickup', 'allow', 'Agents may convert block holds into agreements.', null, 25);
+  ('pol-reservation-create', 'reservation.create', 'allow', 'Reserving a bookable common area or amenity is routine.', null, 20),
+  ('pol-reservation-cancel', 'reservation.cancel', 'allow', 'Cancelling a reservation and freeing the slot is routine.', null, 21),
+  ('pol-collections-remind', 'collections.remind', 'allow', 'Payment reminders are routine.', null, 22),
+  ('pol-collections-latefee', 'collections.late_fee', 'allow', 'Contractual late fees are routine.', null, 23),
+  ('pol-collections-suspend', 'collections.suspend', 'escalate', 'Service suspension is guest-impacting: human confirms.', null, 24),
+  ('pol-collections-evict', 'collections.evict', 'escalate', 'Eviction is irreversible and regulated: propose to human, never execute.', null, 25),
+  ('pol-groupblock-create', 'group_block.create', 'allow', 'Agents may place group blocks.', null, 26),
+  ('pol-groupblock-pickup', 'group_block.pickup', 'allow', 'Agents may convert block holds into agreements.', null, 27);
 
 delete from collection_stage;
 insert into collection_stage (id, min_days_overdue, action, policy_action, description, fee_bps, ordinal) values

@@ -46,6 +46,8 @@ export const PERMISSIONS = [
   'bill.pay',
   'maintenance.read',
   'maintenance.manage',
+  'reservation.read',
+  'reservation.manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -69,7 +71,7 @@ const OPS: Permission[] = [
   'invoice.read', 'invoice.issue', 'payment.record',
   'deposit.read', 'deposit.hold',
   'party.read', 'party.manage', 'space.read', 'entity.read', 'bill.read', 'bill.issue',
-  'maintenance.read', 'maintenance.manage',
+  'maintenance.read', 'maintenance.manage', 'reservation.read', 'reservation.manage',
   'ledger.read', 'exception.read', 'subscription.read',
   'masterdata.read', 'config.read',
 ];
