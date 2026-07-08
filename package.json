@@ -9,10 +9,12 @@
     "demo": "tsx demo.ts",
     "demo:live": "tsx demo-live.ts",
     "portal": "tsx demo-portal.ts",
+    "portal:drive": "tsx scripts/portal-drive.mts ./portal-shots",
     "gen-seed": "tsx scripts/gen-seed.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",
+    "playwright-core": "^1.61.1",
     "tsx": "^4.23.0",
     "typescript": "^5.9.3"
   }

@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234f9cf9'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='%23052' font-family='Arial' font-weight='bold'%3EU%3C/text%3E%3C/svg%3E" />
 <title>Unified Stay OS</title>
 <style>
   :root {
@@ -227,17 +228,17 @@
     api("/reporting/summary").then(function (r) {
       if (r.status !== 200) return cards.appendChild(h("p", { class: "muted" }, [r.body.error || t("msg.denied")]));
       var s = r.body;
-      card(cards, "Agreements", String(s.agreements.total));
+      card(cards, t("card.agreements"), String(s.agreements.total));
       card(cards, t("ledger.trialBalance"), s.ledger.balanced ? t("ledger.balanced") : t("ledger.unbalanced"), s.ledger.balanced ? "ok" : "bad");
-      card(cards, "Units", String(s.masterDataCounts.units));
-      card(cards, "Subscription", fmtPlan(s.subscription));
-      var byStatus = s.agreements.byStatus; var line = Object.keys(byStatus).map(function (k){ return byStatus[k]+" "+k; }).join(" · ");
-      main.appendChild(h("h2", {}, ["Portfolio"]));
-      main.appendChild(h("div", { class: "panel" }, [ h("div", { class:"muted" }, [ line || "No agreements yet." ]) ]));
+      card(cards, t("card.units"), String(s.masterDataCounts.units));
+      card(cards, t("card.subscription"), fmtPlan(s.subscription));
+      var byStatus = s.agreements.byStatus; var line = Object.keys(byStatus).map(function (k){ return byStatus[k]+" "+t("status."+k); }).join(" · ");
+      main.appendChild(h("h2", {}, [t("dash.portfolio")]));
+      main.appendChild(h("div", { class: "panel" }, [ h("div", { class:"muted" }, [ line || t("dash.noAgreements") ]) ]));
     });
   }
   function fmtPlan(sub) {
-    try { return new Intl.NumberFormat(state.config.locale, { style:"currency", currency: sub.currency }).format(sub.totalCents / 100) + " / mo"; }
+    try { return new Intl.NumberFormat(state.config.locale, { style:"currency", currency: sub.currency }).format(sub.totalCents / 100) + " " + t("msg.perMonth"); }
     catch (e) { return (sub.totalCents/100) + " " + sub.currency; }
   }
   function card(container, k, v, pill) {
@@ -247,26 +248,41 @@
 
   function viewAgreements(main) {
     main.appendChild(h("h1", {}, [t("nav.agreements")]));
-    main.appendChild(h("p", { class:"sub" }, ["Book, activate, and convert stays. Nightly → monthly → lease keeps one id and ledger."]));
-    if (can("agreement.book")) main.appendChild(bookForm());
+    main.appendChild(h("p", { class:"sub" }, [t("agreements.subtitle")]));
+    var formSlot = h("div", {}, []); main.appendChild(formSlot);
     var tableWrap = h("div", {}, []); main.appendChild(tableWrap);
+    // Book form uses real master data (units, guests, rate plans) — no free text.
+    if (can("agreement.book")) api("/master-data").then(function(m){ formSlot.appendChild(bookForm(m.body || {})); });
     refreshAgreements(tableWrap);
   }
-  function bookForm() {
-    var id = h("input",{value:"ag-"+Math.floor(Date.now()/1000)});
-    var guest = h("input",{value:"g-1"}); var unit = h("input",{value:"u-1"});
+  function bookForm(md) {
+    var units = md.units || [], guests = md.guests || [], plans = md.ratePlans || [];
+    var guest = selectFrom(guests.map(function(g){ return [g.id, g.fullName + " (" + g.code + ")"]; }), guests[0] && guests[0].id);
+    var unit = selectFrom(units.map(function(u){ return [u.id, u.code + " — " + u.label]; }), units[0] && units[0].id);
     var kind = selectFrom([["nightly",t("kind.nightly")],["monthly",t("kind.monthly")],["lease",t("kind.lease")]],"nightly");
     var start = h("input",{value:"2026-07-01",type:"date"}); var end = h("input",{value:"2026-07-10",type:"date"});
     var rate = h("input",{value:"20000",type:"number"});
-    var form = h("form", { class:"grid panel", onsubmit: function(e){ e.preventDefault();
-      api("/agreements",{method:"POST",body:{id:id.value,guestId:guest.value,unitId:unit.value,kind:kind.value,start:start.value,end:end.value,rateCents:parseInt(rate.value,10)}})
+    // Optional: pick a rate plan to prefill tenure + rate from master data.
+    var planSel = null;
+    if (plans.length) {
+      planSel = selectFrom([["", t("field.ratePlanNone")]].concat(plans.map(function(p){ return [p.id, p.code + " — " + p.name]; })), "");
+      planSel.addEventListener("change", function(){
+        var p = plans.find(function(x){ return x.id === planSel.value; });
+        if (p) { kind.value = p.kind; rate.value = String(p.baseMinor); }
+      });
+    }
+    var cells = [];
+    if (planSel) cells.push(field(t("field.ratePlan"), planSel));
+    cells.push(field(t("field.guest"), guest), field(t("field.unit"), unit), field(t("field.kind"), kind),
+      field(t("field.start"), start), field(t("field.end"), end), field(t("field.rate")+" (minor)", rate),
+      h("div",{},[h("button",{class:"btn",type:"submit"},[t("action.book")])]));
+    if (!units.length || !guests.length) {
+      return h("div",{class:"panel muted"},["Add at least one unit and guest in master data to book."]);
+    }
+    return h("form", { class:"grid panel", onsubmit: function(e){ e.preventDefault();
+      api("/agreements",{method:"POST",body:{id:"ag-"+Date.now(),guestId:guest.value,unitId:unit.value,kind:kind.value,start:start.value,end:end.value,rateCents:parseInt(rate.value,10)}})
         .then(function(r){ handleMut(r, "agreements"); });
-    }},[
-      field(t("field.guest"),guest), field(t("field.unit"),unit), field(t("field.kind"),kind),
-      field(t("field.start"),start), field(t("field.end"),end), field(t("field.rate")+" (minor)",rate),
-      h("div",{},[h("button",{class:"btn",type:"submit"},[t("action.book")])])
-    ]);
-    return form;
+    }}, cells);
   }
   function refreshAgreements(wrap) {
     api("/agreements").then(function(r){
@@ -278,9 +294,9 @@
           var to = a.kind==="nightly" ? "monthly" : "lease";
           actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/agreements/"+a.id+"/convert",{method:"POST",body:{to:to}}).then(function(x){handleMut(x,"agreements");}); }},[t("action.convert")+" → "+t("kind."+to)]));
         }
-        return h("tr",{},[ h("td",{},[a.id]), h("td",{},[t("kind."+a.kind)]), h("td",{},[h("span",{class:"pill "+a.status},[a.status])]), h("td",{},[fmt(a.rateCents)]), h("td",{},[actions]) ]);
+        return h("tr",{},[ h("td",{},[a.id]), h("td",{},[t("kind."+a.kind)]), h("td",{},[h("span",{class:"pill "+a.status},[t("status."+a.status)])]), h("td",{},[fmt(a.rateCents)]), h("td",{},[actions]) ]);
       });
-      wrap.appendChild(h("table",{},[ h("thead",{},[h("tr",{},[th("ID"),th(t("field.kind")),th(t("field.status")),th(t("field.rate")),th("")])]), h("tbody",{},rows.length?rows:[h("tr",{},[h("td",{colspan:"5",class:"muted"},["No agreements yet."])])]) ]));
+      wrap.appendChild(h("table",{},[ h("thead",{},[h("tr",{},[th(t("field.id")),th(t("field.kind")),th(t("field.status")),th(t("field.rate")),th("")])]), h("tbody",{},rows.length?rows:[h("tr",{},[h("td",{colspan:"5",class:"muted"},[t("dash.noAgreements")])])]) ]));
     });
   }
 
@@ -291,22 +307,22 @@
       if (r.status!==200) return wrap.appendChild(h("p",{class:"muted"},[r.body.error||t("msg.denied")]));
       var b = r.body; var rows = Object.keys(b.balances).sort().map(function(acc){ return h("tr",{},[h("td",{},[acc]),h("td",{},[fmt(b.balances[acc])])]); });
       wrap.appendChild(h("p",{class:"sub"},[t("ledger.trialBalance")+": ", h("span",{class:"pill "+(b.balanced?"ok":"bad")},[b.balanced?t("ledger.balanced"):t("ledger.unbalanced")])]));
-      wrap.appendChild(h("table",{},[ h("thead",{},[h("tr",{},[th(t("field.account")),th(t("field.balance"))])]), h("tbody",{},rows.length?rows:[h("tr",{},[h("td",{colspan:"2",class:"muted"},["No postings yet."])])]) ]));
+      wrap.appendChild(h("table",{},[ h("thead",{},[h("tr",{},[th(t("field.account")),th(t("field.balance"))])]), h("tbody",{},rows.length?rows:[h("tr",{},[h("td",{colspan:"2",class:"muted"},[t("ledger.noPostings")])])]) ]));
     });
   }
 
   function viewPeople(main) {
     main.appendChild(h("h1", {}, [t("nav.people")]));
-    main.appendChild(h("p",{class:"sub"},["Roles bundle granular permissions; users hold a role. Define custom roles for your structure."]));
+    main.appendChild(h("p",{class:"sub"},[t("people.subtitle")]));
     // Roles
-    main.appendChild(h("h2",{},["Roles"]));
+    main.appendChild(h("h2",{},[t("people.roles")]));
     var rolesWrap = h("div",{},[]); main.appendChild(rolesWrap);
     api("/roles").then(function(r){
       rolesWrap.innerHTML="";
       (r.body.roles||[]).forEach(function(role){
         rolesWrap.appendChild(h("div",{class:"panel"},[
           h("div",{class:"row",style:"justify-content:space-between"},[
-            h("div",{},[h("strong",{},[role.name])," ",h("span",{class:"muted"},["("+role.id+")"]), role.builtin?h("span",{class:"perm",style:"margin-left:8px"},["built-in"]):null]),
+            h("div",{},[h("strong",{},[role.name])," ",h("span",{class:"muted"},["("+role.id+")"]), role.builtin?h("span",{class:"perm",style:"margin-left:8px"},[t("people.builtin")]):null]),
           ]),
           role.description?h("div",{class:"muted",style:"margin:4px 0 8px"},[role.description]):null,
           h("div",{class:"perms"}, role.permissions.map(function(p){ return h("span",{class:"perm"},[p]); }))
@@ -315,7 +331,7 @@
     });
     if (can("role.manage")) main.appendChild(customRoleForm(function(){ viewPeople(clear(main)); }));
     // Users
-    main.appendChild(h("h2",{},["Users"]));
+    main.appendChild(h("h2",{},[t("people.users")]));
     var usersWrap = h("div",{},[]); main.appendChild(usersWrap);
     refreshUsers(usersWrap);
     if (can("user.manage")) main.appendChild(addUserForm(usersWrap));
@@ -323,14 +339,14 @@
   function customRoleForm(done) {
     var id=h("input",{placeholder:"housekeeping_lead"}); var name=h("input",{placeholder:"Housekeeping Lead"});
     var checks=h("div",{class:"checks"},[]);
-    var box = h("div",{class:"panel"},[ h("strong",{},["New custom role"]),
-      h("div",{class:"grid",style:"margin:10px 0"},[field("Role id",id),field("Name",name)]),
-      h("label",{},["Permissions"]), checks,
+    var box = h("div",{class:"panel"},[ h("strong",{},[t("people.newRole")]),
+      h("div",{class:"grid",style:"margin:10px 0"},[field(t("people.roleId"),id),field(t("people.name"),name)]),
+      h("label",{},[t("people.permissions")]), checks,
       h("button",{class:"btn sm",onclick:function(){
         api("/roles",{method:"POST",body:{id:id.value,name:name.value,permissions:selectedPerms(checks)}}).then(function(r){
           if(r.status!==201) return toast(r.body.error||t("msg.denied"),"err"); toast(t("msg.saved"),"ok"); done();
         });
-      }},["Create role"]) ]);
+      }},[t("people.createRole")]) ]);
     api("/permissions").then(function(r){ (r.body.permissions||[]).forEach(function(p){ checks.appendChild(h("label",{},[h("input",{type:"checkbox",value:p}),p])); }); });
     return box;
   }
@@ -339,7 +355,7 @@
     api("/users").then(function(r){
       wrap.innerHTML="";
       var rows=(r.body.users||[]).map(function(u){ return h("tr",{},[h("td",{},[u.displayName]),h("td",{},[u.code]),h("td",{},[h("span",{class:"pill active"},[u.roleId])]),h("td",{},[u.active?"active":"inactive"])]); });
-      wrap.appendChild(h("table",{},[ h("thead",{},[h("tr",{},[th("Name"),th("Code"),th(t("field.role")),th("")])]), h("tbody",{},rows.length?rows:[h("tr",{},[h("td",{colspan:"4",class:"muted"},["No users yet."])])]) ]));
+      wrap.appendChild(h("table",{},[ h("thead",{},[h("tr",{},[th(t("people.name")),th(t("people.code")),th(t("field.role")),th("")])]), h("tbody",{},rows.length?rows:[h("tr",{},[h("td",{colspan:"4",class:"muted"},[t("people.noUsers")])])]) ]));
     });
   }
   function addUserForm(usersWrap){
@@ -350,7 +366,7 @@
       api("/users",{method:"POST",body:{id:id.value,code:code.value,displayName:name.value,roleId:roleSel.value}}).then(function(r){
         if(r.status!==201) return toast(r.body.error||t("msg.denied"),"err"); toast(t("msg.saved"),"ok"); refreshUsers(usersWrap);
       });
-    }},[ field("Code",code), field("Name",name), field(t("field.role"),roleSel), h("div",{},[h("button",{class:"btn",type:"submit"},["Add user"])]) ]);
+    }},[ field(t("people.code"),code), field(t("people.name"),name), field(t("field.role"),roleSel), h("div",{},[h("button",{class:"btn",type:"submit"},[t("people.addUser")])]) ]);
   }
 
   function viewSettings(main) {
@@ -372,7 +388,7 @@
           if(r.status!==200) return toast(r.body.error||t("msg.denied"),"err");
           state.config=r.body; api("/i18n/"+state.config.locale).then(function(i){ state.cat=i.body; toast(t("msg.saved"),"ok"); render(); });
         });
-      }},[t("msg.saved").replace(".","")+" / Save"])])
+      }},[t("action.save")])])
     ]));
   }
 
