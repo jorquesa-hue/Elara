@@ -40,6 +40,7 @@ interface InvoiceLine {
   description: string;
   account: string;
   amountCents: number;
+  chargeType?: string;
 }
 interface Invoice {
   id: string;
@@ -52,6 +53,7 @@ interface Invoice {
   paidCents: number;
   status: string;
   lines: readonly InvoiceLine[];
+  receivingEntityId?: string;
 }
 interface Payment {
   id: string;
@@ -100,7 +102,7 @@ export interface WorldData {
   agreements: Array<{
     id: string;
     tenantId: string;
-    guestId: string;
+    guestId: string | null;
     unitId: string;
     events: readonly AgreementEvent[];
   }>;
@@ -110,6 +112,32 @@ export interface WorldData {
   payments: readonly Payment[];
   deposits: readonly Deposit[];
   actionLog: readonly ActionLogRecord[];
+  legalEntities?: Array<{ id: string; tenantId: string; role: string; name: string; taxId?: string }>;
+  parties?: Array<{
+    id: string; tenantId: string; kind: string; displayName: string;
+    legalName?: string; taxId?: string; email?: string; phone?: string;
+    attributes?: Record<string, unknown>;
+  }>;
+  spaces?: Array<{
+    id: string; tenantId: string; parentId?: string; type: string; code: string;
+    label: string; leasable: boolean; capacity?: number; attributes?: Record<string, unknown>;
+  }>;
+  chargeTypes?: Array<{
+    id: string; tenantId: string; code: string; name: string;
+    receivingEntityId: string; glAccount: string; recurring: boolean;
+  }>;
+  agreementParties?: Array<{
+    agreementId: string; partyId: string; role: string; sharePct?: number; from?: string; to?: string;
+  }>;
+  bills?: Array<{
+    id: string; tenantId: string; payeeId: string; entityId?: string;
+    issuedAt: string; dueAt: string; currency: string; totalCents: number;
+    paidCents: number; status: string; memo?: string;
+    lines: ReadonlyArray<{ description: string; account: string; amountCents: number }>;
+  }>;
+  apPayments?: Array<{
+    id: string; billId: string; amountCents: number; method: string; paidAt: string; status: string;
+  }>;
 }
 
 function stmt(text: string, values: unknown[]): SqlStatement {
@@ -122,6 +150,22 @@ export function projectWorld(w: WorldData): SqlStatement[] {
 
   for (const t of w.tenants) {
     out.push(stmt('insert into tenant (id, name) values ($1, $2) on conflict (id) do update set name = excluded.name', [t.id, t.name]));
+  }
+  for (const e of w.legalEntities ?? []) {
+    out.push(
+      stmt(
+        'insert into legal_entity (id, tenant_id, role, name, tax_id) values ($1, $2, $3, $4, $5) on conflict (id) do update set role = excluded.role, name = excluded.name, tax_id = excluded.tax_id',
+        [e.id, e.tenantId, e.role, e.name, e.taxId ?? null],
+      ),
+    );
+  }
+  for (const p of w.parties ?? []) {
+    out.push(
+      stmt(
+        'insert into party (id, tenant_id, kind, display_name, legal_name, tax_id, email, phone, attributes) values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb) on conflict (id) do update set kind = excluded.kind, display_name = excluded.display_name, legal_name = excluded.legal_name, tax_id = excluded.tax_id, email = excluded.email, phone = excluded.phone, attributes = excluded.attributes',
+        [p.id, p.tenantId, p.kind, p.displayName, p.legalName ?? null, p.taxId ?? null, p.email ?? null, p.phone ?? null, JSON.stringify(p.attributes ?? {})],
+      ),
+    );
   }
   for (const u of w.units) {
     out.push(
@@ -145,12 +189,39 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       ),
     );
   }
+  {
+    const emitted = new Set<string>();
+    const remaining = [...(w.spaces ?? [])];
+    let guard = remaining.length * remaining.length + 1;
+    const emit = (s: (typeof remaining)[number]) => {
+      emitted.add(s.id);
+      out.push(
+        stmt(
+          'insert into space (id, tenant_id, parent_id, type, code, label, leasable, capacity, attributes) values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb) on conflict (id) do update set parent_id = excluded.parent_id, type = excluded.type, code = excluded.code, label = excluded.label, leasable = excluded.leasable, capacity = excluded.capacity, attributes = excluded.attributes',
+          [s.id, s.tenantId, s.parentId ?? null, s.type, s.code, s.label, s.leasable, s.capacity ?? null, JSON.stringify(s.attributes ?? {})],
+        ),
+      );
+    };
+    while (remaining.length && guard-- > 0) {
+      const idx = remaining.findIndex((s) => !s.parentId || emitted.has(s.parentId));
+      const s = remaining.splice(idx === -1 ? 0 : idx, 1)[0]!;
+      emit(s);
+    }
+  }
+  for (const c of w.chargeTypes ?? []) {
+    out.push(
+      stmt(
+        'insert into charge_type (id, tenant_id, code, name, receiving_entity_id, gl_account, recurring) values ($1, $2, $3, $4, $5, $6, $7) on conflict (id) do update set code = excluded.code, name = excluded.name, receiving_entity_id = excluded.receiving_entity_id, gl_account = excluded.gl_account, recurring = excluded.recurring',
+        [c.id, c.tenantId, c.code, c.name, c.receivingEntityId, c.glAccount, c.recurring],
+      ),
+    );
+  }
   for (const a of w.agreements) {
     out.push(
       stmt('insert into agreement (id, tenant_id, guest_id, unit_id) values ($1, $2, $3, $4) on conflict (id) do nothing', [
         a.id,
         a.tenantId,
-        a.guestId,
+        a.guestId ?? null,
         a.unitId,
       ]),
     );
@@ -165,6 +236,14 @@ export function projectWorld(w: WorldData): SqlStatement[] {
         ),
       );
     }
+  }
+  for (const ap of w.agreementParties ?? []) {
+    out.push(
+      stmt(
+        'insert into agreement_party (agreement_id, party_id, role, share_pct, from_date, to_date) values ($1, $2, $3, $4, $5, $6) on conflict (agreement_id, party_id, role) do update set share_pct = excluded.share_pct, from_date = excluded.from_date, to_date = excluded.to_date',
+        [ap.agreementId, ap.partyId, ap.role, ap.sharePct ?? null, ap.from ?? null, ap.to ?? null],
+      ),
+    );
   }
   for (const h of w.holds) {
     out.push(
@@ -186,15 +265,15 @@ export function projectWorld(w: WorldData): SqlStatement[] {
   for (const inv of w.invoices) {
     out.push(
       stmt(
-        'insert into invoice (id, agreement_id, tenant_id, issued_at, due_at, currency, total_cents, paid_cents, status) values ($1, $2, $3, $4, $5, $6, $7, $8, $9) on conflict (id) do update set due_at = excluded.due_at, total_cents = excluded.total_cents, paid_cents = excluded.paid_cents, status = excluded.status',
-        [inv.id, inv.agreementId, inv.tenantId, inv.issuedAt, inv.dueAt, inv.currency, inv.totalCents, inv.paidCents, inv.status],
+        'insert into invoice (id, agreement_id, tenant_id, issued_at, due_at, currency, total_cents, paid_cents, status, receiving_entity_id) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) on conflict (id) do update set due_at = excluded.due_at, total_cents = excluded.total_cents, paid_cents = excluded.paid_cents, status = excluded.status, receiving_entity_id = excluded.receiving_entity_id',
+        [inv.id, inv.agreementId, inv.tenantId, inv.issuedAt, inv.dueAt, inv.currency, inv.totalCents, inv.paidCents, inv.status, inv.receivingEntityId ?? null],
       ),
     );
     for (const line of inv.lines) {
       out.push(
         stmt(
-          'insert into invoice_line (invoice_id, description, account, amount_cents) values ($1, $2, $3, $4)',
-          [inv.id, line.description, line.account, line.amountCents],
+          'insert into invoice_line (invoice_id, description, account, amount_cents, charge_type) values ($1, $2, $3, $4, $5)',
+          [inv.id, line.description, line.account, line.amountCents, line.chargeType ?? null],
         ),
       );
     }
@@ -212,6 +291,30 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       stmt(
         'insert into deposit (id, agreement_id, amount_cents, currency, status, held_at, refunded_at, refunded_cents, deductions) values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb) on conflict (id) do update set status = excluded.status, refunded_at = excluded.refunded_at, refunded_cents = excluded.refunded_cents, deductions = excluded.deductions',
         [d.id, d.agreementId, d.amountCents, d.currency, d.status, d.heldAt, d.refundedAt ?? null, d.refundedCents ?? null, JSON.stringify(d.deductions ?? [])],
+      ),
+    );
+  }
+  for (const b of w.bills ?? []) {
+    out.push(
+      stmt(
+        'insert into bill (id, tenant_id, payee_id, entity_id, issued_at, due_at, currency, total_cents, paid_cents, status, memo) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) on conflict (id) do update set paid_cents = excluded.paid_cents, status = excluded.status, memo = excluded.memo',
+        [b.id, b.tenantId, b.payeeId, b.entityId ?? null, b.issuedAt, b.dueAt, b.currency, b.totalCents, b.paidCents, b.status, b.memo ?? null],
+      ),
+    );
+    for (const line of b.lines) {
+      out.push(
+        stmt(
+          'insert into bill_line (bill_id, description, account, amount_cents) values ($1, $2, $3, $4)',
+          [b.id, line.description, line.account, line.amountCents],
+        ),
+      );
+    }
+  }
+  for (const p of w.apPayments ?? []) {
+    out.push(
+      stmt(
+        'insert into ap_payment (id, bill_id, amount_cents, method, paid_at, status) values ($1, $2, $3, $4, $5, $6) on conflict (id) do update set status = excluded.status',
+        [p.id, p.billId, p.amountCents, p.method, p.paidAt, p.status],
       ),
     );
   }

@@ -64,6 +64,8 @@ interface FlushMark {
   actionLog: number;
   /** invoice ids whose lines are already persisted */
   invoiceLines: string[];
+  /** bill ids whose lines are already persisted */
+  bills: string[];
 }
 
 class HttpError extends Error {
@@ -804,6 +806,8 @@ export class App {
     const agreementIds = new Set(mine.map((e) => e.agreement.id));
     const invoices = this.billing.allInvoices().filter((i) => i.tenantId === tenantId);
     const invoiceIds = new Set(invoices.map((i) => i.id));
+    const bills = this.payables.allBills().filter((b) => b.tenantId === tenantId);
+    const billIds = new Set(bills.map((b) => b.id));
 
     return {
       tenants: [{ id: tenantId, name: cfg.displayName ?? tenantId }],
@@ -813,7 +817,13 @@ export class App {
         id: r.id, tenantId, name: r.name, kind: r.kind, baseCents: r.baseMinor, currency: cfg.currency,
       })),
       agreements: mine.map((e) => ({
-        id: e.agreement.id, tenantId, guestId: e.agreement.guestId, unitId: e.agreement.unitId,
+        id: e.agreement.id,
+        tenantId,
+        // Emit the legacy guest_id only when it is a real guest; otherwise the
+        // resident is carried by the party role link (agreement_party).
+        guestId: this.masterData.guests.get(tenantId, e.agreement.guestId) ? e.agreement.guestId : null,
+        unitId: e.agreement.unitId, // the created unit (a valid FK); transfers live in the events + hold
+
         // Only events past the mark for this agreement (append-only — never resent).
         events: e.agreement.history.slice(since?.events[e.agreement.id] ?? 0),
       })),
@@ -830,6 +840,16 @@ export class App {
       payments: this.payments.all().filter((p) => invoiceIds.has(p.invoiceId)),
       deposits: this.deposits.all().filter((d) => agreementIds.has(d.agreementId)),
       actionLog: this.runtime.actionLog().slice(since?.actionLog ?? 0),
+      // --- master-data reshape v2 (all upserted, so always safe to resend) ----
+      legalEntities: this.entities.listEntities(tenantId),
+      parties: this.parties.listParties(tenantId),
+      spaces: this.spaces.list(tenantId),
+      chargeTypes: this.entities.listChargeTypes(tenantId),
+      agreementParties: this.parties.allLinks().filter((l) => agreementIds.has(l.agreementId)),
+      // Bill rows always sent (upserted for status); their lines only for bills
+      // not yet flushed (bill_line is append-only, no natural key).
+      bills: bills.map((b) => (since?.bills.includes(b.id) ? { ...b, lines: [] } : b)),
+      apPayments: this.payables.allPayments().filter((p) => billIds.has(p.billId)),
     };
   }
 
@@ -844,6 +864,7 @@ export class App {
       journalLines: this.ledger.allLines.filter((l) => l.agreementId != null && agreementIds.has(l.agreementId)).length,
       actionLog: this.runtime.actionLog().length,
       invoiceLines: this.billing.allInvoices().filter((i) => i.tenantId === tenantId).map((i) => i.id),
+      bills: this.payables.allBills().filter((b) => b.tenantId === tenantId).map((b) => b.id),
     };
   }
 

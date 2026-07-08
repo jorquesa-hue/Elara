@@ -72,6 +72,17 @@ function buildWorld(): WorldData {
     payments: payments.all(),
     deposits: deposits.all(),
     actionLog: runtime.actionLog(),
+    // master-data reshape v2 — exercise the new projection paths in the guard.
+    legalEntities: [{ id: 'op', tenantId: 't-1', role: 'operator', name: 'Rio Op' }],
+    parties: [{ id: 'p-1', tenantId: 't-1', kind: 'person', displayName: 'Ana', attributes: { vip: true } }],
+    spaces: [
+      { id: 's-prop', tenantId: 't-1', type: 'property', code: 'P', label: 'Prop', leasable: false },
+      { id: 's-u', tenantId: 't-1', parentId: 's-prop', type: 'unit', code: '101', label: 'Unit', leasable: true },
+    ],
+    chargeTypes: [{ id: 'ct', tenantId: 't-1', code: 'rent', name: 'Rent', receivingEntityId: 'op', glAccount: 'revenue:room', recurring: true }],
+    agreementParties: [{ agreementId: 'ag-1', partyId: 'p-1', role: 'resident' }],
+    bills: [{ id: 'b-1', tenantId: 't-1', payeeId: 'p-1', issuedAt: '2026-07-01T00:00:00Z', dueAt: '2026-07-15T00:00:00Z', currency: 'BRL', totalCents: 5000, paidCents: 0, status: 'open', lines: [{ description: 'x', account: 'expenses:supplier', amountCents: 5000 }] }],
+    apPayments: [{ id: 'ap-1', billId: 'b-1', amountCents: 5000, method: 'pix', paidAt: '2026-07-10T00:00:00Z', status: 'settled' }],
   };
 }
 
