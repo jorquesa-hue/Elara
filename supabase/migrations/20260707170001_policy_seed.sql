@@ -39,12 +39,15 @@ insert into policy_rule (id, action, effect, description, condition_note, ordina
   ('pol-bill-issue', 'bill.issue', 'allow', 'Agents may record vendor bills and resident refunds into accounts payable.', null, 14),
   ('pol-bill-pay-large', 'bill.pay', 'escalate', 'Paying more than R$5,000 out requires human approval (money leaves the business).', 'amount_cents > 500000', 15),
   ('pol-bill-pay', 'bill.pay', 'allow', 'Routine payables settlement is auto-approved; real bank-rail payout (a future integration) will tighten this.', null, 16),
-  ('pol-collections-remind', 'collections.remind', 'allow', 'Payment reminders are routine.', null, 17),
-  ('pol-collections-latefee', 'collections.late_fee', 'allow', 'Contractual late fees are routine.', null, 18),
-  ('pol-collections-suspend', 'collections.suspend', 'escalate', 'Service suspension is guest-impacting: human confirms.', null, 19),
-  ('pol-collections-evict', 'collections.evict', 'escalate', 'Eviction is irreversible and regulated: propose to human, never execute.', null, 20),
-  ('pol-groupblock-create', 'group_block.create', 'allow', 'Agents may place group blocks.', null, 21),
-  ('pol-groupblock-pickup', 'group_block.pickup', 'allow', 'Agents may convert block holds into agreements.', null, 22);
+  ('pol-workorder-open', 'work_order.open', 'allow', 'Agents may raise maintenance work orders.', null, 17),
+  ('pol-workorder-update', 'work_order.update', 'allow', 'Assigning a vendor and starting work are routine.', null, 18),
+  ('pol-workorder-close', 'work_order.close', 'allow', 'Completing or cancelling a work order is routine.', null, 19),
+  ('pol-collections-remind', 'collections.remind', 'allow', 'Payment reminders are routine.', null, 20),
+  ('pol-collections-latefee', 'collections.late_fee', 'allow', 'Contractual late fees are routine.', null, 21),
+  ('pol-collections-suspend', 'collections.suspend', 'escalate', 'Service suspension is guest-impacting: human confirms.', null, 22),
+  ('pol-collections-evict', 'collections.evict', 'escalate', 'Eviction is irreversible and regulated: propose to human, never execute.', null, 23),
+  ('pol-groupblock-create', 'group_block.create', 'allow', 'Agents may place group blocks.', null, 24),
+  ('pol-groupblock-pickup', 'group_block.pickup', 'allow', 'Agents may convert block holds into agreements.', null, 25);
 
 delete from collection_stage;
 insert into collection_stage (id, min_days_overdue, action, policy_action, description, fee_bps, ordinal) values

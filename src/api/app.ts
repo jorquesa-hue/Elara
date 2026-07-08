@@ -26,6 +26,7 @@ import { Deposits, type Deduction } from '../deposits.ts';
 import { PartyDirectory, type PartyKind, type AgreementRole } from '../party.ts';
 import { SpaceTree, type SpaceType } from '../space.ts';
 import { EntityCatalog, type EntityRole } from '../entity.ts';
+import { WorkOrders, type WorkOrderPriority } from '../maintenance.ts';
 import { meterSubscription, type SubscriptionPlan } from '../subscription.ts';
 import {
   ConfigStore,
@@ -134,6 +135,7 @@ export class App {
   readonly parties = new PartyDirectory();
   readonly spaces = new SpaceTree();
   readonly entities = new EntityCatalog();
+  readonly maintenance = new WorkOrders();
 
   readonly config: ConfigStore;
   readonly roles: RoleRegistry;
@@ -247,6 +249,17 @@ export class App {
     const entry = this.agreements.get(id);
     if (!entry || entry.tenantId !== ctx.tenantId) throw new HttpError(404, 'agreement not found');
     return entry.agreement;
+  }
+
+  private ownedWorkOrder(ctx: AuthContext, id: string) {
+    let wo;
+    try {
+      wo = this.maintenance.get(id);
+    } catch {
+      throw new HttpError(404, 'work order not found');
+    }
+    if (wo.tenantId !== ctx.tenantId) throw new HttpError(404, 'work order not found');
+    return wo;
   }
 
   private registerRoutes(): void {
@@ -727,6 +740,72 @@ export class App {
       status: 200,
       body: { bills: this.payables.allBills().filter((b) => b.tenantId === ctx.tenantId) },
     }));
+
+    // --- maintenance / work orders (#3) -----------------------------------
+    this.add('POST', '/work-orders', 'maintenance.manage', (ctx, _p, body) => {
+      const id = this.requireString(body, 'id');
+      const title = this.requireString(body, 'title');
+      const spaceId = this.optString(body, 'spaceId');
+      if (spaceId && !this.spaces.get(ctx.tenantId, spaceId)) throw new HttpError(404, 'space not found');
+      const openedAt = this.optString(body, 'openedAt') ?? this.now();
+      return this.gated(
+        'work_order.open',
+        ctx,
+        { spaceId },
+        () => this.maintenance.open({
+          id, tenantId: ctx.tenantId, title, spaceId,
+          description: this.optString(body, 'description'),
+          category: this.optString(body, 'category'),
+          priority: this.optString(body, 'priority') as WorkOrderPriority | undefined,
+          requestedByPartyId: this.optString(body, 'requestedByPartyId'),
+          openedAt,
+        }),
+        (wo) => ({ status: 201, body: wo }),
+      );
+    });
+
+    this.add('GET', '/work-orders', 'maintenance.read', (ctx, _p, _b) => ({
+      status: 200,
+      body: { workOrders: this.maintenance.list(ctx.tenantId) },
+    }));
+
+    this.add('GET', '/work-orders/:id', 'maintenance.read', (ctx, p) => {
+      const wo = this.ownedWorkOrder(ctx, p['id']!);
+      return { status: 200, body: wo };
+    });
+
+    this.add('POST', '/work-orders/:id/assign', 'maintenance.manage', (ctx, p, body) => {
+      const id = this.ownedWorkOrder(ctx, p['id']!).id;
+      const vendorPartyId = this.requireString(body, 'vendorPartyId');
+      if (!this.parties.getParty(ctx.tenantId, vendorPartyId)) throw new HttpError(404, 'vendor party not found');
+      const at = this.optString(body, 'at') ?? this.now();
+      return this.gated('work_order.update', ctx, { id }, () => this.maintenance.assign(id, vendorPartyId, at), (wo) => ({ status: 200, body: wo }));
+    });
+
+    this.add('POST', '/work-orders/:id/start', 'maintenance.manage', (ctx, p, body) => {
+      const id = this.ownedWorkOrder(ctx, p['id']!).id;
+      const at = this.optString(body, 'at') ?? this.now();
+      return this.gated('work_order.update', ctx, { id }, () => this.maintenance.start(id, at), (wo) => ({ status: 200, body: wo }));
+    });
+
+    this.add('POST', '/work-orders/:id/complete', 'maintenance.manage', (ctx, p, body) => {
+      const id = this.ownedWorkOrder(ctx, p['id']!).id;
+      const at = this.optString(body, 'at') ?? this.now();
+      const billId = this.optString(body, 'billId');
+      if (billId) {
+        let bill;
+        try { bill = this.payables.get(billId); } catch { throw new HttpError(404, 'bill not found'); }
+        if (bill.tenantId !== ctx.tenantId) throw new HttpError(404, 'bill not found');
+      }
+      return this.gated('work_order.close', ctx, { id }, () => this.maintenance.complete(id, at, { resolution: this.optString(body, 'resolution'), billId }), (wo) => ({ status: 200, body: wo }));
+    });
+
+    this.add('POST', '/work-orders/:id/cancel', 'maintenance.manage', (ctx, p, body) => {
+      const id = this.ownedWorkOrder(ctx, p['id']!).id;
+      const at = this.optString(body, 'at') ?? this.now();
+      const reason = this.requireString(body, 'reason');
+      return this.gated('work_order.close', ctx, { id }, () => this.maintenance.cancel(id, at, reason), (wo) => ({ status: 200, body: wo }));
+    });
 
     // --- ledger (tenant-scoped) -------------------------------------------
     this.add('GET', '/ledger/trial-balance', 'ledger.read', (ctx) => ({ status: 200, body: this.trialBalance(ctx.tenantId) }));

@@ -13,6 +13,7 @@ export * from './party.ts';
 export * from './space.ts';
 export * from './entity.ts';
 export * from './amenity.ts';
+export * from './maintenance.ts';
 export * from './nfe-ingest.ts';
 export * from './collections.ts';
 export * from './multigaap.ts';
