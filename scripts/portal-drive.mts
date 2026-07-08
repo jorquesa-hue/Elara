@@ -86,9 +86,24 @@ await page.click('button:has-text("Record payment")');
 await page.waitForTimeout(450);
 await page.click('button:has-text("Hold deposit")');
 await page.waitForTimeout(450);
+// Phase 1: assign a payer party in the People section, then adjust the rent.
+await page.fill('input[placeholder="Full name"]', 'Parent Payer');
+await page.click('button:has-text("Assign")');
+await page.waitForTimeout(450);
+await page.click('button:has-text("Adjust rent")');
+await page.waitForTimeout(450);
 await shot('04c-agreement-detail');
 await page.click('button:has-text("Back")');
 await page.waitForTimeout(250);
+
+// Phase 1: accounts payable — record a vendor bill against the payee, then pay it.
+await page.click('button:has-text("Bills")');
+await page.waitForSelector('text=Accounts payable');
+await page.click('button:has-text("Record bill")');
+await page.waitForTimeout(450);
+const payBtn = page.locator('button:has-text("Pay")').first();
+if (await payBtn.count()) { await payBtn.click(); await page.waitForTimeout(400); }
+await shot('09-bills-ap');
 
 // Ledger.
 await page.click('button:has-text("Ledger")');

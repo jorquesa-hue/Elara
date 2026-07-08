@@ -203,6 +203,7 @@
     ledger: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9.5 8h5M9.5 12h5"/>',
     people: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M16 6a3 3 0 0 1 0 6"/><path d="M20.5 20a5.5 5.5 0 0 0-4-5.3"/>',
     settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/>',
+    bills: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.4"/><path d="M6 9.5v5M18 9.5v5"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>',
     moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z"/>'
   };
@@ -339,6 +340,7 @@
       ["people", t("nav.people"), ICONS.people],
       ["settings", t("nav.settings"), ICONS.settings]
     ];
+    if (can("bill.read")) items.splice(3, 0, ["bills", "Bills", ICONS.bills]);
     var nav = h("nav", {}, items.map(function (it) {
       return h("button", { class: state.view === it[0] ? "active" : "", onclick: function () { state.view = it[0]; state.detailId = null; render(); } }, [ svg(it[2]), it[1] ]);
     }));
@@ -355,7 +357,7 @@
       h("main", { id: "main" }, [])
     ]));
     var main = document.getElementById("main");
-    ({ dashboard: viewDashboard, agreements: viewAgreements, ledger: viewLedger, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
+    ({ dashboard: viewDashboard, agreements: viewAgreements, ledger: viewLedger, bills: viewBills, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
   }
 
   // ---- views --------------------------------------------------------------
@@ -458,6 +460,7 @@
         cell(t("field.end"), a.period.end),
         cell(t("field.rate"), fmt(a.rateCents))
       ]) ]));
+      slot.appendChild(h("h2",{},["People"])); slot.appendChild(partiesSection(id));
       var acts = actionForms(id, bill);
       if (acts){ slot.appendChild(h("h2",{},[t("section.actions")])); slot.appendChild(acts); }
       slot.appendChild(h("h2",{},[t("section.invoices")])); slot.appendChild(invoicesTable(bill.invoices));
@@ -480,7 +483,66 @@
     if (can("payment.record")) forms.push(recordPaymentForm(bill));
     if (can("deposit.hold")) forms.push(holdDepositForm(id));
     if (can("deposit.refund")){ var f=refundDepositForm(bill); if(f) forms.push(f); }
+    if (can("agreement.adjust")) forms.push(adjustRentForm(id));
+    if (can("agreement.transfer")) forms.push(transferForm(id));
     return forms.length ? h("div",{class:"detail-actions"}, forms) : null;
+  }
+  function adjustRentForm(id){
+    var basis=selectFrom([["percent","percent %"],["fixed","fixed (minor)"]],"percent");
+    var val=h("input",{type:"number",value:"5"});
+    return mini("Adjust rent",[ field("Basis",basis), field("Value",val),
+      h("button",{class:"btn sm",onclick:function(){
+        api("/agreements/"+id+"/adjust-rent",{method:"POST",body:{basis:basis.value,value:parseInt(val.value,10)}}).then(actThen);
+      }},["Adjust rent"]) ]);
+  }
+  function transferForm(id){
+    var to=selectFrom([["",""]],""); // populated below
+    Promise.all([api("/master-data"), api("/spaces")]).then(function(res){
+      to.innerHTML="";
+      var units=((res[0].body||{}).units)||[]; var spaces=((res[1].body||{}).spaces||[]).filter(function(s){return s.leasable;});
+      to.appendChild(h("option",{value:""},["— pick —"]));
+      units.forEach(function(u){ to.appendChild(h("option",{value:u.id},[u.code+" — "+u.label])); });
+      spaces.forEach(function(s){ to.appendChild(h("option",{value:s.id},[s.code+" — "+s.label])); });
+    });
+    return mini("Transfer unit",[ field("To unit/space", to),
+      h("button",{class:"btn sm",onclick:function(){
+        if(!to.value){ toast("Pick a target unit/space","err"); return; }
+        api("/agreements/"+id+"/transfer",{method:"POST",body:{toUnitId:to.value}}).then(actThen);
+      }},["Transfer"]) ]);
+  }
+  function partiesSection(id){
+    var box=h("div",{},[]);
+    Promise.all([api("/agreements/"+id+"/parties"), api("/parties")]).then(function(res){
+      var pr=res[0].status===200?res[0].body:{parties:[],billToPartyId:null};
+      var all=((res[1].body||{}).parties)||[];
+      var nameOf=function(pid){ var p=all.find(function(x){return x.id===pid;}); return p?p.displayName:pid; };
+      box.innerHTML="";
+      var rows=(pr.parties||[]).map(function(l){
+        var payer=l.partyId===pr.billToPartyId;
+        return h("tr",{},[ h("td",{},[nameOf(l.partyId)]), h("td",{},[h("span",{class:"pill "+(payer?"active":"draft")},[l.role.replace(/_/g," ")])]), h("td",{class:"muted"},[payer?"bill-to":""]) ]);
+      });
+      box.appendChild(tableEl([th("Party"),th("Role"),th("")], rows, 3, "No people assigned yet."));
+      if (can("party.manage")) box.appendChild(assignPartyForm(id, all));
+    });
+    return box;
+  }
+  function assignPartyForm(id, parties){
+    var name=h("input",{placeholder:"Full name"});
+    var role=selectFrom([["resident","resident"],["financial_responsible","financial responsible"],["guarantor","guarantor"],["cosigner","cosigner"],["occupant","occupant"]],"resident");
+    var existing = parties.length ? selectFrom([["","— new person —"]].concat(parties.map(function(p){return [p.id,p.displayName];})),"") : null;
+    var controls=[];
+    if(existing) controls.push(field("Existing party", existing));
+    controls.push(field("…or new person", name), field("Role", role),
+      h("button",{class:"btn sm",onclick:function(){
+        var doAssign=function(pid){ api("/agreements/"+id+"/parties",{method:"POST",body:{partyId:pid,role:role.value}}).then(actThen); };
+        if(existing && existing.value){ return doAssign(existing.value); }
+        if(!name.value){ return toast("Enter a name or pick a party","err"); }
+        var pid="p-"+Date.now();
+        api("/parties",{method:"POST",body:{id:pid,kind:"person",displayName:name.value}}).then(function(r){
+          if(r.status!==201) return toast(r.body.error||t("msg.denied"),"err"); doAssign(pid);
+        });
+      }},["Assign"]));
+    return mini("Add a person", controls);
   }
   function issueInvoiceForm(id){
     var desc=h("input",{placeholder:"9 nights"});
@@ -554,6 +616,39 @@
       var b = r.body; var rows = Object.keys(b.balances).sort().map(function(acc){ return h("tr",{},[h("td",{class:"mono"},[acc]),h("td",{class:"mono"},[fmt(b.balances[acc])])]); });
       wrap.appendChild(h("p",{class:"sub"},[t("ledger.trialBalance")+": ", h("span",{class:"pill "+(b.balanced?"ok":"bad")},[b.balanced?t("ledger.balanced"):t("ledger.unbalanced")])]));
       wrap.appendChild(tableEl([th(t("field.account")),th(t("field.balance"))], rows, 2, t("ledger.noPostings")));
+    });
+  }
+
+  function viewBills(main) {
+    main.appendChild(h("h1", {}, ["Accounts payable"]));
+    main.appendChild(h("p",{class:"sub"},["Vendor bills and resident refunds — money out. Payouts over policy limit escalate for approval."]));
+    var formSlot=h("div",{},[]); main.appendChild(formSlot);
+    var wrap=h("div",{},[]); main.appendChild(wrap);
+    if (can("bill.issue")) api("/parties").then(function(r){ formSlot.appendChild(billForm(((r.body||{}).parties)||[])); });
+    refreshBills(wrap);
+  }
+  function billForm(parties){
+    if(!parties.length) return h("div",{class:"panel muted"},["Add a party first — open an agreement and use the People section to create one (it becomes an available payee)."]);
+    var payee=selectFrom(parties.map(function(p){return [p.id, p.displayName];}), parties[0].id);
+    var acct=selectFrom([["expenses:supplier","expenses:supplier"],["liabilities:deposits_held","liabilities:deposits_held (refund)"]],"expenses:supplier");
+    var desc=h("input",{placeholder:"repair"}); var amt=h("input",{type:"number",value:"25000"}); var due=h("input",{type:"date",value:"2026-07-15"});
+    return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
+      api("/bills",{method:"POST",body:{id:"b-"+Date.now(),payeeId:payee.value,dueAt:due.value,lines:[{description:desc.value||"bill",account:acct.value,amountCents:parseInt(amt.value,10)}]}}).then(function(r){ handleMut(r,"bills"); });
+    }},[ field("Payee",payee), field("Description",desc), field("Account",acct), field("Amount (minor)",amt), field("Due",due), h("div",{},[h("button",{class:"btn",type:"submit"},["Record bill"])]) ]);
+  }
+  function refreshBills(wrap){
+    api("/bills").then(function(r){
+      wrap.innerHTML="";
+      var rows=((r.body||{}).bills||[]).map(function(b){
+        var actions=h("div",{class:"row"},[]);
+        if((b.status==="open"||b.status==="partially_paid") && can("bill.pay")){
+          actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){
+            api("/bills/"+b.id+"/pay",{method:"POST",body:{id:"ap-"+Date.now(),amountCents:b.totalCents-b.paidCents,method:"pix"}}).then(function(x){ handleMut(x,"bills"); });
+          }},["Pay"]));
+        }
+        return h("tr",{},[ h("td",{class:"mono"},[b.id]), h("td",{},[h("span",{class:"pill "+(b.status==="paid"?"active":"draft")},[b.status])]), h("td",{class:"mono"},[fmt(b.totalCents)]), h("td",{class:"mono"},[fmt(b.paidCents)]), h("td",{},[actions]) ]);
+      });
+      wrap.appendChild(tableEl([th(t("field.id")),th(t("field.status")),th(t("field.total")),th(t("field.paid")),th("")], rows, 5, t("msg.none")));
     });
   }
 
