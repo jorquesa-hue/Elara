@@ -17,6 +17,7 @@ export * from './group-block.ts';
 export * from './persistence/executor.ts';
 export * from './persistence/project.ts';
 export * from './persistence/repository.ts';
+export * from './persistence/edge-client.ts';
 export * from './subscription.ts';
 export * from './config.ts';
 export * from './i18n.ts';
