@@ -3,70 +3,151 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234f9cf9'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='%23052' font-family='Arial' font-weight='bold'%3EU%3C/text%3E%3C/svg%3E" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='8'%20fill='%236572ff'/%3E%3Crect%20x='6'%20y='18'%20width='4'%20height='8'%20rx='1.5'%20fill='%23fff'/%3E%3Crect%20x='14'%20y='13'%20width='4'%20height='13'%20rx='1.5'%20fill='%23fff'/%3E%3Crect%20x='22'%20y='7'%20width='4'%20height='19'%20rx='1.5'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Unified Stay OS</title>
 <style>
   :root {
-    --bg: #0f1216; --panel: #171c22; --panel2: #1e242c; --line: #2a323c;
-    --text: #e7ecf2; --muted: #9aa7b4; --accent: #4f9cf9; --accent2: #35c28f;
-    --danger: #f2586b; --warn: #e6b34d; --radius: 12px;
+    --accent: #6572ff; --accent-ink: #ffffff;
+    --accent-2: #8b6cff;
+    --success: #10b981; --warn: #f59e0b; --danger: #ef4444;
+    --radius: 14px; --radius-sm: 9px;
+    color-scheme: dark;
+  }
+  /* Dark (default) */
+  :root, :root[data-theme="dark"] {
+    --bg: #0b0e14; --surface: #12161f; --surface-2: #171c27; --surface-3: #1e2431;
+    --border: #232a37; --border-strong: #323b4d;
+    --text: #e6e9f0; --muted: #98a2b5; --subtle: #6a7488;
+    --accent-soft: rgba(101,114,255,.16); --success-soft: rgba(16,185,129,.15);
+    --warn-soft: rgba(245,158,11,.16); --danger-soft: rgba(239,68,68,.15);
+    --shadow: 0 1px 2px rgba(0,0,0,.35), 0 10px 30px rgba(0,0,0,.30);
+    --ring: 0 0 0 3px var(--accent-soft);
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f7fb; --surface: #ffffff; --surface-2: #f4f6fb; --surface-3: #eef1f8;
+    --border: #e4e8f0; --border-strong: #d3dae8;
+    --text: #1b2333; --muted: #5c6678; --subtle: #8b95a8;
+    --accent-soft: rgba(101,114,255,.12); --success-soft: rgba(16,185,129,.13);
+    --warn-soft: rgba(245,158,11,.16); --danger-soft: rgba(239,68,68,.12);
+    --shadow: 0 1px 2px rgba(20,30,60,.06), 0 12px 28px rgba(20,30,60,.10);
+    --ring: 0 0 0 3px var(--accent-soft);
+    color-scheme: light;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-         background: var(--bg); color: var(--text); }
-  a { color: var(--accent); }
-  .app { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
-  aside { background: var(--panel); border-right: 1px solid var(--line); padding: 20px 14px; }
-  .brand { font-weight: 700; font-size: 17px; letter-spacing: .2px; padding: 6px 10px 16px; }
-  .brand small { display:block; color: var(--muted); font-weight: 500; font-size: 12px; }
-  nav button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--muted);
-    padding: 10px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; }
-  nav button:hover { background: var(--panel2); color: var(--text); }
-  nav button.active { background: var(--accent); color: #05192f; font-weight: 600; }
-  main { padding: 26px 30px; max-width: 980px; }
-  h1 { font-size: 22px; margin: 0 0 4px; }
-  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 26px 0 10px; }
-  .sub { color: var(--muted); margin: 0 0 20px; }
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 14px; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
-  .card .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
-  .card .v { font-size: 24px; font-weight: 700; margin-top: 6px; }
-  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line);
-          border-radius: var(--radius); overflow: hidden; }
-  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 14px; }
-  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14.5px/1.55 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; }
+  a { color: var(--accent); text-decoration: none; }
+  ::selection { background: var(--accent-soft); }
+
+  /* Layout */
+  .app { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh; }
+  aside { background: var(--surface); border-right: 1px solid var(--border); padding: 18px 14px;
+    display: flex; flex-direction: column; gap: 4px; position: sticky; top: 0; height: 100vh; }
+  .brand { display: flex; align-items: center; gap: 11px; padding: 8px 8px 16px; }
+  .brand .mark { width: 30px; height: 30px; flex: none; filter: drop-shadow(0 3px 8px rgba(101,114,255,.35)); }
+  .brand .wm { font-weight: 700; font-size: 15.5px; letter-spacing: -.01em; line-height: 1.15; }
+  .brand .wm small { display: block; color: var(--subtle); font-weight: 500; font-size: 11.5px; letter-spacing: .02em; }
+  nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  nav button { display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
+    background: none; border: 0; color: var(--muted); padding: 9px 11px; border-radius: 10px;
+    cursor: pointer; font-size: 13.5px; font-weight: 500; position: relative; transition: background .15s, color .15s; }
+  nav button svg { width: 18px; height: 18px; opacity: .85; }
+  nav button:hover { background: var(--surface-2); color: var(--text); }
+  nav button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  nav button.active::before { content:""; position:absolute; left:-14px; top:9px; bottom:9px; width:3px;
+    background: var(--accent); border-radius: 0 3px 3px 0; }
+  .side-foot { border-top: 1px solid var(--border); padding-top: 12px; display: flex; align-items: center; gap: 8px; }
+  .chip { flex: 1; font-size: 11.5px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border);
+    padding: 6px 10px; border-radius: 8px; display: flex; align-items: center; gap: 6px; overflow: hidden; }
+  .chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); flex: none; box-shadow: 0 0 0 3px var(--success-soft); }
+  .icon-btn { background: var(--surface-2); border: 1px solid var(--border); color: var(--muted); width: 34px; height: 34px;
+    border-radius: 9px; cursor: pointer; display: grid; place-items: center; transition: background .15s, color .15s, border-color .15s; }
+  .icon-btn:hover { color: var(--text); border-color: var(--border-strong); }
+  .icon-btn svg { width: 17px; height: 17px; }
+
+  main { padding: 30px 34px; max-width: 1020px; animation: fade .28s ease; }
+  @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  h1 { font-size: 23px; margin: 0 0 5px; letter-spacing: -.02em; font-weight: 700; }
+  h2 { font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--subtle); margin: 30px 0 12px; font-weight: 700; }
+  .sub { color: var(--muted); margin: 0 0 22px; }
+
+  /* Cards */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px,1fr)); gap: 14px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 17px 18px;
+    transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease; }
+  .card:hover { transform: translateY(-2px); border-color: var(--border-strong); box-shadow: var(--shadow); }
+  .card .k { color: var(--subtle); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; font-weight: 600; }
+  .card .v { font-size: 26px; font-weight: 750; margin-top: 8px; letter-spacing: -.02em; }
+
+  /* Tables */
+  .tablewrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 13.5px; }
+  th { color: var(--subtle); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; background: var(--surface-2); }
+  tbody tr { transition: background .12s; }
+  tbody tr:hover { background: var(--surface-2); }
   tr:last-child td { border-bottom: 0; }
-  .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
-  .pill.draft { background: #3a3320; color: var(--warn); }
-  .pill.active { background: #123a2c; color: var(--accent2); }
-  .pill.completed, .pill.terminated { background: #2a323c; color: var(--muted); }
-  .pill.ok { background:#123a2c; color: var(--accent2); }
-  .pill.bad { background:#3a1f24; color: var(--danger); }
-  form.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 12px; align-items: end; }
-  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
-  input, select { width: 100%; background: var(--panel2); border: 1px solid var(--line); color: var(--text);
-    padding: 9px 10px; border-radius: 8px; font-size: 14px; }
-  button.btn { background: var(--accent); color: #05192f; border: 0; padding: 10px 16px; border-radius: 8px;
-    font-weight: 600; cursor: pointer; font-size: 14px; }
-  button.btn.ghost { background: var(--panel2); color: var(--text); border: 1px solid var(--line); }
-  button.btn.sm { padding: 6px 11px; font-size: 13px; }
+  td.mono, .mono { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+
+  /* Pills */
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .pill::before { content:""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .9; }
+  .pill.draft { background: var(--warn-soft); color: var(--warn); }
+  .pill.active, .pill.ok { background: var(--success-soft); color: var(--success); }
+  .pill.completed, .pill.terminated { background: var(--surface-3); color: var(--muted); }
+  .pill.bad { background: var(--danger-soft); color: var(--danger); }
+
+  /* Forms */
+  form.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(158px,1fr)); gap: 14px; align-items: end; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 500; }
+  input, select { width: 100%; background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+    padding: 10px 11px; border-radius: var(--radius-sm); font-size: 14px; font-family: inherit; transition: border-color .14s, box-shadow .14s; }
+  input:focus, select:focus { outline: 0; border-color: var(--accent); box-shadow: var(--ring); }
+  select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2398a2b5' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 11px center; padding-right: 30px; }
+
+  /* Buttons */
+  button.btn { background: var(--accent); color: var(--accent-ink); border: 0; padding: 10px 17px; border-radius: var(--radius-sm);
+    font-weight: 600; cursor: pointer; font-size: 13.5px; font-family: inherit; transition: filter .14s, transform .08s, box-shadow .14s; }
+  button.btn:hover { filter: brightness(1.08); }
+  button.btn:active { transform: translateY(1px); }
+  button.btn:focus-visible { outline: 0; box-shadow: var(--ring); }
+  button.btn.ghost { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+  button.btn.ghost:hover { border-color: var(--border-strong); filter: none; background: var(--surface-3); }
+  button.btn.sm { padding: 7px 12px; font-size: 12.5px; }
+
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; margin-bottom: 18px; }
-  .toast { position: fixed; bottom: 22px; right: 22px; background: var(--panel2); border: 1px solid var(--line);
-    padding: 12px 16px; border-radius: 10px; box-shadow: 0 8px 30px rgba(0,0,0,.4); max-width: 340px; }
-  .toast.err { border-color: var(--danger); }
-  .toast.ok { border-color: var(--accent2); }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 18px; }
   .muted { color: var(--muted); }
-  .tokenbar { display:flex; gap:8px; align-items:center; margin-bottom: 16px; }
-  .tokenbar input { max-width: 220px; }
+  .empty { text-align: center; color: var(--muted); padding: 22px; }
+
   .perms { display: flex; flex-wrap: wrap; gap: 6px; }
-  .perm { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px; font-size: 11px; color: var(--muted); }
-  .checks { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: 4px 14px; margin: 8px 0; }
-  .checks label { display:flex; gap:7px; align-items:center; color: var(--text); font-size: 13px; margin: 0; }
-  .checks input { width: auto; }
-  .wizard { max-width: 520px; margin: 40px auto; }
-  .center { display:flex; min-height: 60vh; align-items:center; justify-content:center; }
-  @media (max-width: 720px){ .app{ grid-template-columns: 1fr; } aside{ display:none; } }
+  .perm { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .role-head { display: flex; align-items: center; gap: 9px; margin-bottom: 3px; }
+  .role-head .badge { font-size: 10.5px; color: var(--subtle); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
+  .checks { display: grid; grid-template-columns: repeat(auto-fit,minmax(184px,1fr)); gap: 6px 16px; margin: 10px 0; }
+  .checks label { display:flex; gap:8px; align-items:center; color: var(--text); font-size: 13px; margin: 0; cursor: pointer; }
+  .checks input { width: auto; accent-color: var(--accent); }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface); border: 1px solid var(--border);
+    padding: 13px 16px; border-radius: 12px; box-shadow: var(--shadow); max-width: 360px; display: flex; align-items: center; gap: 10px;
+    animation: toastin .22s cubic-bezier(.2,.8,.2,1); z-index: 50; }
+  .toast::before { content:""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+  .toast.err { border-color: var(--danger); } .toast.err::before { background: var(--danger); }
+  .toast.ok { border-color: var(--success); } .toast.ok::before { background: var(--success); }
+  @keyframes toastin { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+  /* Auth / wizard */
+  .center { display: flex; min-height: 100vh; align-items: center; justify-content: center; padding: 24px; }
+  .wizard { width: 100%; max-width: 460px; }
+  .wizard .brand { justify-content: center; padding-bottom: 22px; }
+  .wizard .mark { width: 34px; height: 34px; }
+
+  @media (max-width: 720px){ .app{ grid-template-columns: 1fr; } aside{ position: static; height: auto; flex-direction: column; } }
 </style>
 </head>
 <body>
@@ -74,7 +155,7 @@
 <script>
 "use strict";
 (function () {
-  var TOKEN_KEY = "usos.token";
+  var TOKEN_KEY = "usos.token", THEME_KEY = "usos.theme";
   var state = { token: localStorage.getItem(TOKEN_KEY) || "", me: null, config: null, options: null, cat: {}, view: "dashboard" };
 
   function h(tag, attrs, children) {
@@ -93,6 +174,41 @@
     return el;
   }
   function t(key) { return state.cat[key] || key; }
+  function svg(inner, attrs) {
+    var s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + inner + '</svg>';
+    return h("span", { html: s, style: "display:inline-flex" + (attrs || "") });
+  }
+  var ICONS = {
+    dashboard: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+    agreements: '<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/><path d="M10 13h5M10 17h5"/>',
+    ledger: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9.5 8h5M9.5 12h5"/>',
+    people: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M16 6a3 3 0 0 1 0 6"/><path d="M20.5 20a5.5 5.5 0 0 0-4-5.3"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>',
+    moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z"/>'
+  };
+  function mark(cls) {
+    return h("span", { class: cls || "mark", html:
+      '<svg width="100%" height="100%" viewBox="0 0 28 28" fill="none"><defs><linearGradient id="lm" x1="0" y1="28" x2="28" y2="0"><stop stop-color="#6d8bff"/><stop offset="1" stop-color="#8b6cff"/></linearGradient></defs>'
+      + '<rect x="3" y="16" width="5" height="9" rx="2" fill="url(#lm)"/><rect x="11.5" y="9" width="5" height="16" rx="2" fill="url(#lm)"/><rect x="20" y="3" width="5" height="22" rx="2" fill="url(#lm)"/></svg>' });
+  }
+
+  // ---- theme --------------------------------------------------------------
+  function initTheme() {
+    var saved = localStorage.getItem(THEME_KEY);
+    var theme = saved || (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+    document.documentElement.setAttribute("data-theme", theme);
+  }
+  function toggleTheme() {
+    var next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", next);
+    localStorage.setItem(THEME_KEY, next);
+    render();
+  }
+  function themeBtn() {
+    var dark = document.documentElement.getAttribute("data-theme") !== "light";
+    return h("button", { class: "icon-btn", title: "Theme", onclick: toggleTheme }, [svg(dark ? ICONS.sun : ICONS.moon)]);
+  }
 
   function api(path, opts) {
     opts = opts || {};
@@ -118,9 +234,9 @@
   function toast(msg, kind) {
     var el = h("div", { class: "toast " + (kind || "") }, [msg]);
     document.body.appendChild(el);
-    setTimeout(function () { el.remove(); }, 2600);
+    setTimeout(function () { el.style.opacity = "0"; el.style.transition = "opacity .3s"; }, 2400);
+    setTimeout(function () { el.remove(); }, 2750);
   }
-
   function can(p) { return state.me && state.me.permissions.indexOf(p) >= 0; }
 
   // ---- bootstrapping ------------------------------------------------------
@@ -142,17 +258,18 @@
 
   function renderTokenGate(err) {
     var input = h("input", { placeholder: "Bearer token", value: state.token });
-    var root = document.getElementById("root");
-    root.innerHTML = "";
+    input.addEventListener("keydown", function(e){ if (e.key === "Enter") go(); });
+    function go(){ state.token = input.value.trim(); localStorage.setItem(TOKEN_KEY, state.token); boot(); }
+    var root = document.getElementById("root"); root.innerHTML = "";
     root.appendChild(h("div", { class: "center" }, [
-      h("div", { class: "wizard panel" }, [
-        h("h1", {}, ["Unified Stay OS"]),
-        h("p", { class: "sub" }, ["Sign in with your access token."]),
-        err ? h("p", { class: "pill bad", style: "padding:6px 10px;" }, [err]) : null,
-        h("div", { style: "margin:14px 0;" }, [input]),
-        h("button", { class: "btn", onclick: function () {
-          state.token = input.value.trim(); localStorage.setItem(TOKEN_KEY, state.token); boot();
-        } }, ["Continue"])
+      h("div", { class: "wizard" }, [
+        h("div", { class: "brand" }, [ mark(), h("div",{class:"wm"},["Unified Stay OS", h("small",{},["Operator portal"])]) ]),
+        h("div", { class: "panel" }, [
+          h("p", { class: "sub", style:"margin-bottom:14px" }, ["Sign in with your access token."]),
+          err ? h("p", { class: "pill bad", style: "padding:6px 10px; margin-bottom:12px" }, [err]) : null,
+          field("Token", input),
+          h("button", { class: "btn", style:"margin-top:8px; width:100%", onclick: go }, ["Continue"])
+        ])
       ])
     ]));
   }
@@ -165,19 +282,19 @@
     var currency = selectFrom(opt.currencies.map(function (c){ return [c.code, c.code + " — " + c.name]; }), cfg.currency);
     var tz = h("input", { value: cfg.timezone });
     var biz = selectFrom(opt.businessStructures.map(function (b){ return [b, b.replace(/_/g," ")]; }), cfg.businessStructure);
-    var root = document.getElementById("root");
-    root.innerHTML = "";
+    var root = document.getElementById("root"); root.innerHTML = "";
     root.appendChild(h("div", { class: "center" }, [
-      h("div", { class: "wizard panel" }, [
-        h("h1", {}, [t("setup.title")]),
-        h("p", { class: "sub" }, ["Switch language and currency any time — it flows through the whole ledger."]),
-        field(t("setup.displayName"), name),
-        field(t("setup.language"), locale),
-        field(t("setup.currency"), currency),
-        field(t("setup.timezone"), tz),
-        field(t("setup.businessStructure"), biz),
-        h("div", { style:"margin-top:16px;" }, [
-          h("button", { class: "btn", onclick: function () {
+      h("div", { class: "wizard" }, [
+        h("div", { class: "brand" }, [ mark(), h("div",{class:"wm"},["Unified Stay OS", h("small",{},["Operator portal"])]) ]),
+        h("div", { class: "panel" }, [
+          h("h1", { style:"font-size:19px" }, [t("setup.title")]),
+          h("p", { class: "sub" }, ["Switch language and currency any time — it flows through the whole ledger."]),
+          field(t("setup.displayName"), name),
+          field(t("setup.language"), locale),
+          field(t("setup.currency"), currency),
+          field(t("setup.timezone"), tz),
+          field(t("setup.businessStructure"), biz),
+          h("button", { class: "btn", style:"margin-top:10px; width:100%", onclick: function () {
             api("/config", { method: "PUT", body: { displayName: name.value || "My Workspace", locale: locale.value, currency: currency.value, timezone: tz.value, businessStructure: biz.value } })
               .then(function (r) {
                 if (r.status !== 200) return toast(r.body.error || t("msg.denied"), "err");
@@ -192,26 +309,29 @@
   function selectFrom(pairs, sel) {
     return h("select", {}, pairs.map(function (p){ return h("option", { value: p[0], selected: p[0]===sel ? "selected" : null }, [p[1]]); }));
   }
-  function field(labelText, control) { return h("div", { style:"margin:12px 0;" }, [h("label", {}, [labelText]), control]); }
+  function field(labelText, control) { return h("div", { style:"margin:0 0 13px" }, [h("label", {}, [labelText]), control]); }
 
   // ---- shell --------------------------------------------------------------
   function render() {
     var items = [
-      ["dashboard", t("nav.dashboard")],
-      ["agreements", t("nav.agreements")],
-      ["ledger", t("nav.ledger")],
-      ["people", t("nav.people")],
-      ["settings", t("nav.settings")]
+      ["dashboard", t("nav.dashboard"), ICONS.dashboard],
+      ["agreements", t("nav.agreements"), ICONS.agreements],
+      ["ledger", t("nav.ledger"), ICONS.ledger],
+      ["people", t("nav.people"), ICONS.people],
+      ["settings", t("nav.settings"), ICONS.settings]
     ];
     var nav = h("nav", {}, items.map(function (it) {
-      return h("button", { class: state.view === it[0] ? "active" : "", onclick: function () { state.view = it[0]; render(); } }, [it[1]]);
+      return h("button", { class: state.view === it[0] ? "active" : "", onclick: function () { state.view = it[0]; render(); } }, [ svg(it[2]), it[1] ]);
     }));
-    var root = document.getElementById("root");
-    root.innerHTML = "";
+    var root = document.getElementById("root"); root.innerHTML = "";
     root.appendChild(h("div", { class: "app" }, [
       h("aside", {}, [
-        h("div", { class: "brand" }, [state.config.displayName, h("small", {}, [state.me.role + " · " + state.config.currency + " · " + state.config.locale])]),
-        nav
+        h("div", { class: "brand" }, [ mark(), h("div",{class:"wm"},[state.config.displayName, h("small",{},["Unified Stay OS"])]) ]),
+        nav,
+        h("div", { class: "side-foot" }, [
+          h("div", { class: "chip" }, [ h("span",{class:"dot"}), state.me.role + " · " + state.config.currency + " · " + state.config.locale ]),
+          themeBtn()
+        ])
       ]),
       h("main", { id: "main" }, [])
     ]));
@@ -251,7 +371,6 @@
     main.appendChild(h("p", { class:"sub" }, [t("agreements.subtitle")]));
     var formSlot = h("div", {}, []); main.appendChild(formSlot);
     var tableWrap = h("div", {}, []); main.appendChild(tableWrap);
-    // Book form uses real master data (units, guests, rate plans) — no free text.
     if (can("agreement.book")) api("/master-data").then(function(m){ formSlot.appendChild(bookForm(m.body || {})); });
     refreshAgreements(tableWrap);
   }
@@ -262,7 +381,6 @@
     var kind = selectFrom([["nightly",t("kind.nightly")],["monthly",t("kind.monthly")],["lease",t("kind.lease")]],"nightly");
     var start = h("input",{value:"2026-07-01",type:"date"}); var end = h("input",{value:"2026-07-10",type:"date"});
     var rate = h("input",{value:"20000",type:"number"});
-    // Optional: pick a rate plan to prefill tenure + rate from master data.
     var planSel = null;
     if (plans.length) {
       planSel = selectFrom([["", t("field.ratePlanNone")]].concat(plans.map(function(p){ return [p.id, p.code + " — " + p.name]; })), "");
@@ -271,14 +389,14 @@
         if (p) { kind.value = p.kind; rate.value = String(p.baseMinor); }
       });
     }
+    if (!units.length || !guests.length) {
+      return h("div",{class:"panel muted"},["Add at least one unit and guest in master data to book."]);
+    }
     var cells = [];
     if (planSel) cells.push(field(t("field.ratePlan"), planSel));
     cells.push(field(t("field.guest"), guest), field(t("field.unit"), unit), field(t("field.kind"), kind),
       field(t("field.start"), start), field(t("field.end"), end), field(t("field.rate")+" (minor)", rate),
       h("div",{},[h("button",{class:"btn",type:"submit"},[t("action.book")])]));
-    if (!units.length || !guests.length) {
-      return h("div",{class:"panel muted"},["Add at least one unit and guest in master data to book."]);
-    }
     return h("form", { class:"grid panel", onsubmit: function(e){ e.preventDefault();
       api("/agreements",{method:"POST",body:{id:"ag-"+Date.now(),guestId:guest.value,unitId:unit.value,kind:kind.value,start:start.value,end:end.value,rateCents:parseInt(rate.value,10)}})
         .then(function(r){ handleMut(r, "agreements"); });
@@ -294,9 +412,9 @@
           var to = a.kind==="nightly" ? "monthly" : "lease";
           actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/agreements/"+a.id+"/convert",{method:"POST",body:{to:to}}).then(function(x){handleMut(x,"agreements");}); }},[t("action.convert")+" → "+t("kind."+to)]));
         }
-        return h("tr",{},[ h("td",{},[a.id]), h("td",{},[t("kind."+a.kind)]), h("td",{},[h("span",{class:"pill "+a.status},[t("status."+a.status)])]), h("td",{},[fmt(a.rateCents)]), h("td",{},[actions]) ]);
+        return h("tr",{},[ h("td",{class:"mono"},[a.id]), h("td",{},[t("kind."+a.kind)]), h("td",{},[h("span",{class:"pill "+a.status},[t("status."+a.status)])]), h("td",{class:"mono"},[fmt(a.rateCents)]), h("td",{},[actions]) ]);
       });
-      wrap.appendChild(h("table",{},[ h("thead",{},[h("tr",{},[th(t("field.id")),th(t("field.kind")),th(t("field.status")),th(t("field.rate")),th("")])]), h("tbody",{},rows.length?rows:[h("tr",{},[h("td",{colspan:"5",class:"muted"},[t("dash.noAgreements")])])]) ]));
+      wrap.appendChild(tableEl([th(t("field.id")),th(t("field.kind")),th(t("field.status")),th(t("field.rate")),th("")], rows, 5, t("dash.noAgreements")));
     });
   }
 
@@ -305,32 +423,28 @@
     var wrap = h("div",{},[]); main.appendChild(wrap);
     api("/ledger/trial-balance").then(function(r){
       if (r.status!==200) return wrap.appendChild(h("p",{class:"muted"},[r.body.error||t("msg.denied")]));
-      var b = r.body; var rows = Object.keys(b.balances).sort().map(function(acc){ return h("tr",{},[h("td",{},[acc]),h("td",{},[fmt(b.balances[acc])])]); });
+      var b = r.body; var rows = Object.keys(b.balances).sort().map(function(acc){ return h("tr",{},[h("td",{class:"mono"},[acc]),h("td",{class:"mono"},[fmt(b.balances[acc])])]); });
       wrap.appendChild(h("p",{class:"sub"},[t("ledger.trialBalance")+": ", h("span",{class:"pill "+(b.balanced?"ok":"bad")},[b.balanced?t("ledger.balanced"):t("ledger.unbalanced")])]));
-      wrap.appendChild(h("table",{},[ h("thead",{},[h("tr",{},[th(t("field.account")),th(t("field.balance"))])]), h("tbody",{},rows.length?rows:[h("tr",{},[h("td",{colspan:"2",class:"muted"},[t("ledger.noPostings")])])]) ]));
+      wrap.appendChild(tableEl([th(t("field.account")),th(t("field.balance"))], rows, 2, t("ledger.noPostings")));
     });
   }
 
   function viewPeople(main) {
     main.appendChild(h("h1", {}, [t("nav.people")]));
     main.appendChild(h("p",{class:"sub"},[t("people.subtitle")]));
-    // Roles
     main.appendChild(h("h2",{},[t("people.roles")]));
     var rolesWrap = h("div",{},[]); main.appendChild(rolesWrap);
     api("/roles").then(function(r){
       rolesWrap.innerHTML="";
       (r.body.roles||[]).forEach(function(role){
         rolesWrap.appendChild(h("div",{class:"panel"},[
-          h("div",{class:"row",style:"justify-content:space-between"},[
-            h("div",{},[h("strong",{},[role.name])," ",h("span",{class:"muted"},["("+role.id+")"]), role.builtin?h("span",{class:"perm",style:"margin-left:8px"},[t("people.builtin")]):null]),
-          ]),
-          role.description?h("div",{class:"muted",style:"margin:4px 0 8px"},[role.description]):null,
+          h("div",{class:"role-head"},[h("strong",{},[role.name]), h("span",{class:"muted",style:"font-size:12.5px"},["("+role.id+")"]), role.builtin?h("span",{class:"badge"},[t("people.builtin")]):null]),
+          role.description?h("div",{class:"muted",style:"margin:0 0 10px; font-size:13px"},[role.description]):null,
           h("div",{class:"perms"}, role.permissions.map(function(p){ return h("span",{class:"perm"},[p]); }))
         ]));
       });
     });
     if (can("role.manage")) main.appendChild(customRoleForm(function(){ viewPeople(clear(main)); }));
-    // Users
     main.appendChild(h("h2",{},[t("people.users")]));
     var usersWrap = h("div",{},[]); main.appendChild(usersWrap);
     refreshUsers(usersWrap);
@@ -340,9 +454,9 @@
     var id=h("input",{placeholder:"housekeeping_lead"}); var name=h("input",{placeholder:"Housekeeping Lead"});
     var checks=h("div",{class:"checks"},[]);
     var box = h("div",{class:"panel"},[ h("strong",{},[t("people.newRole")]),
-      h("div",{class:"grid",style:"margin:10px 0"},[field(t("people.roleId"),id),field(t("people.name"),name)]),
+      h("div",{class:"grid",style:"margin:12px 0"},[field(t("people.roleId"),id),field(t("people.name"),name)]),
       h("label",{},[t("people.permissions")]), checks,
-      h("button",{class:"btn sm",onclick:function(){
+      h("button",{class:"btn sm",style:"margin-top:6px",onclick:function(){
         api("/roles",{method:"POST",body:{id:id.value,name:name.value,permissions:selectedPerms(checks)}}).then(function(r){
           if(r.status!==201) return toast(r.body.error||t("msg.denied"),"err"); toast(t("msg.saved"),"ok"); done();
         });
@@ -354,8 +468,8 @@
   function refreshUsers(wrap){
     api("/users").then(function(r){
       wrap.innerHTML="";
-      var rows=(r.body.users||[]).map(function(u){ return h("tr",{},[h("td",{},[u.displayName]),h("td",{},[u.code]),h("td",{},[h("span",{class:"pill active"},[u.roleId])]),h("td",{},[u.active?"active":"inactive"])]); });
-      wrap.appendChild(h("table",{},[ h("thead",{},[h("tr",{},[th(t("people.name")),th(t("people.code")),th(t("field.role")),th("")])]), h("tbody",{},rows.length?rows:[h("tr",{},[h("td",{colspan:"4",class:"muted"},[t("people.noUsers")])])]) ]));
+      var rows=(r.body.users||[]).map(function(u){ return h("tr",{},[h("td",{},[u.displayName]),h("td",{class:"mono"},[u.code]),h("td",{},[h("span",{class:"pill active"},[u.roleId])]),h("td",{class:"muted"},[u.active?"active":"inactive"])]); });
+      wrap.appendChild(tableEl([th(t("people.name")),th(t("people.code")),th(t("field.role")),th("")], rows, 4, t("people.noUsers")));
     });
   }
   function addUserForm(usersWrap){
@@ -383,7 +497,7 @@
     var biz=selectFrom(opt.businessStructures.map(function(b){return[b,b.replace(/_/g," ")];}),cfg.businessStructure);
     main.appendChild(h("div",{class:"panel"},[
       h("div",{class:"grid"},[field(t("setup.displayName"),name),field(t("setup.language"),locale),field(t("setup.currency"),currency),field(t("setup.timezone"),tz),field(t("setup.businessStructure"),biz)]),
-      h("div",{style:"margin-top:14px"},[h("button",{class:"btn",onclick:function(){
+      h("div",{style:"margin-top:16px"},[h("button",{class:"btn",onclick:function(){
         api("/config",{method:"PUT",body:{displayName:name.value,locale:locale.value,currency:currency.value,timezone:tz.value,businessStructure:biz.value}}).then(function(r){
           if(r.status!==200) return toast(r.body.error||t("msg.denied"),"err");
           state.config=r.body; api("/i18n/"+state.config.locale).then(function(i){ state.cat=i.body; toast(t("msg.saved"),"ok"); render(); });
@@ -394,6 +508,12 @@
 
   // ---- helpers ------------------------------------------------------------
   function th(x){ return h("th",{},[x]); }
+  function tableEl(heads, rows, cols, emptyText) {
+    return h("div", { class:"tablewrap" }, [ h("table",{},[
+      h("thead",{},[h("tr",{}, heads)]),
+      h("tbody",{}, rows.length ? rows : [h("tr",{},[h("td",{colspan:String(cols),class:"empty"},[emptyText])])])
+    ]) ]);
+  }
   function clear(el){ el.innerHTML=""; return el; }
   function handleMut(r, refreshView){
     if (r.status===202) return toast(t("msg.escalated"),"");
@@ -403,6 +523,7 @@
     if (state.view===refreshView) render();
   }
 
+  initTheme();
   boot();
 })();
 </script>

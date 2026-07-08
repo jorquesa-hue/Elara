@@ -59,6 +59,12 @@ await page.click('text=Finish setup');
 await page.waitForSelector('text=Dashboard');
 await shot('02-dashboard');
 
+// Light theme.
+await page.click('button[title="Theme"]');
+await page.waitForTimeout(250);
+await shot('02b-dashboard-light');
+await page.click('button[title="Theme"]'); // back to dark
+
 // Agreements: book a stay.
 await page.click('button:has-text("Agreements")');
 await page.waitForSelector('text=Book a stay');
