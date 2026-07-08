@@ -49,6 +49,19 @@ export interface ApiResponse {
   body: unknown;
 }
 
+/** High-water mark of what has already been flushed to durable storage for a
+ *  tenant, so the next flush sends only newly-appended rows (incremental sync). */
+interface FlushMark {
+  /** events already persisted, per agreement id */
+  events: Record<string, number>;
+  /** tenant-scoped journal lines already persisted */
+  journalLines: number;
+  /** action-log rows already persisted */
+  actionLog: number;
+  /** invoice ids whose lines are already persisted */
+  invoiceLines: string[];
+}
+
 class HttpError extends Error {
   constructor(
     readonly status: number,
@@ -123,6 +136,7 @@ export class App {
   private readonly agreements = new Map<string, { agreement: Agreement; tenantId: string }>();
   private readonly invoiceTenant = new Map<string, string>();
   private readonly depositTenant = new Map<string, string>();
+  private readonly flushMarks = new Map<string, FlushMark>();
   private readonly routes: Route[] = [];
 
   constructor(config: AppConfig = {}) {
@@ -558,8 +572,13 @@ export class App {
    * Fold this App's in-memory state for one tenant into a WorldData — the exact
    * payload the persist-world function projects and writes. FK parents first;
    * children filtered by ownership so the batch is self-consistent.
+   *
+   * With `since` (a FlushMark), only NEW rows of the append-only streams
+   * (agreement events, journal lines, action log) and lines of not-yet-flushed
+   * invoices are included; state/parent rows are always included and upserted by
+   * the projection. This makes a repeat flush an idempotent incremental sync.
    */
-  snapshotWorld(tenantId: string): WorldData {
+  snapshotWorld(tenantId: string, since?: FlushMark): WorldData {
     const cfg = this.config.get(tenantId);
     const mine = [...this.agreements.values()].filter((e) => e.tenantId === tenantId);
     const agreementIds = new Set(mine.map((e) => e.agreement.id));
@@ -575,14 +594,36 @@ export class App {
       })),
       agreements: mine.map((e) => ({
         id: e.agreement.id, tenantId, guestId: e.agreement.guestId, unitId: e.agreement.unitId,
-        events: e.agreement.history,
+        // Only events past the mark for this agreement (append-only — never resent).
+        events: e.agreement.history.slice(since?.events[e.agreement.id] ?? 0),
       })),
       holds: this.calendar.allHolds().filter((h) => agreementIds.has(h.holderId)),
-      journalLines: this.ledger.allLines.filter((l) => l.agreementId != null && agreementIds.has(l.agreementId)),
-      invoices,
+      // Tenant-scoped journal lines are append-ordered; slice the tail past the mark.
+      journalLines: this.ledger.allLines
+        .filter((l) => l.agreementId != null && agreementIds.has(l.agreementId))
+        .slice(since?.journalLines ?? 0),
+      // Invoice rows always sent (upserted for status); their lines only for
+      // invoices not yet flushed (invoice_line is append-only, no natural key).
+      invoices: invoices.map((inv) =>
+        since?.invoiceLines.includes(inv.id) ? { ...inv, lines: [] } : inv,
+      ),
       payments: this.payments.all().filter((p) => invoiceIds.has(p.invoiceId)),
       deposits: this.deposits.all().filter((d) => agreementIds.has(d.agreementId)),
-      actionLog: this.runtime.actionLog(),
+      actionLog: this.runtime.actionLog().slice(since?.actionLog ?? 0),
+    };
+  }
+
+  /** The high-water mark of what a tenant's full current state would flush. */
+  private highWaterMark(tenantId: string): FlushMark {
+    const mine = [...this.agreements.values()].filter((e) => e.tenantId === tenantId);
+    const agreementIds = new Set(mine.map((e) => e.agreement.id));
+    const events: Record<string, number> = {};
+    for (const e of mine) events[e.agreement.id] = e.agreement.history.length;
+    return {
+      events,
+      journalLines: this.ledger.allLines.filter((l) => l.agreementId != null && agreementIds.has(l.agreementId)).length,
+      actionLog: this.runtime.actionLog().length,
+      invoiceLines: this.billing.allInvoices().filter((i) => i.tenantId === tenantId).map((i) => i.id),
     };
   }
 
@@ -591,6 +632,11 @@ export class App {
    * (the persist-world Edge Function in production). Async because it does real
    * I/O — kept off the synchronous dispatch() router and exposed directly so the
    * HTTP layer can await it. Enforces the same auth + RBAC gates as dispatch.
+   *
+   * Incremental: only rows appended since the last successful flush are sent, so
+   * calling it repeatedly against the append-only tables is safe. The mark
+   * advances only on success (the function applies the batch in one transaction,
+   * so success means every row landed).
    */
   async persist(req: ApiRequest): Promise<ApiResponse> {
     const ctx = this.auth.authenticate(req.bearer);
@@ -602,10 +648,19 @@ export class App {
     if (!this.persistence) {
       return { status: 501, body: { error: 'no_persistence_backend', detail: 'App constructed without a persistence backend' } };
     }
-    const world = this.snapshotWorld(ctx.tenantId);
+    const mark = this.flushMarks.get(ctx.tenantId);
+    const world = this.snapshotWorld(ctx.tenantId, mark);
+    const nextMark = this.highWaterMark(ctx.tenantId);
+    const delta = {
+      events: world.agreements.reduce((n, a) => n + a.events.length, 0),
+      journalLines: world.journalLines.length,
+      actionLog: world.actionLog.length,
+      invoices: world.invoices.length,
+    };
     try {
       const result = await this.persistence.persist(world);
-      return { status: 200, body: result };
+      this.flushMarks.set(ctx.tenantId, nextMark); // advance only after success
+      return { status: 200, body: { ...result, delta, incremental: mark !== undefined } };
     } catch (e) {
       // EdgePersistError carries the function's HTTP status + body; surface it.
       const status = (e as { status?: number }).status ?? 502;

@@ -2,7 +2,7 @@
 // src/persistence/project.ts. It is a *verbatim* copy of the kernel's
 // projectWorld body so the write path inside Supabase produces exactly the
 // statements the kernel does. A Node drift-guard test
-// (tests/edge-projection.test.ts) asserts the two stay byte-identical, so the
+// (tests/tranche11-edge.test.ts) asserts the two stay byte-identical, so the
 // kernel remains the single source of truth (this file must never diverge by
 // hand). Self-contained: types are inlined so Deno needs no reach into ../../src.
 
@@ -121,16 +121,16 @@ export function projectWorld(w: WorldData): SqlStatement[] {
   const out: SqlStatement[] = [];
 
   for (const t of w.tenants) {
-    out.push(stmt('insert into tenant (id, name) values ($1, $2)', [t.id, t.name]));
+    out.push(stmt('insert into tenant (id, name) values ($1, $2) on conflict (id) do update set name = excluded.name', [t.id, t.name]));
   }
   for (const u of w.units) {
     out.push(
-      stmt('insert into unit (id, tenant_id, label) values ($1, $2, $3)', [u.id, u.tenantId, u.label]),
+      stmt('insert into unit (id, tenant_id, label) values ($1, $2, $3) on conflict (id) do update set label = excluded.label', [u.id, u.tenantId, u.label]),
     );
   }
   for (const g of w.guests) {
     out.push(
-      stmt('insert into guest (id, tenant_id, full_name) values ($1, $2, $3)', [
+      stmt('insert into guest (id, tenant_id, full_name) values ($1, $2, $3) on conflict (id) do update set full_name = excluded.full_name', [
         g.id,
         g.tenantId,
         g.fullName,
@@ -140,14 +140,14 @@ export function projectWorld(w: WorldData): SqlStatement[] {
   for (const r of w.ratePlans ?? []) {
     out.push(
       stmt(
-        'insert into rate_plan (id, tenant_id, name, kind, base_cents, currency, deposit_cents) values ($1, $2, $3, $4, $5, $6, $7)',
+        'insert into rate_plan (id, tenant_id, name, kind, base_cents, currency, deposit_cents) values ($1, $2, $3, $4, $5, $6, $7) on conflict (id) do update set name = excluded.name, kind = excluded.kind, base_cents = excluded.base_cents, currency = excluded.currency, deposit_cents = excluded.deposit_cents',
         [r.id, r.tenantId, r.name, r.kind, r.baseCents, r.currency, r.depositCents ?? null],
       ),
     );
   }
   for (const a of w.agreements) {
     out.push(
-      stmt('insert into agreement (id, tenant_id, guest_id, unit_id) values ($1, $2, $3, $4)', [
+      stmt('insert into agreement (id, tenant_id, guest_id, unit_id) values ($1, $2, $3, $4) on conflict (id) do nothing', [
         a.id,
         a.tenantId,
         a.guestId,
@@ -169,7 +169,7 @@ export function projectWorld(w: WorldData): SqlStatement[] {
   for (const h of w.holds) {
     out.push(
       stmt(
-        'insert into calendar_hold (id, unit_id, holder_id, start_date, end_date, status) values ($1, $2, $3, $4, $5, $6)',
+        'insert into calendar_hold (id, unit_id, holder_id, start_date, end_date, status) values ($1, $2, $3, $4, $5, $6) on conflict (id) do update set unit_id = excluded.unit_id, holder_id = excluded.holder_id, start_date = excluded.start_date, end_date = excluded.end_date, status = excluded.status',
         [h.id, h.unitId, h.holderId, h.start, h.end, h.status],
       ),
     );
@@ -186,7 +186,7 @@ export function projectWorld(w: WorldData): SqlStatement[] {
   for (const inv of w.invoices) {
     out.push(
       stmt(
-        'insert into invoice (id, agreement_id, tenant_id, issued_at, due_at, currency, total_cents, paid_cents, status) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+        'insert into invoice (id, agreement_id, tenant_id, issued_at, due_at, currency, total_cents, paid_cents, status) values ($1, $2, $3, $4, $5, $6, $7, $8, $9) on conflict (id) do update set due_at = excluded.due_at, total_cents = excluded.total_cents, paid_cents = excluded.paid_cents, status = excluded.status',
         [inv.id, inv.agreementId, inv.tenantId, inv.issuedAt, inv.dueAt, inv.currency, inv.totalCents, inv.paidCents, inv.status],
       ),
     );
@@ -202,7 +202,7 @@ export function projectWorld(w: WorldData): SqlStatement[] {
   for (const p of w.payments) {
     out.push(
       stmt(
-        'insert into payment (id, invoice_id, amount_cents, method, received_at, status) values ($1, $2, $3, $4, $5, $6)',
+        'insert into payment (id, invoice_id, amount_cents, method, received_at, status) values ($1, $2, $3, $4, $5, $6) on conflict (id) do update set status = excluded.status',
         [p.id, p.invoiceId, p.amountCents, p.method, p.receivedAt, p.status],
       ),
     );
@@ -210,7 +210,7 @@ export function projectWorld(w: WorldData): SqlStatement[] {
   for (const d of w.deposits) {
     out.push(
       stmt(
-        'insert into deposit (id, agreement_id, amount_cents, currency, status, held_at, refunded_at, refunded_cents, deductions) values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)',
+        'insert into deposit (id, agreement_id, amount_cents, currency, status, held_at, refunded_at, refunded_cents, deductions) values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb) on conflict (id) do update set status = excluded.status, refunded_at = excluded.refunded_at, refunded_cents = excluded.refunded_cents, deductions = excluded.deductions',
         [d.id, d.agreementId, d.amountCents, d.currency, d.status, d.heldAt, d.refundedAt ?? null, d.refundedCents ?? null, JSON.stringify(d.deductions ?? [])],
       ),
     );

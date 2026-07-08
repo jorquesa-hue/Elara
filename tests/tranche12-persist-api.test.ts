@@ -125,3 +125,70 @@ test('POST /persist surfaces the backend failure status (e.g. duplicate)', async
   assert.equal(res.status, 409);
   assert.equal((res.body as { error: string }).error, 'persist_failed');
 });
+
+test('the second flush is incremental: only newly-appended rows are sent', async () => {
+  const backend = new FakeBackend();
+  const app = makeApp(backend);
+  seedLifecycle(app);
+
+  const res1 = await app.persist({ method: 'POST', path: '/persist', bearer: bearer('tok-owner'), body: {} });
+  assert.equal((res1.body as { incremental: boolean }).incremental, false);
+  const full = backend.worlds[0]!;
+  assert.equal(full.agreements[0]!.events.length, 2);
+  assert.equal(full.invoices[0]!.lines.length, 1); // first flush carries the invoice line
+  const linesFirst = full.journalLines.length;
+  assert.ok(linesFirst > 0);
+
+  // New activity: refund the deposit (posts journal lines, flips deposit status).
+  app.dispatch({
+    method: 'POST', path: '/deposits/dep-ag-1/refund', bearer: bearer('tok-owner'),
+    body: { deductions: [{ reason: 'cleaning', amountCents: 8000 }] },
+  });
+
+  const res2 = await app.persist({ method: 'POST', path: '/persist', bearer: bearer('tok-owner'), body: {} });
+  assert.equal((res2.body as { incremental: boolean }).incremental, true);
+  const delta = backend.worlds[1]!;
+  assert.equal(delta.agreements[0]!.events.length, 0);      // no new events
+  assert.equal(delta.invoices[0]!.lines.length, 0);         // invoice already flushed → no re-sent lines
+  assert.ok(delta.journalLines.length > 0);                 // refund entry lines are new
+  assert.ok(delta.journalLines.length < linesFirst);        // only the tail, not the whole ledger
+  assert.equal(delta.deposits[0]!.status, 'refunded');      // state row upserted with new status
+
+  // The delta projects to statements with NO invoice_line insert and a deposit upsert.
+  const stmts = projectWorld(delta);
+  assert.ok(!stmts.some((s) => s.text.startsWith('insert into invoice_line')));
+  assert.ok(stmts.some((s) => s.text.startsWith('insert into deposit') && s.text.includes('on conflict (id) do update')));
+});
+
+test('a flush with no new activity sends an empty append-delta', async () => {
+  const backend = new FakeBackend();
+  const app = makeApp(backend);
+  seedLifecycle(app);
+  await app.persist({ method: 'POST', path: '/persist', bearer: bearer('tok-owner'), body: {} });
+
+  const res = await app.persist({ method: 'POST', path: '/persist', bearer: bearer('tok-owner'), body: {} });
+  const body = res.body as { delta: { events: number; journalLines: number; actionLog: number } };
+  assert.equal(body.delta.events, 0);
+  assert.equal(body.delta.journalLines, 0);
+  assert.equal(body.delta.actionLog, 0);
+  assert.ok(backend.worlds[1]!.invoices.every((i) => i.lines.length === 0)); // no line re-sends
+});
+
+test('a failed flush does not advance the mark: the retry re-sends everything', async () => {
+  let calls = 0;
+  const backend = new FakeBackend(() => {
+    if (calls++ === 0) throw new EdgePersistError(500, { error: 'transient' });
+    return { ok: true, statements: 0, trialBalance: 0, counts: {} };
+  });
+  const app = makeApp(backend);
+  seedLifecycle(app);
+
+  const fail = await app.persist({ method: 'POST', path: '/persist', bearer: bearer('tok-owner'), body: {} });
+  assert.equal(fail.status, 500);
+
+  const ok = await app.persist({ method: 'POST', path: '/persist', bearer: bearer('tok-owner'), body: {} });
+  assert.equal(ok.status, 200);
+  // Second (successful) attempt is still a FULL send — the mark never advanced.
+  assert.equal((ok.body as { incremental: boolean }).incremental, false);
+  assert.equal(backend.worlds[1]!.agreements[0]!.events.length, 2);
+});
