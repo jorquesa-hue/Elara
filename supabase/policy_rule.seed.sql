@@ -28,12 +28,16 @@ insert into policy_rule (id, action, effect, description, condition_note, ordina
   ('pol-workorder-close', 'work_order.close', 'allow', 'Completing or cancelling a work order is routine.', null, 19),
   ('pol-reservation-create', 'reservation.create', 'allow', 'Reserving a bookable common area or amenity is routine.', null, 20),
   ('pol-reservation-cancel', 'reservation.cancel', 'allow', 'Cancelling a reservation and freeing the slot is routine.', null, 21),
-  ('pol-collections-remind', 'collections.remind', 'allow', 'Payment reminders are routine.', null, 22),
-  ('pol-collections-latefee', 'collections.late_fee', 'allow', 'Contractual late fees are routine.', null, 23),
-  ('pol-collections-suspend', 'collections.suspend', 'escalate', 'Service suspension is guest-impacting: human confirms.', null, 24),
-  ('pol-collections-evict', 'collections.evict', 'escalate', 'Eviction is irreversible and regulated: propose to human, never execute.', null, 25),
-  ('pol-groupblock-create', 'group_block.create', 'allow', 'Agents may place group blocks.', null, 26),
-  ('pol-groupblock-pickup', 'group_block.pickup', 'allow', 'Agents may convert block holds into agreements.', null, 27);
+  ('pol-agreement-move', 'agreement.move', 'allow', 'Recording move-in / move-out is routine front-desk activity.', null, 22),
+  ('pol-inspection-create', 'inspection.create', 'allow', 'Scheduling a move-in/out inspection (vistoria) is routine.', null, 23),
+  ('pol-inspection-complete', 'inspection.complete', 'allow', 'Recording an inspection checklist and damage estimate is routine.', null, 24),
+  ('pol-inspection-cancel', 'inspection.cancel', 'allow', 'Cancelling a scheduled inspection is routine.', null, 25),
+  ('pol-collections-remind', 'collections.remind', 'allow', 'Payment reminders are routine.', null, 26),
+  ('pol-collections-latefee', 'collections.late_fee', 'allow', 'Contractual late fees are routine.', null, 27),
+  ('pol-collections-suspend', 'collections.suspend', 'escalate', 'Service suspension is guest-impacting: human confirms.', null, 28),
+  ('pol-collections-evict', 'collections.evict', 'escalate', 'Eviction is irreversible and regulated: propose to human, never execute.', null, 29),
+  ('pol-groupblock-create', 'group_block.create', 'allow', 'Agents may place group blocks.', null, 30),
+  ('pol-groupblock-pickup', 'group_block.pickup', 'allow', 'Agents may convert block holds into agreements.', null, 31);
 
 delete from collection_stage;
 insert into collection_stage (id, min_days_overdue, action, policy_action, description, fee_bps, ordinal) values

@@ -15,6 +15,8 @@ export type AgreementEventType =
   | 'amended'
   | 'rent_adjusted'
   | 'transferred'
+  | 'moved_in'
+  | 'moved_out'
   | 'completed'
   | 'terminated';
 
@@ -261,6 +263,22 @@ export class Agreement {
       ...(opts.rateCents !== undefined ? { rateCents: opts.rateCents } : {}),
       ...(opts.reason ? { reason: opts.reason } : {}),
     });
+  }
+
+  /** Record move-in (#19), optionally keyed to a move-in inspection (vistoria). */
+  moveIn(at: string, opts: { inspectionId?: string; note?: string } = {}): void {
+    if (this.status !== 'active') {
+      throw new AgreementError(`cannot move in on agreement in status ${this.status}`);
+    }
+    this.append('moved_in', at, { ...(opts.inspectionId ? { inspectionId: opts.inspectionId } : {}), ...(opts.note ? { note: opts.note } : {}) });
+  }
+
+  /** Record move-out (#18), optionally keyed to a move-out inspection. */
+  moveOut(at: string, opts: { inspectionId?: string; note?: string } = {}): void {
+    if (this.status !== 'active') {
+      throw new AgreementError(`cannot move out on agreement in status ${this.status}`);
+    }
+    this.append('moved_out', at, { ...(opts.inspectionId ? { inspectionId: opts.inspectionId } : {}), ...(opts.note ? { note: opts.note } : {}) });
   }
 
   complete(at: string): void {

@@ -15,6 +15,7 @@ export * from './entity.ts';
 export * from './amenity.ts';
 export * from './maintenance.ts';
 export * from './reservations.ts';
+export * from './inspection.ts';
 export * from './nfe-ingest.ts';
 export * from './collections.ts';
 export * from './multigaap.ts';

@@ -28,6 +28,7 @@ import { SpaceTree, type SpaceType } from '../space.ts';
 import { EntityCatalog, type EntityRole } from '../entity.ts';
 import { WorkOrders, type WorkOrderPriority } from '../maintenance.ts';
 import { Reservations } from '../reservations.ts';
+import { Inspections, type InspectionKind, type InspectionItem } from '../inspection.ts';
 import { meterSubscription, type SubscriptionPlan } from '../subscription.ts';
 import {
   ConfigStore,
@@ -138,6 +139,7 @@ export class App {
   readonly entities = new EntityCatalog();
   readonly maintenance = new WorkOrders();
   readonly reservations = new Reservations(this.calendar);
+  readonly inspections = new Inspections();
 
   readonly config: ConfigStore;
   readonly roles: RoleRegistry;
@@ -272,6 +274,17 @@ export class App {
       throw new HttpError(404, 'reservation not found');
     }
     if (r.tenantId !== ctx.tenantId) throw new HttpError(404, 'reservation not found');
+    return r;
+  }
+
+  private ownedInspection(ctx: AuthContext, id: string) {
+    let r;
+    try {
+      r = this.inspections.get(id);
+    } catch {
+      throw new HttpError(404, 'inspection not found');
+    }
+    if (r.tenantId !== ctx.tenantId) throw new HttpError(404, 'inspection not found');
     return r;
   }
 
@@ -818,6 +831,61 @@ export class App {
       const at = this.optString(body, 'at') ?? this.now();
       const reason = this.requireString(body, 'reason');
       return this.gated('work_order.close', ctx, { id }, () => this.maintenance.cancel(id, at, reason), (wo) => ({ status: 200, body: wo }));
+    });
+
+    // --- move-in / move-out + inspections (#18/#19) -----------------------
+    this.add('POST', '/agreements/:id/move-in', 'agreement.move', (ctx, p, body) => {
+      const a = this.ownedAgreement(ctx, p['id']!);
+      const at = this.optString(body, 'at') ?? this.now();
+      return this.gated('agreement.move', ctx, { id: a.id }, () => { a.moveIn(at, { inspectionId: this.optString(body, 'inspectionId'), note: this.optString(body, 'note') }); return a; }, (ag) => ({ status: 200, body: this.agreementSummary(ag) }));
+    });
+
+    this.add('POST', '/agreements/:id/move-out', 'agreement.move', (ctx, p, body) => {
+      const a = this.ownedAgreement(ctx, p['id']!);
+      const at = this.optString(body, 'at') ?? this.now();
+      return this.gated('agreement.move', ctx, { id: a.id }, () => { a.moveOut(at, { inspectionId: this.optString(body, 'inspectionId'), note: this.optString(body, 'note') }); return a; }, (ag) => ({ status: 200, body: this.agreementSummary(ag) }));
+    });
+
+    this.add('POST', '/inspections', 'inspection.manage', (ctx, _p, body) => {
+      const id = this.requireString(body, 'id');
+      const agreementId = this.requireString(body, 'agreementId');
+      this.ownedAgreement(ctx, agreementId);
+      const spaceId = this.optString(body, 'spaceId');
+      if (spaceId && !this.spaces.get(ctx.tenantId, spaceId)) throw new HttpError(404, 'space not found');
+      const kind = this.requireString(body, 'kind') as InspectionKind;
+      return this.gated(
+        'inspection.create',
+        ctx,
+        { agreementId },
+        () => this.inspections.schedule({ id, tenantId: ctx.tenantId, agreementId, kind, spaceId, scheduledAt: this.optString(body, 'scheduledAt'), createdAt: this.now() }),
+        (r) => ({ status: 201, body: r }),
+      );
+    });
+
+    this.add('POST', '/inspections/:id/complete', 'inspection.manage', (ctx, p, body) => {
+      const id = this.ownedInspection(ctx, p['id']!).id;
+      const at = this.optString(body, 'at') ?? this.now();
+      const rawItems = Array.isArray(body['items']) ? (body['items'] as unknown[]) : [];
+      const items: InspectionItem[] = rawItems.map((it) => {
+        const o = it as Record<string, unknown>;
+        return { area: String(o['area'] ?? ''), condition: String(o['condition'] ?? 'ok') as InspectionItem['condition'], note: this.optString(o, 'note') };
+      });
+      const damageCents = typeof body['damageCents'] === 'number' ? (body['damageCents'] as number) : undefined;
+      return this.gated('inspection.complete', ctx, { id }, () => this.inspections.complete(id, at, { items, damageCents, conductedByPartyId: this.optString(body, 'conductedByPartyId') }), (r) => ({ status: 200, body: r }));
+    });
+
+    this.add('POST', '/inspections/:id/cancel', 'inspection.manage', (ctx, p, body) => {
+      const id = this.ownedInspection(ctx, p['id']!).id;
+      const at = this.optString(body, 'at') ?? this.now();
+      return this.gated('inspection.cancel', ctx, { id }, () => this.inspections.cancel(id, at), (r) => ({ status: 200, body: r }));
+    });
+
+    this.add('GET', '/inspections', 'inspection.read', (ctx) => ({ status: 200, body: { inspections: this.inspections.list(ctx.tenantId) } }));
+    this.add('GET', '/inspections/:id', 'inspection.read', (ctx, p) => ({ status: 200, body: this.ownedInspection(ctx, p['id']!) }));
+    this.add('GET', '/agreements/:id/inspections', 'inspection.read', (ctx, p) => {
+      const agId = p['id']!;
+      this.ownedAgreement(ctx, agId);
+      return { status: 200, body: { inspections: this.inspections.forAgreement(agId) } };
     });
 
     // --- common-area reservations (#6) ------------------------------------

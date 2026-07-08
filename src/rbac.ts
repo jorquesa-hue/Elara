@@ -48,6 +48,9 @@ export const PERMISSIONS = [
   'maintenance.manage',
   'reservation.read',
   'reservation.manage',
+  'agreement.move',
+  'inspection.read',
+  'inspection.manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -67,7 +70,8 @@ export interface RoleDef {
 // Operational bundle shared by front-of-house/agent roles.
 const OPS: Permission[] = [
   'agreement.read', 'agreement.book', 'agreement.activate', 'agreement.convert',
-  'agreement.adjust', 'agreement.transfer',
+  'agreement.adjust', 'agreement.transfer', 'agreement.move',
+  'inspection.read', 'inspection.manage',
   'invoice.read', 'invoice.issue', 'payment.record',
   'deposit.read', 'deposit.hold',
   'party.read', 'party.manage', 'space.read', 'entity.read', 'bill.read', 'bill.issue',

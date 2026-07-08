@@ -489,7 +489,16 @@
     if (can("deposit.refund")){ var f=refundDepositForm(bill); if(f) forms.push(f); }
     if (can("agreement.adjust")) forms.push(adjustRentForm(id));
     if (can("agreement.transfer")) forms.push(transferForm(id));
+    if (can("agreement.move")) forms.push(moveForm(id));
     return forms.length ? h("div",{class:"detail-actions"}, forms) : null;
+  }
+  function moveForm(id){
+    return mini("Move in / out",[
+      h("div",{class:"row"},[
+        h("button",{class:"btn ghost sm",onclick:function(){ api("/agreements/"+id+"/move-in",{method:"POST",body:{}}).then(actThen); }},["Move in"]),
+        h("button",{class:"btn ghost sm",onclick:function(){ api("/agreements/"+id+"/move-out",{method:"POST",body:{}}).then(actThen); }},["Move out"])
+      ])
+    ]);
   }
   function adjustRentForm(id){
     var basis=selectFrom([["percent","percent %"],["fixed","fixed (minor)"]],"percent");
