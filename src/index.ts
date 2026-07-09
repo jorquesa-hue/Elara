@@ -23,6 +23,7 @@ export * from './revenue.ts';
 export * from './procurement.ts';
 export * from './roommate.ts';
 export * from './onboarding.ts';
+export * from './crm.ts';
 export * from './nfe-ingest.ts';
 export * from './collections.ts';
 export * from './multigaap.ts';

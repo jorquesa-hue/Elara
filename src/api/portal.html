@@ -213,6 +213,7 @@
     purchasing: '<path d="M6 6h15l-1.5 9h-12z"/><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M6 6L5 3H3"/>',
     roommates: '<circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><path d="M2.5 20a5.5 5.5 0 0 1 11 0"/><path d="M13 20a5.5 5.5 0 0 1 8.5-4.6"/>',
     importer: '<path d="M12 3v11"/><path d="M8 10l4 4 4-4"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/>',
+    crm: '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>',
     moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z"/>'
   };
@@ -357,6 +358,7 @@
     if (can("reconciliation.read")) items.splice(items.length - 1, 0, ["reconcile", "Reconcile", ICONS.reconcile]);
     if (can("integration.read")) items.splice(items.length - 1, 0, ["integrations", "Integrations", ICONS.integrations]);
     if (can("revenue.read")) items.splice(1, 0, ["pricing", "Pricing", ICONS.pricing]);
+    if (can("crm.read")) items.splice(1, 0, ["crm", "Pipeline", ICONS.crm]);
     if (can("roommate.read")) items.splice(items.length - 1, 0, ["roommates", "Roommates", ICONS.roommates]);
     if (can("masterdata.manage")) items.splice(items.length - 1, 0, ["import", "Import", ICONS.importer]);
     var nav = h("nav", {}, items.map(function (it) {
@@ -375,7 +377,7 @@
       h("main", { id: "main" }, [])
     ]));
     var main = document.getElementById("main");
-    ({ dashboard: viewDashboard, agreements: viewAgreements, pricing: viewPricing, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
+    ({ dashboard: viewDashboard, agreements: viewAgreements, pricing: viewPricing, crm: viewCrm, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
   }
 
   // ---- views --------------------------------------------------------------
@@ -405,6 +407,18 @@
         card(kpis, "ADR", fmt(k.adrCents));
         card(kpis, "RevPAR", fmt(k.revparCents));
         card(kpis, "Revenue", fmt(k.revenueCents));
+      });
+    }
+    if (can("crm.read")) {
+      main.appendChild(h("h2", {}, ["Pipeline"]));
+      var pk = h("div", { class: "cards" }, []); main.appendChild(pk);
+      api("/crm/summary").then(function (r) {
+        if (r.status !== 200) return;
+        var k = r.body;
+        card(pk, "Open leads", String(k.openCount));
+        card(pk, "Pipeline value", fmt(k.pipelineValueCents));
+        card(pk, "Conversion", k.conversionPct + "%");
+        card(pk, "Won", fmt(k.wonValueCents));
       });
     }
   }
@@ -951,6 +965,48 @@
     }},[ field("Rule",rule), field("Check-in",checkIn), field("Nights",nights), field("Occupancy %",occ), h("div",{},[h("button",{class:"btn",type:"submit"},["Quote"])]) ]);
     return h("div",{},[form, h("div",{class:"panel"},[out])]);
   }
+
+  var STAGES = ["new","toured","applied","approved","signed"];
+  function viewCrm(main){
+    main.appendChild(h("h1",{},["Pipeline"]));
+    main.appendChild(h("p",{class:"sub"},["The leasing sales funnel — new → toured → applied → approved → signed, or lost. Signing here records the sales outcome; the lease itself is executed on the agreement."]));
+    var kpiWrap=h("div",{class:"cards"},[]); main.appendChild(kpiWrap);
+    var formSlot=h("div",{},[]); main.appendChild(formSlot);
+    var wrap=h("div",{},[]); main.appendChild(wrap);
+    if(can("crm.manage")) formSlot.appendChild(leadForm(wrap, kpiWrap));
+    refreshLeads(wrap, kpiWrap);
+  }
+  function leadForm(wrap, kpiWrap){
+    var name=h("input",{placeholder:"Ana Souza"}); var source=h("input",{placeholder:"website"}); var est=h("input",{value:"300000",type:"number"});
+    return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
+      if(!name.value) return toast("Enter a name","err");
+      api("/leads",{method:"POST",body:{id:"ld-"+Date.now(), name:name.value, source:source.value||undefined, estValueCents:Number(est.value)}}).then(function(r){
+        if(r.status===201){ toast(t("msg.saved"),"ok"); refreshLeads(wrap, kpiWrap); } else toast(r.body.error||"err","err");
+      });
+    }},[ field("Name",name), field("Source",source), field("Est. value (cents)",est), h("div",{},[h("button",{class:"btn",type:"submit"},["Add lead"])]) ]);
+  }
+  function refreshLeads(wrap, kpiWrap){
+    if(kpiWrap) api("/crm/summary").then(function(r){
+      kpiWrap.innerHTML="";
+      if(r.status!==200) return; var k=r.body;
+      card(kpiWrap,"Open",String(k.openCount)); card(kpiWrap,"Pipeline",fmt(k.pipelineValueCents)); card(kpiWrap,"Conversion",k.conversionPct+"%"); card(kpiWrap,"Won",String(k.wonCount));
+    });
+    api("/leads").then(function(r){
+      wrap.innerHTML="";
+      var rows=((r.body||{}).leads||[]).map(function(l){
+        var actions=h("div",{class:"row"},[]);
+        if(can("crm.manage") && l.stage!=="signed" && l.stage!=="lost"){
+          var idx=STAGES.indexOf(l.stage); var next=STAGES[idx+1];
+          if(next) actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/leads/"+l.id+"/advance",{method:"POST",body:{stage:next}}).then(function(x){handleLead(x,wrap,kpiWrap);}); }},["→ "+next]));
+          actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/leads/"+l.id+"/lose",{method:"POST",body:{reason:"lost"}}).then(function(x){handleLead(x,wrap,kpiWrap);}); }},["Lose"]));
+        }
+        var pillCls = l.stage==="signed"?"active":(l.stage==="lost"?"terminated":"draft");
+        return h("tr",{},[ h("td",{},[l.name]), h("td",{class:"muted"},[l.source||"—"]), h("td",{},[fmt(l.estValueCents)]), h("td",{},[h("span",{class:"pill "+pillCls},[l.stage])]), h("td",{},[actions]) ]);
+      });
+      wrap.appendChild(tableEl([th("Lead"),th("Source"),th("Est. value"),th("Stage"),th("")], rows, 5, "No leads yet."));
+    });
+  }
+  function handleLead(x, wrap, kpiWrap){ if(x.status===200){ toast(t("msg.saved"),"ok"); refreshLeads(wrap, kpiWrap);} else toast(x.body.error||"err","err"); }
 
   function viewPurchasing(main){
     main.appendChild(h("h1",{},["Purchasing"]));

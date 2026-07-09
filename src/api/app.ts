@@ -36,6 +36,7 @@ import { RevenueManagement, revenueKpis, type PricingRule, type QuoteContext, ty
 import { Procurement, computeBudgetStatus, type PurchaseOrderLine, type Budget } from '../procurement.ts';
 import { RoommateMatcher, type RoommatePreferences, type Chronotype } from '../roommate.ts';
 import { parseCsv, suggestMapping, planImport, type ImportTarget, type ColumnMapping } from '../onboarding.ts';
+import { Crm, type LeadStage } from '../crm.ts';
 import { meterSubscription, type SubscriptionPlan } from '../subscription.ts';
 import {
   ConfigStore,
@@ -154,6 +155,7 @@ export class App {
   readonly revenue = new RevenueManagement();
   readonly procurement = new Procurement();
   readonly roommates = new RoommateMatcher();
+  readonly crm = new Crm();
 
   readonly config: ConfigStore;
   readonly roles: RoleRegistry;
@@ -363,6 +365,17 @@ export class App {
       }
     }
     return { target, headers, rows, mapping };
+  }
+
+  private ownedLead(ctx: AuthContext, id: string) {
+    let l;
+    try {
+      l = this.crm.get(id);
+    } catch {
+      throw new HttpError(404, 'lead not found');
+    }
+    if (l.tenantId !== ctx.tenantId) throw new HttpError(404, 'lead not found');
+    return l;
   }
 
   private ownedProspect(ctx: AuthContext, id: string) {
@@ -1390,6 +1403,41 @@ export class App {
       }
       return { status: 201, body: { target, created, skipped, errorRows: plan.errorCount, total: plan.rows.length } };
     });
+
+    // --- CRM & pipeline (#20) ---------------------------------------------
+    // The leasing sales funnel + its KPIs. Config/reporting → RBAC-only; the
+    // real lease execution still runs through the agreement + lease.execute path.
+    this.add('POST', '/leads', 'crm.manage', (ctx, _p, body) => {
+      const partyId = this.optString(body, 'partyId');
+      if (partyId && !this.parties.getParty(ctx.tenantId, partyId)) throw new HttpError(404, 'party not found');
+      const lead = this.crm.createLead({
+        id: this.requireString(body, 'id'),
+        tenantId: ctx.tenantId,
+        name: this.requireString(body, 'name'),
+        source: this.optString(body, 'source'),
+        estValueCents: typeof body['estValueCents'] === 'number' ? (body['estValueCents'] as number) : 0,
+        partyId,
+        createdAt: this.now(),
+      });
+      return { status: 201, body: lead };
+    });
+
+    this.add('POST', '/leads/:id/advance', 'crm.manage', (ctx, p, body) => {
+      this.ownedLead(ctx, p['id']!);
+      const to = this.requireString(body, 'stage') as LeadStage;
+      return { status: 200, body: this.crm.advance(p['id']!, to, this.now()) };
+    });
+
+    this.add('POST', '/leads/:id/lose', 'crm.manage', (ctx, p, body) => {
+      this.ownedLead(ctx, p['id']!);
+      return { status: 200, body: this.crm.lose(p['id']!, this.optString(body, 'reason') ?? 'unspecified', this.now()) };
+    });
+
+    this.add('GET', '/leads', 'crm.read', (ctx) => ({ status: 200, body: { leads: this.crm.list(ctx.tenantId) } }));
+
+    this.add('GET', '/leads/:id', 'crm.read', (ctx, p) => ({ status: 200, body: this.ownedLead(ctx, p['id']!) }));
+
+    this.add('GET', '/crm/summary', 'crm.read', (ctx) => ({ status: 200, body: this.crm.kpis(ctx.tenantId) }));
 
     // --- ledger (tenant-scoped) -------------------------------------------
     this.add('GET', '/ledger/trial-balance', 'ledger.read', (ctx) => ({ status: 200, body: this.trialBalance(ctx.tenantId) }));

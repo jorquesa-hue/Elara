@@ -177,6 +177,16 @@ const quoteBtn = page.locator('button:has-text("Quote")').first();
 if (await quoteBtn.count()) { await quoteBtn.click(); await page.waitForTimeout(400); }
 await shot('15-pricing');
 
+// CRM: leasing pipeline — add a lead, advance it a stage.
+await page.click('button:has-text("Pipeline")');
+await page.waitForSelector('text=The leasing sales funnel');
+await page.fill('input[placeholder="Ana Souza"]', 'Ana Souza');
+await page.click('button:has-text("Add lead")');
+await page.waitForTimeout(450);
+const advanceBtn = page.locator('button:has-text("→ toured")').first();
+if (await advanceBtn.count()) { await advanceBtn.click(); await page.waitForTimeout(400); }
+await shot('19-pipeline');
+
 // Student housing: roommate matching — add prospects, rank matches, group rooms.
 await page.click('button:has-text("Roommates")');
 await page.waitForSelector('text=Match student/shared-housing prospects');
