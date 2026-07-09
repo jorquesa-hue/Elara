@@ -30,6 +30,7 @@ import { WorkOrders, type WorkOrderPriority } from '../maintenance.ts';
 import { Reservations } from '../reservations.ts';
 import { Inspections, type InspectionKind, type InspectionItem } from '../inspection.ts';
 import { Communications, type ThreadKind, type MessageDirection } from '../communications.ts';
+import { Reconciliation, suggestMatches, type MatchCandidate, type MatchTargetType } from '../reconciliation.ts';
 import { meterSubscription, type SubscriptionPlan } from '../subscription.ts';
 import {
   ConfigStore,
@@ -142,6 +143,7 @@ export class App {
   readonly reservations = new Reservations(this.calendar);
   readonly inspections = new Inspections();
   readonly comms = new Communications();
+  readonly reconciliation = new Reconciliation();
 
   readonly config: ConfigStore;
   readonly roles: RoleRegistry;
@@ -299,6 +301,35 @@ export class App {
     }
     if (t.tenantId !== ctx.tenantId) throw new HttpError(404, 'thread not found');
     return t;
+  }
+
+  private ownedBankTxn(ctx: AuthContext, id: string) {
+    let t;
+    try {
+      t = this.reconciliation.get(id);
+    } catch {
+      throw new HttpError(404, 'bank transaction not found');
+    }
+    if (t.tenantId !== ctx.tenantId) throw new HttpError(404, 'bank transaction not found');
+    return t;
+  }
+
+  /** Ledger money movements a bank line can match against: payments in (+) and
+   *  AP payments out (−), scoped to the tenant and signed to the bank convention. */
+  private matchCandidates(tenantId: string): MatchCandidate[] {
+    const out: MatchCandidate[] = [];
+    for (const pm of this.payments.all()) {
+      if (this.invoiceTenant.get(pm.invoiceId) === tenantId) {
+        out.push({ type: 'payment', id: pm.id, amountCents: pm.amountCents, at: pm.receivedAt });
+      }
+    }
+    for (const ap of this.payables.allPayments()) {
+      const bill = this.payables.allBills().find((b) => b.id === ap.billId);
+      if (bill && bill.tenantId === tenantId) {
+        out.push({ type: 'ap_payment', id: ap.id, amountCents: -ap.amountCents, at: ap.paidAt });
+      }
+    }
+    return out;
   }
 
   private registerRoutes(): void {
@@ -988,6 +1019,51 @@ export class App {
     }));
 
     this.add('GET', '/reservations/:id', 'reservation.read', (ctx, p) => ({ status: 200, body: this.ownedReservation(ctx, p['id']!) }));
+
+    // --- bank reconciliation (#5) -----------------------------------------
+    this.add('POST', '/bank-transactions', 'reconciliation.manage', (ctx, _p, body) => {
+      const id = this.requireString(body, 'id');
+      const amountCents = this.requireInt(body, 'amountCents');
+      const postedAt = this.requireString(body, 'postedAt');
+      const description = this.optString(body, 'description') ?? '';
+      return this.gated(
+        'recon.import',
+        ctx,
+        { id },
+        () => this.reconciliation.import({ id, tenantId: ctx.tenantId, amountCents, postedAt, description, reference: this.optString(body, 'reference'), bankAccountId: this.optString(body, 'bankAccountId') }),
+        (txn) => ({ status: 201, body: txn }),
+      );
+    });
+
+    this.add('POST', '/bank-transactions/:id/match', 'reconciliation.manage', (ctx, p, body) => {
+      const txn = this.ownedBankTxn(ctx, p['id']!);
+      const targetType = this.requireString(body, 'targetType') as MatchTargetType;
+      const targetId = this.requireString(body, 'targetId');
+      const ok = this.matchCandidates(ctx.tenantId).some((c) => c.type === targetType && c.id === targetId);
+      if (!ok) throw new HttpError(404, 'no matching payment/ap_payment for this tenant');
+      return this.gated('recon.match', ctx, { id: txn.id }, () => this.reconciliation.match(txn.id, targetType, targetId, this.now()), (t) => ({ status: 200, body: t }));
+    });
+
+    this.add('POST', '/bank-transactions/:id/unmatch', 'reconciliation.manage', (ctx, p, _b) => {
+      const txn = this.ownedBankTxn(ctx, p['id']!);
+      return this.gated('recon.match', ctx, { id: txn.id }, () => this.reconciliation.unmatch(txn.id), (t) => ({ status: 200, body: t }));
+    });
+
+    this.add('POST', '/bank-transactions/:id/ignore', 'reconciliation.manage', (ctx, p, _b) => {
+      const txn = this.ownedBankTxn(ctx, p['id']!);
+      return this.gated('recon.match', ctx, { id: txn.id }, () => this.reconciliation.ignore(txn.id), (t) => ({ status: 200, body: t }));
+    });
+
+    this.add('GET', '/bank-transactions', 'reconciliation.read', (ctx) => ({ status: 200, body: { transactions: this.reconciliation.list(ctx.tenantId) } }));
+
+    // The txn plus its ranked auto-match suggestions (the AI seam, deterministic).
+    this.add('GET', '/bank-transactions/:id', 'reconciliation.read', (ctx, p) => {
+      const txn = this.ownedBankTxn(ctx, p['id']!);
+      const suggestions = txn.status === 'unmatched' ? suggestMatches(txn, this.matchCandidates(ctx.tenantId)) : [];
+      return { status: 200, body: { transaction: txn, suggestions } };
+    });
+
+    this.add('GET', '/reconciliation/summary', 'reconciliation.read', (ctx) => ({ status: 200, body: this.reconciliation.summary(ctx.tenantId) }));
 
     // --- ledger (tenant-scoped) -------------------------------------------
     this.add('GET', '/ledger/trial-balance', 'ledger.read', (ctx) => ({ status: 200, body: this.trialBalance(ctx.tenantId) }));

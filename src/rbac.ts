@@ -54,6 +54,8 @@ export const PERMISSIONS = [
   'comms.read',
   'comms.send',
   'comms.manage',
+  'reconciliation.read',
+  'reconciliation.manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -90,7 +92,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'manager',
     name: 'Manager',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run', 'space.manage', 'entity.manage', 'bill.pay'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage'],
     builtin: true,
     description: 'Runs the property: all operations, approvals, staff and master data.',
   },
@@ -98,7 +100,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'staff',
     name: 'Staff',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'masterdata.manage', 'space.manage', 'entity.manage', 'bill.pay'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'masterdata.manage', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage'],
     builtin: true,
     description: 'Approvals and day-to-day management.',
   },
@@ -106,7 +108,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'accountant',
     name: 'Accountant',
-    permissions: ['invoice.read', 'payment.record', 'deposit.read', 'deposit.refund', 'ledger.read', 'subscription.read', 'masterdata.read', 'config.read', 'party.read', 'entity.read', 'entity.manage', 'bill.read', 'bill.issue', 'bill.pay'],
+    permissions: ['invoice.read', 'payment.record', 'deposit.read', 'deposit.refund', 'ledger.read', 'subscription.read', 'masterdata.read', 'config.read', 'party.read', 'entity.read', 'entity.manage', 'bill.read', 'bill.issue', 'bill.pay', 'reconciliation.read', 'reconciliation.manage'],
     builtin: true,
     description: 'Finance: ledger, payments, deposit refunds, accounts payable, reporting.',
   },
