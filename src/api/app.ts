@@ -29,6 +29,7 @@ import { EntityCatalog, type EntityRole } from '../entity.ts';
 import { WorkOrders, type WorkOrderPriority } from '../maintenance.ts';
 import { Reservations } from '../reservations.ts';
 import { Inspections, type InspectionKind, type InspectionItem } from '../inspection.ts';
+import { Communications, type ThreadKind, type MessageDirection } from '../communications.ts';
 import { meterSubscription, type SubscriptionPlan } from '../subscription.ts';
 import {
   ConfigStore,
@@ -140,6 +141,7 @@ export class App {
   readonly maintenance = new WorkOrders();
   readonly reservations = new Reservations(this.calendar);
   readonly inspections = new Inspections();
+  readonly comms = new Communications();
 
   readonly config: ConfigStore;
   readonly roles: RoleRegistry;
@@ -286,6 +288,17 @@ export class App {
     }
     if (r.tenantId !== ctx.tenantId) throw new HttpError(404, 'inspection not found');
     return r;
+  }
+
+  private ownedThread(ctx: AuthContext, id: string) {
+    let t;
+    try {
+      t = this.comms.getThread(id);
+    } catch {
+      throw new HttpError(404, 'thread not found');
+    }
+    if (t.tenantId !== ctx.tenantId) throw new HttpError(404, 'thread not found');
+    return t;
   }
 
   private registerRoutes(): void {
@@ -831,6 +844,54 @@ export class App {
       const at = this.optString(body, 'at') ?? this.now();
       const reason = this.requireString(body, 'reason');
       return this.gated('work_order.close', ctx, { id }, () => this.maintenance.cancel(id, at, reason), (wo) => ({ status: 200, body: wo }));
+    });
+
+    // --- communications (#4) ----------------------------------------------
+    this.add('POST', '/threads', 'comms.manage', (ctx, _p, body) => {
+      const id = this.requireString(body, 'id');
+      const agreementId = this.optString(body, 'agreementId');
+      if (agreementId) this.ownedAgreement(ctx, agreementId);
+      const partyId = this.optString(body, 'partyId');
+      if (partyId && !this.parties.getParty(ctx.tenantId, partyId)) throw new HttpError(404, 'party not found');
+      return this.gated(
+        'comms.open',
+        ctx,
+        { agreementId },
+        () => this.comms.openThread({ id, tenantId: ctx.tenantId, subject: this.requireString(body, 'subject'), kind: this.requireString(body, 'kind') as ThreadKind, agreementId, partyId, createdAt: this.now() }),
+        (th) => ({ status: 201, body: th }),
+      );
+    });
+
+    this.add('POST', '/threads/:id/messages', 'comms.send', (ctx, p, body) => {
+      const thread = this.ownedThread(ctx, p['id']!);
+      const id = this.requireString(body, 'id');
+      const body_ = this.requireString(body, 'body');
+      // An agent sending on the resident's behalf is recorded as authorType=agent.
+      const authorType = (this.optString(body, 'authorType') as 'party' | 'user' | 'agent' | undefined) ?? (ctx.role === 'agent' ? 'agent' : 'user');
+      const direction = this.optString(body, 'direction') as MessageDirection | undefined;
+      return this.gated(
+        'comms.send',
+        ctx,
+        { threadId: thread.id, kind: thread.kind },
+        () => this.comms.post({ id, threadId: thread.id, at: this.now(), authorType, authorId: ctx.actor, body: body_, direction }),
+        (m) => ({ status: 201, body: m }),
+      );
+    });
+
+    this.add('POST', '/threads/:id/resolve', 'comms.manage', (ctx, p, _b) => {
+      const thread = this.ownedThread(ctx, p['id']!);
+      return this.gated('comms.resolve', ctx, { threadId: thread.id }, () => this.comms.resolve(thread.id, this.now()), (th) => ({ status: 200, body: th }));
+    });
+
+    this.add('POST', '/threads/:id/reopen', 'comms.manage', (ctx, p, _b) => {
+      const thread = this.ownedThread(ctx, p['id']!);
+      return this.gated('comms.resolve', ctx, { threadId: thread.id }, () => this.comms.reopen(thread.id), (th) => ({ status: 200, body: th }));
+    });
+
+    this.add('GET', '/threads', 'comms.read', (ctx) => ({ status: 200, body: { threads: this.comms.listThreads(ctx.tenantId) } }));
+    this.add('GET', '/threads/:id', 'comms.read', (ctx, p) => {
+      const thread = this.ownedThread(ctx, p['id']!);
+      return { status: 200, body: { thread, messages: this.comms.messagesFor(thread.id) } };
     });
 
     // --- move-in / move-out + inspections (#18/#19) -----------------------

@@ -48,12 +48,15 @@ insert into policy_rule (id, action, effect, description, condition_note, ordina
   ('pol-inspection-create', 'inspection.create', 'allow', 'Scheduling a move-in/out inspection (vistoria) is routine.', null, 23),
   ('pol-inspection-complete', 'inspection.complete', 'allow', 'Recording an inspection checklist and damage estimate is routine.', null, 24),
   ('pol-inspection-cancel', 'inspection.cancel', 'allow', 'Cancelling a scheduled inspection is routine.', null, 25),
-  ('pol-collections-remind', 'collections.remind', 'allow', 'Payment reminders are routine.', null, 26),
-  ('pol-collections-latefee', 'collections.late_fee', 'allow', 'Contractual late fees are routine.', null, 27),
-  ('pol-collections-suspend', 'collections.suspend', 'escalate', 'Service suspension is guest-impacting: human confirms.', null, 28),
-  ('pol-collections-evict', 'collections.evict', 'escalate', 'Eviction is irreversible and regulated: propose to human, never execute.', null, 29),
-  ('pol-groupblock-create', 'group_block.create', 'allow', 'Agents may place group blocks.', null, 30),
-  ('pol-groupblock-pickup', 'group_block.pickup', 'allow', 'Agents may convert block holds into agreements.', null, 31);
+  ('pol-comms-open', 'comms.open', 'allow', 'Opening a resident/finance/internal conversation is routine.', null, 26),
+  ('pol-comms-send', 'comms.send', 'allow', 'Sending a message (incl. agent-drafted) is routine day-to-day communication.', null, 27),
+  ('pol-comms-resolve', 'comms.resolve', 'allow', 'Resolving/reopening a conversation is routine.', null, 28),
+  ('pol-collections-remind', 'collections.remind', 'allow', 'Payment reminders are routine.', null, 29),
+  ('pol-collections-latefee', 'collections.late_fee', 'allow', 'Contractual late fees are routine.', null, 30),
+  ('pol-collections-suspend', 'collections.suspend', 'escalate', 'Service suspension is guest-impacting: human confirms.', null, 31),
+  ('pol-collections-evict', 'collections.evict', 'escalate', 'Eviction is irreversible and regulated: propose to human, never execute.', null, 32),
+  ('pol-groupblock-create', 'group_block.create', 'allow', 'Agents may place group blocks.', null, 33),
+  ('pol-groupblock-pickup', 'group_block.pickup', 'allow', 'Agents may convert block holds into agreements.', null, 34);
 
 delete from collection_stage;
 insert into collection_stage (id, min_days_overdue, action, policy_action, description, fee_bps, ordinal) values
