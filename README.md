@@ -8,7 +8,7 @@ dependencies in the kernel.
 
 ```bash
 npm i -D tsx typescript @types/node
-npx tsx --test tests/*.test.ts   # 142/142
+npx tsx --test tests/*.test.ts   # 154/154
 npx tsx demo.ts                  # end-to-end lifecycle acceptance (in-process)
 npx tsx demo-live.ts             # same lifecycle persisted via the adapter
                                  #   DATABASE_URL set → commit; unset → emit SQL
@@ -24,7 +24,7 @@ front desk, AI agent, read-only).
 ## What's here
 
 - `src/` — the domain kernel (see `docs/unified-stay-os-spec.md` §3 for the map).
-- `tests/` — twenty tranches, 142 tests.
+- `tests/` — twenty-one tranches, 154 tests.
 - `schema.sql` + `supabase/migrations/` — Postgres persistence; double-inventory
   and journal-balance are enforced at the DB, not just in app code.
 - `supabase/functions/persist-world/` — the runtime write arm, a Deno Edge

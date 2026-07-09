@@ -32,6 +32,7 @@ import { Inspections, type InspectionKind, type InspectionItem } from '../inspec
 import { Communications, type ThreadKind, type MessageDirection } from '../communications.ts';
 import { Reconciliation, suggestMatches, type MatchCandidate, type MatchTargetType } from '../reconciliation.ts';
 import { Integrations, ConnectorOutbox, type IntegrationKind, type IntegrationStatus } from '../integrations.ts';
+import { RevenueManagement, revenueKpis, type PricingRule, type QuoteContext, type OccupancyTier, type LeadTimeTier, type LosDiscount, type SeasonWindow } from '../revenue.ts';
 import { meterSubscription, type SubscriptionPlan } from '../subscription.ts';
 import {
   ConfigStore,
@@ -147,6 +148,7 @@ export class App {
   readonly reconciliation = new Reconciliation();
   readonly integrations = new Integrations();
   readonly connectorOutbox = new ConnectorOutbox();
+  readonly revenue = new RevenueManagement();
 
   readonly config: ConfigStore;
   readonly roles: RoleRegistry;
@@ -1148,6 +1150,52 @@ export class App {
 
     this.add('GET', '/reconciliation/summary', 'reconciliation.read', (ctx) => ({ status: 200, body: this.reconciliation.summary(ctx.tenantId) }));
 
+    // --- revenue management & dynamic pricing (#1) ------------------------
+    // Pricing rules and quotes are configuration + pure computation, so they
+    // are RBAC-gated only (like config/master-data) — no PolicyEnvelope action.
+    this.add('POST', '/pricing-rules', 'revenue.manage', (ctx, _p, body) => {
+      const rule: PricingRule = {
+        id: this.requireString(body, 'id'),
+        tenantId: ctx.tenantId,
+        name: this.requireString(body, 'name'),
+        baseCents: this.requireInt(body, 'baseCents'),
+        ...(typeof body['minCents'] === 'number' ? { minCents: body['minCents'] as number } : {}),
+        ...(typeof body['maxCents'] === 'number' ? { maxCents: body['maxCents'] as number } : {}),
+        ...(typeof body['weekendFactorBps'] === 'number' ? { weekendFactorBps: body['weekendFactorBps'] as number } : {}),
+        ...(Array.isArray(body['occupancyTiers']) ? { occupancyTiers: body['occupancyTiers'] as OccupancyTier[] } : {}),
+        ...(Array.isArray(body['leadTimeTiers']) ? { leadTimeTiers: body['leadTimeTiers'] as LeadTimeTier[] } : {}),
+        ...(Array.isArray(body['losDiscounts']) ? { losDiscounts: body['losDiscounts'] as LosDiscount[] } : {}),
+        ...(Array.isArray(body['seasons']) ? { seasons: body['seasons'] as SeasonWindow[] } : {}),
+      };
+      return { status: 201, body: this.revenue.setRule(rule) };
+    });
+
+    this.add('GET', '/pricing-rules', 'revenue.read', (ctx) => ({ status: 200, body: { rules: this.revenue.listRules(ctx.tenantId) } }));
+
+    this.add('GET', '/pricing-rules/:id', 'revenue.read', (ctx, p) => {
+      const rule = this.revenue.getRule(ctx.tenantId, p['id']!);
+      if (!rule) throw new HttpError(404, 'pricing rule not found');
+      return { status: 200, body: rule };
+    });
+
+    // Quote a rule for a stay. The occupancy/demand signal is supplied by the
+    // caller (the AI/demand seam) — the arithmetic is deterministic.
+    this.add('POST', '/pricing/quote', 'revenue.read', (ctx, _p, body) => {
+      const ruleId = this.requireString(body, 'ruleId');
+      const rule = this.revenue.getRule(ctx.tenantId, ruleId);
+      if (!rule) throw new HttpError(404, 'pricing rule not found');
+      const qc: QuoteContext = {
+        checkIn: this.requireString(body, 'checkIn'),
+        nights: this.requireInt(body, 'nights'),
+        ...(typeof body['occupancyPct'] === 'number' ? { occupancyPct: body['occupancyPct'] as number } : {}),
+        ...(typeof body['asOf'] === 'string' ? { asOf: body['asOf'] as string } : {}),
+      };
+      return { status: 200, body: this.revenue.quote(ctx.tenantId, ruleId, qc) };
+    });
+
+    // Headline KPIs — occupancy / ADR / RevPAR — folded from tenant state.
+    this.add('GET', '/revenue/summary', 'revenue.read', (ctx) => ({ status: 200, body: this.revenueSummary(ctx.tenantId) }));
+
     // --- ledger (tenant-scoped) -------------------------------------------
     this.add('GET', '/ledger/trial-balance', 'ledger.read', (ctx) => ({ status: 200, body: this.trialBalance(ctx.tenantId) }));
 
@@ -1207,6 +1255,37 @@ export class App {
     }
     const net = Object.values(balances).reduce((s, v) => s + v, 0);
     return { balances, net, balanced: net === 0 };
+  }
+
+  /**
+   * Fold tenant state into the headline hospitality KPIs (occupancy / ADR /
+   * RevPAR). Sold room-nights = the summed nights of every agreement's period;
+   * available room-nights = unit count × the span of the booked window; revenue
+   * = collected invoice cash for the tenant. Deterministic and read-only.
+   */
+  private revenueSummary(tenantId: string) {
+    const mine = [...this.agreements.values()].filter((e) => e.tenantId === tenantId).map((e) => e.agreement);
+    const nights = (a: Agreement) => Math.max(0, Math.round((Date.parse(a.period.end) - Date.parse(a.period.start)) / 86_400_000));
+    const soldRoomNights = mine.reduce((s, a) => s + nights(a), 0);
+    let windowNights = 0;
+    if (mine.length) {
+      const start = Math.min(...mine.map((a) => Date.parse(a.period.start)));
+      const end = Math.max(...mine.map((a) => Date.parse(a.period.end)));
+      windowNights = Math.max(0, Math.round((end - start) / 86_400_000));
+    }
+    const unitCount = this.masterData.units.list(tenantId).length;
+    const availableRoomNights = unitCount * windowNights;
+    const revenueCents = this.billing.allInvoices()
+      .filter((i) => i.tenantId === tenantId)
+      .reduce((s, i) => s + i.paidCents, 0);
+    return {
+      ...revenueKpis({ availableRoomNights, soldRoomNights, revenueCents }),
+      availableRoomNights,
+      soldRoomNights,
+      revenueCents,
+      unitCount,
+      windowNights,
+    };
   }
 
   // --- durable persistence (the persist-world Edge Function) ----------------

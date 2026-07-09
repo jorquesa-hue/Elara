@@ -59,6 +59,8 @@ export const PERMISSIONS = [
   'integration.read',
   'integration.manage',
   'connector.dispatch',
+  'revenue.read',
+  'revenue.manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -85,7 +87,7 @@ const OPS: Permission[] = [
   'party.read', 'party.manage', 'space.read', 'entity.read', 'bill.read', 'bill.issue',
   'maintenance.read', 'maintenance.manage', 'reservation.read', 'reservation.manage',
   'comms.read', 'comms.send', 'comms.manage',
-  'integration.read', 'connector.dispatch',
+  'integration.read', 'connector.dispatch', 'revenue.read',
   'ledger.read', 'exception.read', 'subscription.read',
   'masterdata.read', 'config.read',
 ];
@@ -96,7 +98,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'manager',
     name: 'Manager',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage'],
     builtin: true,
     description: 'Runs the property: all operations, approvals, staff and master data.',
   },
@@ -104,7 +106,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'staff',
     name: 'Staff',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'masterdata.manage', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'masterdata.manage', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage'],
     builtin: true,
     description: 'Approvals and day-to-day management.',
   },

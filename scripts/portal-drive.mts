@@ -155,6 +155,16 @@ const sendBtn = page.locator('button:has-text("Send")').first();
 if (await sendBtn.count()) { await sendBtn.click(); await page.waitForTimeout(400); }
 await shot('14-integrations');
 
+// Revenue: create a pricing rule and run a quote.
+await page.click('button:has-text("Pricing")');
+await page.waitForSelector('text=Dynamic pricing rules');
+await page.fill('input[placeholder="Studio"]', 'Studio');
+await page.click('button:has-text("Create rule")');
+await page.waitForTimeout(450);
+const quoteBtn = page.locator('button:has-text("Quote")').first();
+if (await quoteBtn.count()) { await quoteBtn.click(); await page.waitForTimeout(400); }
+await shot('15-pricing');
+
 // Ledger.
 await page.click('button:has-text("Ledger")');
 await page.waitForTimeout(300);
