@@ -1145,6 +1145,7 @@ export class App {
     const invoiceIds = new Set(invoices.map((i) => i.id));
     const bills = this.payables.allBills().filter((b) => b.tenantId === tenantId);
     const billIds = new Set(bills.map((b) => b.id));
+    const threadIds = new Set(this.comms.listThreads(tenantId).map((th) => th.id));
 
     return {
       tenants: [{ id: tenantId, name: cfg.displayName ?? tenantId }],
@@ -1188,6 +1189,14 @@ export class App {
       bills: bills.map((b) => (since?.bills.includes(b.id) ? { ...b, lines: [] } : b)),
       apPayments: this.payables.allPayments().filter((p) => billIds.has(p.billId)),
       workOrders: this.maintenance.list(tenantId),
+      reservations: this.reservations.list(tenantId).map((r) => ({
+        id: r.id, tenantId, spaceId: r.spaceId, holderPartyId: r.holderPartyId, start: r.start, end: r.end,
+        priceCents: r.priceCents, currency: r.currency, status: r.status, reservedAt: r.reservedAt, cancelledAt: r.cancelledAt, note: r.note,
+      })),
+      inspections: this.inspections.list(tenantId),
+      messageThreads: this.comms.listThreads(tenantId),
+      messages: this.comms.allMessages().filter((m) => threadIds.has(m.threadId)),
+      bankTransactions: this.reconciliation.list(tenantId),
     };
   }
 

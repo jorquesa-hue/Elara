@@ -121,6 +121,29 @@ await page.click('button:has-text("Reservations")');
 await page.waitForSelector('text=Book common areas and amenities');
 await shot('11-reservations');
 
+// Phase 2 wire-up: Inbox — open a thread and send a message.
+await page.click('button:has-text("Inbox")');
+await page.waitForSelector('text=Resident, finance, and internal conversations');
+await page.fill('input[placeholder="Subject"]', 'Front desk question');
+await page.click('button:has-text("Open thread")');
+await page.waitForTimeout(400);
+const threadLink = page.locator('button:has-text("Front desk question")').first();
+if (await threadLink.count()) {
+  await threadLink.click();
+  await page.waitForSelector('text=Conversation');
+  await page.fill('input[placeholder="Type a reply…"]', 'How can I help?');
+  await page.click('button:has-text("Send")');
+  await page.waitForTimeout(400);
+}
+await shot('12-inbox');
+
+// Phase 2 wire-up: Reconcile — import a bank line.
+await page.click('button:has-text("Reconcile")');
+await page.waitForSelector('text=Import bank lines and match them');
+await page.click('button:has-text("Import line")');
+await page.waitForTimeout(400);
+await shot('13-reconcile');
+
 // Ledger.
 await page.click('button:has-text("Ledger")');
 await page.waitForTimeout(300);

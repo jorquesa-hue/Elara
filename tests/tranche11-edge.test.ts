@@ -84,6 +84,11 @@ function buildWorld(): WorldData {
     bills: [{ id: 'b-1', tenantId: 't-1', payeeId: 'p-1', issuedAt: '2026-07-01T00:00:00Z', dueAt: '2026-07-15T00:00:00Z', currency: 'BRL', totalCents: 5000, paidCents: 0, status: 'open', lines: [{ description: 'x', account: 'expenses:supplier', amountCents: 5000 }] }],
     apPayments: [{ id: 'ap-1', billId: 'b-1', amountCents: 5000, method: 'pix', paidAt: '2026-07-10T00:00:00Z', status: 'settled' }],
     workOrders: [{ id: 'wo-1', tenantId: 't-1', spaceId: 's-u', title: 'Leak', priority: 'high', status: 'completed', assignedVendorPartyId: 'p-1', billId: 'b-1', openedAt: '2026-07-01T00:00:00Z', closedAt: '2026-07-03T00:00:00Z', resolution: 'fixed' }],
+    reservations: [{ id: 'rv-1', tenantId: 't-1', spaceId: 's-u', holderPartyId: 'p-1', start: '2026-08-01T18:00:00Z', end: '2026-08-01T22:00:00Z', priceCents: 5000, currency: 'BRL', status: 'reserved', reservedAt: '2026-07-01T00:00:00Z' }],
+    inspections: [{ id: 'insp-1', tenantId: 't-1', agreementId: 'ag-1', spaceId: 's-u', kind: 'move_out', status: 'completed', conductedAt: '2026-07-02T00:00:00Z', items: [{ area: 'kitchen', condition: 'damaged', note: 'burn' }], damageCents: 8000, createdAt: '2026-07-01T00:00:00Z' }],
+    messageThreads: [{ id: 'th-1', tenantId: 't-1', subject: 'AC', kind: 'resident', status: 'open', agreementId: 'ag-1', partyId: 'p-1', createdAt: '2026-07-01T00:00:00Z' }],
+    messages: [{ id: 'm-1', threadId: 'th-1', at: '2026-07-01T00:00:00Z', authorType: 'party', authorId: 'p-1', body: 'broken', direction: 'inbound' }],
+    bankTransactions: [{ id: 'bt-1', tenantId: 't-1', postedAt: '2026-07-02T00:00:00Z', amountCents: 80000, description: 'PIX', status: 'matched', matchedType: 'payment', matchedId: 'pay-1', matchedAt: '2026-07-02T00:00:00Z' }],
   };
 }
 

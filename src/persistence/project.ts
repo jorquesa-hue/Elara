@@ -79,6 +79,26 @@ export interface WorldData {
     assignedVendorPartyId?: string; billId?: string; openedAt: string; assignedAt?: string;
     startedAt?: string; closedAt?: string; resolution?: string; cancelReason?: string;
   }>;
+  reservations?: Array<{
+    id: string; tenantId: string; spaceId: string; holderPartyId: string; start: string; end: string;
+    priceCents?: number; currency?: string; status: string; reservedAt: string; cancelledAt?: string; note?: string;
+  }>;
+  inspections?: Array<{
+    id: string; tenantId: string; agreementId: string; spaceId?: string; kind: string; status: string;
+    scheduledAt?: string; conductedAt?: string; conductedByPartyId?: string;
+    items: ReadonlyArray<{ area: string; condition: string; note?: string }>; damageCents?: number; createdAt: string;
+  }>;
+  messageThreads?: Array<{
+    id: string; tenantId: string; subject: string; kind: string; status: string;
+    agreementId?: string; partyId?: string; createdAt: string; resolvedAt?: string;
+  }>;
+  messages?: Array<{
+    id: string; threadId: string; at: string; authorType: string; authorId: string; body: string; direction: string;
+  }>;
+  bankTransactions?: Array<{
+    id: string; tenantId: string; bankAccountId?: string; postedAt: string; amountCents: number;
+    description: string; reference?: string; status: string; matchedType?: string; matchedId?: string; matchedAt?: string;
+  }>;
 }
 
 function stmt(text: string, values: unknown[]): SqlStatement {
@@ -266,6 +286,46 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       stmt(
         'insert into work_order (id, tenant_id, space_id, title, description, category, priority, status, requested_by_party_id, assigned_vendor_party_id, bill_id, opened_at, assigned_at, started_at, closed_at, resolution, cancel_reason) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) on conflict (id) do update set space_id = excluded.space_id, title = excluded.title, description = excluded.description, category = excluded.category, priority = excluded.priority, status = excluded.status, requested_by_party_id = excluded.requested_by_party_id, assigned_vendor_party_id = excluded.assigned_vendor_party_id, bill_id = excluded.bill_id, assigned_at = excluded.assigned_at, started_at = excluded.started_at, closed_at = excluded.closed_at, resolution = excluded.resolution, cancel_reason = excluded.cancel_reason',
         [wo.id, wo.tenantId, wo.spaceId ?? null, wo.title, wo.description ?? null, wo.category ?? null, wo.priority, wo.status, wo.requestedByPartyId ?? null, wo.assignedVendorPartyId ?? null, wo.billId ?? null, wo.openedAt, wo.assignedAt ?? null, wo.startedAt ?? null, wo.closedAt ?? null, wo.resolution ?? null, wo.cancelReason ?? null],
+      ),
+    );
+  }
+  for (const r of w.reservations ?? []) {
+    out.push(
+      stmt(
+        'insert into reservation (id, tenant_id, space_id, holder_party_id, start_at, end_at, price_cents, currency, status, reserved_at, cancelled_at, note) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) on conflict (id) do update set status = excluded.status, cancelled_at = excluded.cancelled_at, price_cents = excluded.price_cents, note = excluded.note',
+        [r.id, r.tenantId, r.spaceId, r.holderPartyId, r.start, r.end, r.priceCents ?? null, r.currency ?? null, r.status, r.reservedAt, r.cancelledAt ?? null, r.note ?? null],
+      ),
+    );
+  }
+  for (const insp of w.inspections ?? []) {
+    out.push(
+      stmt(
+        'insert into inspection (id, tenant_id, agreement_id, space_id, kind, status, scheduled_at, conducted_at, conducted_by_party_id, items, damage_cents, created_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12) on conflict (id) do update set status = excluded.status, conducted_at = excluded.conducted_at, conducted_by_party_id = excluded.conducted_by_party_id, items = excluded.items, damage_cents = excluded.damage_cents',
+        [insp.id, insp.tenantId, insp.agreementId, insp.spaceId ?? null, insp.kind, insp.status, insp.scheduledAt ?? null, insp.conductedAt ?? null, insp.conductedByPartyId ?? null, JSON.stringify(insp.items ?? []), insp.damageCents ?? null, insp.createdAt],
+      ),
+    );
+  }
+  for (const th of w.messageThreads ?? []) {
+    out.push(
+      stmt(
+        'insert into message_thread (id, tenant_id, subject, kind, status, agreement_id, party_id, created_at, resolved_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9) on conflict (id) do update set subject = excluded.subject, status = excluded.status, resolved_at = excluded.resolved_at',
+        [th.id, th.tenantId, th.subject, th.kind, th.status, th.agreementId ?? null, th.partyId ?? null, th.createdAt, th.resolvedAt ?? null],
+      ),
+    );
+  }
+  for (const m of w.messages ?? []) {
+    out.push(
+      stmt(
+        'insert into message (id, thread_id, at, author_type, author_id, body, direction) values ($1, $2, $3, $4, $5, $6, $7) on conflict (id) do nothing',
+        [m.id, m.threadId, m.at, m.authorType, m.authorId, m.body, m.direction],
+      ),
+    );
+  }
+  for (const bt of w.bankTransactions ?? []) {
+    out.push(
+      stmt(
+        'insert into bank_transaction (id, tenant_id, bank_account_id, posted_at, amount_cents, description, reference, status, matched_type, matched_id, matched_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) on conflict (id) do update set status = excluded.status, matched_type = excluded.matched_type, matched_id = excluded.matched_id, matched_at = excluded.matched_at',
+        [bt.id, bt.tenantId, bt.bankAccountId ?? null, bt.postedAt, bt.amountCents, bt.description, bt.reference ?? null, bt.status, bt.matchedType ?? null, bt.matchedId ?? null, bt.matchedAt ?? null],
       ),
     );
   }
