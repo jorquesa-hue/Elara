@@ -33,6 +33,7 @@ import { Communications, type ThreadKind, type MessageDirection } from '../commu
 import { Reconciliation, suggestMatches, type MatchCandidate, type MatchTargetType } from '../reconciliation.ts';
 import { Integrations, ConnectorOutbox, type IntegrationKind, type IntegrationStatus } from '../integrations.ts';
 import { RevenueManagement, revenueKpis, type PricingRule, type QuoteContext, type OccupancyTier, type LeadTimeTier, type LosDiscount, type SeasonWindow } from '../revenue.ts';
+import { Procurement, computeBudgetStatus, type PurchaseOrderLine, type Budget } from '../procurement.ts';
 import { meterSubscription, type SubscriptionPlan } from '../subscription.ts';
 import {
   ConfigStore,
@@ -149,6 +150,7 @@ export class App {
   readonly integrations = new Integrations();
   readonly connectorOutbox = new ConnectorOutbox();
   readonly revenue = new RevenueManagement();
+  readonly procurement = new Procurement();
 
   readonly config: ConfigStore;
   readonly roles: RoleRegistry;
@@ -328,6 +330,17 @@ export class App {
     }
     if (r.tenantId !== ctx.tenantId) throw new HttpError(404, 'integration not found');
     return r;
+  }
+
+  private ownedPurchaseOrder(ctx: AuthContext, id: string) {
+    let po;
+    try {
+      po = this.procurement.get(id);
+    } catch {
+      throw new HttpError(404, 'purchase order not found');
+    }
+    if (po.tenantId !== ctx.tenantId) throw new HttpError(404, 'purchase order not found');
+    return po;
   }
 
   private ownedCommand(ctx: AuthContext, id: string) {
@@ -802,11 +815,19 @@ export class App {
         const o = l as Record<string, unknown>;
         return { description: String(o['description'] ?? ''), account: String(o['account'] ?? ''), amountCents: Number(o['amountCents']) };
       });
+      // Optionally fulfil a purchase order: the bill's total is recorded against
+      // the PO's commitment (auto-closing it when fully billed).
+      const poId = this.optString(body, 'poId');
+      if (poId) this.ownedPurchaseOrder(ctx, poId); // 404 if not this tenant's PO
       return this.gated(
         'bill.issue',
         ctx,
         { payeeId },
-        () => this.payables.issue({ id, tenantId: ctx.tenantId, payeeId, entityId, issuedAt, dueAt, currency, lines, memo: this.optString(body, 'memo') }),
+        () => {
+          const bill = this.payables.issue({ id, tenantId: ctx.tenantId, payeeId, entityId, issuedAt, dueAt, currency, lines, memo: this.optString(body, 'memo') });
+          if (poId) this.procurement.recordBilling(poId, bill.totalCents, issuedAt);
+          return bill;
+        },
         (bill) => ({ status: 201, body: bill }),
       );
     });
@@ -1196,6 +1217,80 @@ export class App {
     // Headline KPIs — occupancy / ADR / RevPAR — folded from tenant state.
     this.add('GET', '/revenue/summary', 'revenue.read', (ctx) => ({ status: 200, body: this.revenueSummary(ctx.tenantId) }));
 
+    // --- purchase orders & budgets (#2) -----------------------------------
+    // A PO is an encumbrance, not a journal entry: raising/approving one commits
+    // budget but posts NOTHING to the ledger — the AP bill is what hits the GL.
+    this.add('POST', '/purchase-orders', 'procurement.manage', (ctx, _p, body) => {
+      const id = this.requireString(body, 'id');
+      const vendorId = this.requireString(body, 'vendorId');
+      if (!this.parties.getParty(ctx.tenantId, vendorId)) throw new HttpError(404, 'vendor party not found');
+      const entityId = this.optString(body, 'entityId');
+      if (entityId && !this.entities.getEntity(ctx.tenantId, entityId)) throw new HttpError(404, 'entity not found');
+      const rawLines = Array.isArray(body['lines']) ? (body['lines'] as unknown[]) : [];
+      const lines: PurchaseOrderLine[] = rawLines.map((l) => {
+        const o = l as Record<string, unknown>;
+        return { description: String(o['description'] ?? ''), account: String(o['account'] ?? ''), amountCents: Number(o['amountCents']) };
+      });
+      const currency = this.config.get(ctx.tenantId).currency;
+      return this.gated(
+        'purchase_order.raise',
+        ctx,
+        { id },
+        () => this.procurement.raise({ id, tenantId: ctx.tenantId, vendorId, entityId, createdAt: this.now(), expectedAt: this.optString(body, 'expectedAt'), currency, lines, memo: this.optString(body, 'memo') }),
+        (po) => ({ status: 201, body: po }),
+      );
+    });
+
+    this.add('POST', '/purchase-orders/:id/approve', 'procurement.manage', (ctx, p, _b) => {
+      const po = this.ownedPurchaseOrder(ctx, p['id']!);
+      // amountCents drives the large-PO escalation rule.
+      return this.gated('purchase_order.approve', ctx, { id: po.id, amountCents: po.totalCents }, () => this.procurement.approve(po.id, this.now()), (r) => ({ status: 200, body: r }));
+    });
+
+    this.add('POST', '/purchase-orders/:id/receive', 'procurement.manage', (ctx, p, _b) => {
+      const po = this.ownedPurchaseOrder(ctx, p['id']!);
+      return this.gated('purchase_order.receive', ctx, { id: po.id }, () => this.procurement.receive(po.id, this.now()), (r) => ({ status: 200, body: r }));
+    });
+
+    this.add('POST', '/purchase-orders/:id/close', 'procurement.manage', (ctx, p, _b) => {
+      const po = this.ownedPurchaseOrder(ctx, p['id']!);
+      return this.gated('purchase_order.close', ctx, { id: po.id }, () => this.procurement.close(po.id, this.now()), (r) => ({ status: 200, body: r }));
+    });
+
+    this.add('POST', '/purchase-orders/:id/cancel', 'procurement.manage', (ctx, p, _b) => {
+      const po = this.ownedPurchaseOrder(ctx, p['id']!);
+      return this.gated('purchase_order.cancel', ctx, { id: po.id }, () => this.procurement.cancel(po.id, this.now()), (r) => ({ status: 200, body: r }));
+    });
+
+    this.add('GET', '/purchase-orders', 'procurement.read', (ctx) => ({ status: 200, body: { purchaseOrders: this.procurement.list(ctx.tenantId) } }));
+
+    this.add('GET', '/purchase-orders/:id', 'procurement.read', (ctx, p) => ({ status: 200, body: this.ownedPurchaseOrder(ctx, p['id']!) }));
+
+    // Budgets are configuration → RBAC-only (no PolicyEnvelope action).
+    this.add('POST', '/budgets', 'procurement.manage', (ctx, _p, body) => {
+      const budget: Budget = {
+        id: this.requireString(body, 'id'),
+        tenantId: ctx.tenantId,
+        account: this.requireString(body, 'account'),
+        periodStart: this.requireString(body, 'periodStart'),
+        periodEnd: this.requireString(body, 'periodEnd'),
+        amountCents: this.requireInt(body, 'amountCents'),
+        ...(typeof body['label'] === 'string' ? { label: body['label'] as string } : {}),
+      };
+      return { status: 201, body: this.procurement.setBudget(budget) };
+    });
+
+    this.add('GET', '/budgets', 'procurement.read', (ctx) => ({
+      status: 200,
+      body: { budgets: this.procurement.listBudgets(ctx.tenantId).map((b) => ({ ...b, status: this.budgetStatus(ctx.tenantId, b) })) },
+    }));
+
+    this.add('GET', '/budgets/:id/status', 'procurement.read', (ctx, p) => {
+      const b = this.procurement.getBudget(ctx.tenantId, p['id']!);
+      if (!b) throw new HttpError(404, 'budget not found');
+      return { status: 200, body: { budget: b, status: this.budgetStatus(ctx.tenantId, b) } };
+    });
+
     // --- ledger (tenant-scoped) -------------------------------------------
     this.add('GET', '/ledger/trial-balance', 'ledger.read', (ctx) => ({ status: 200, body: this.trialBalance(ctx.tenantId) }));
 
@@ -1286,6 +1381,25 @@ export class App {
       unitCount,
       windowNights,
     };
+  }
+
+  /** Posted (non-void) bill spend on an account within [start, end) — the
+   *  "actual" leg of a budget. Bills are the GL-hitting side; POs are not. */
+  private actualForAccount(tenantId: string, account: string, start: string, end: string): number {
+    let sum = 0;
+    for (const bill of this.payables.allBills()) {
+      if (bill.tenantId !== tenantId || bill.status === 'void') continue;
+      if (bill.issuedAt < start || bill.issuedAt >= end) continue;
+      for (const l of bill.lines) if (l.account === account) sum += l.amountCents;
+    }
+    return sum;
+  }
+
+  /** Fold a budget's committed (open POs) + actual (posted bills) into a status. */
+  private budgetStatus(tenantId: string, b: Budget) {
+    const committed = this.procurement.committedForAccount(tenantId, b.account, b.periodStart, b.periodEnd);
+    const actual = this.actualForAccount(tenantId, b.account, b.periodStart, b.periodEnd);
+    return computeBudgetStatus(b, committed, actual);
   }
 
   // --- durable persistence (the persist-world Edge Function) ----------------

@@ -61,6 +61,8 @@ export const PERMISSIONS = [
   'connector.dispatch',
   'revenue.read',
   'revenue.manage',
+  'procurement.read',
+  'procurement.manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -87,7 +89,7 @@ const OPS: Permission[] = [
   'party.read', 'party.manage', 'space.read', 'entity.read', 'bill.read', 'bill.issue',
   'maintenance.read', 'maintenance.manage', 'reservation.read', 'reservation.manage',
   'comms.read', 'comms.send', 'comms.manage',
-  'integration.read', 'connector.dispatch', 'revenue.read',
+  'integration.read', 'connector.dispatch', 'revenue.read', 'procurement.read',
   'ledger.read', 'exception.read', 'subscription.read',
   'masterdata.read', 'config.read',
 ];
@@ -98,7 +100,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'manager',
     name: 'Manager',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage'],
     builtin: true,
     description: 'Runs the property: all operations, approvals, staff and master data.',
   },
@@ -106,7 +108,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'staff',
     name: 'Staff',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'masterdata.manage', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'masterdata.manage', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage'],
     builtin: true,
     description: 'Approvals and day-to-day management.',
   },
@@ -114,7 +116,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'accountant',
     name: 'Accountant',
-    permissions: ['invoice.read', 'payment.record', 'deposit.read', 'deposit.refund', 'ledger.read', 'subscription.read', 'masterdata.read', 'config.read', 'party.read', 'entity.read', 'entity.manage', 'bill.read', 'bill.issue', 'bill.pay', 'reconciliation.read', 'reconciliation.manage'],
+    permissions: ['invoice.read', 'payment.record', 'deposit.read', 'deposit.refund', 'ledger.read', 'subscription.read', 'masterdata.read', 'config.read', 'party.read', 'entity.read', 'entity.manage', 'bill.read', 'bill.issue', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'procurement.read', 'procurement.manage'],
     builtin: true,
     description: 'Finance: ledger, payments, deposit refunds, accounts payable, reporting.',
   },

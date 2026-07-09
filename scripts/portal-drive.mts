@@ -105,6 +105,18 @@ const payBtn = page.locator('button:has-text("Pay")').first();
 if (await payBtn.count()) { await payBtn.click(); await page.waitForTimeout(400); }
 await shot('09-bills-ap');
 
+// Accounting depth: purchasing — set a budget, raise a PO, approve it.
+await page.click('button:has-text("Purchasing")');
+await page.waitForSelector('text=Purchase orders encumber budget');
+await page.fill('input[placeholder="Roof repair"]', 'Roof repair');
+const raisePo = page.locator('button:has-text("Raise PO")').first();
+if (await raisePo.count()) { await raisePo.click(); await page.waitForTimeout(450); }
+await page.click('button:has-text("Set budget")');
+await page.waitForTimeout(450);
+const approvePo = page.locator('button:has-text("Approve")').first();
+if (await approvePo.count()) { await approvePo.click(); await page.waitForTimeout(450); }
+await shot('16-purchasing');
+
 // Phase 2: maintenance — raise a work order, then start it.
 await page.click('button:has-text("Maintenance")');
 await page.waitForSelector('text=Work orders on your spaces');

@@ -210,6 +210,7 @@
     reconcile: '<path d="M3 7h12l-3-3M3 7l3 3"/><path d="M21 17H9l3 3M21 17l-3-3"/>',
     integrations: '<path d="M9 2v5M15 2v5"/><path d="M6.5 7h11v3.5a5.5 5.5 0 0 1-11 0z"/><path d="M12 16v6"/>',
     pricing: '<path d="M4 13l8-8 8 8-8 8z" transform="translate(0 -1)"/><circle cx="12" cy="9.5" r="2"/><path d="M8 20h8"/>',
+    purchasing: '<path d="M6 6h15l-1.5 9h-12z"/><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M6 6L5 3H3"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>',
     moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z"/>'
   };
@@ -347,6 +348,7 @@
       ["settings", t("nav.settings"), ICONS.settings]
     ];
     if (can("bill.read")) items.splice(3, 0, ["bills", "Bills", ICONS.bills]);
+    if (can("procurement.read")) items.splice(3, 0, ["purchasing", "Purchasing", ICONS.purchasing]);
     if (can("maintenance.read")) items.splice(can("bill.read") ? 4 : 3, 0, ["maintenance", "Maintenance", ICONS.maintenance]);
     if (can("reservation.read")) items.splice(3, 0, ["reservations", "Reservations", ICONS.reservations]);
     if (can("comms.read")) items.splice(items.length - 1, 0, ["inbox", "Inbox", ICONS.inbox]);
@@ -369,7 +371,7 @@
       h("main", { id: "main" }, [])
     ]));
     var main = document.getElementById("main");
-    ({ dashboard: viewDashboard, agreements: viewAgreements, pricing: viewPricing, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
+    ({ dashboard: viewDashboard, agreements: viewAgreements, pricing: viewPricing, purchasing: viewPurchasing, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
   }
 
   // ---- views --------------------------------------------------------------
@@ -944,6 +946,71 @@
       });
     }},[ field("Rule",rule), field("Check-in",checkIn), field("Nights",nights), field("Occupancy %",occ), h("div",{},[h("button",{class:"btn",type:"submit"},["Quote"])]) ]);
     return h("div",{},[form, h("div",{class:"panel"},[out])]);
+  }
+
+  function viewPurchasing(main){
+    main.appendChild(h("h1",{},["Purchasing"]));
+    main.appendChild(h("p",{class:"sub"},["Purchase orders encumber budget but post nothing to the ledger — the AP bill is what hits the books. Budgets track plan vs commitment vs actual per account."]));
+    var poFormSlot=h("div",{},[]); main.appendChild(poFormSlot);
+    var poWrap=h("div",{},[]); main.appendChild(poWrap);
+    main.appendChild(h("h2",{},["Budgets"]));
+    var bgFormSlot=h("div",{},[]); main.appendChild(bgFormSlot);
+    var bgWrap=h("div",{},[]); main.appendChild(bgWrap);
+    if(can("procurement.manage")){
+      api("/parties").then(function(m){ poFormSlot.appendChild(poForm((m.body||{}).parties||[], poWrap, bgWrap)); });
+      bgFormSlot.appendChild(budgetForm(bgWrap));
+    }
+    refreshPurchaseOrders(poWrap, bgWrap);
+    refreshBudgets(bgWrap);
+  }
+  function poForm(parties, poWrap, bgWrap){
+    if(!parties.length) return h("div",{class:"panel muted"},["Add a vendor party (People → in an agreement, or via the API) before raising a purchase order."]);
+    var vendor=selectFrom(parties.map(function(p){return [p.id, p.displayName];}), parties[0].id);
+    var desc=h("input",{placeholder:"Roof repair"}); var account=h("input",{value:"expenses:repairs"});
+    var amount=h("input",{value:"200000",type:"number"}); var expected=h("input",{value:"2026-07-15",type:"date"});
+    return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
+      if(!desc.value) return toast("Describe the line","err");
+      api("/purchase-orders",{method:"POST",body:{id:"po-"+Date.now(), vendorId:vendor.value, expectedAt:expected.value, lines:[{description:desc.value, account:account.value, amountCents:Number(amount.value)}]}}).then(function(r){
+        if(r.status===201){ toast(t("msg.saved"),"ok"); refreshPurchaseOrders(poWrap, bgWrap); refreshBudgets(bgWrap); } else toast(r.body.error||"err","err");
+      });
+    }},[ field("Vendor",vendor), field("Description",desc), field("Account",account), field("Amount (cents)",amount), field("Expected",expected), h("div",{},[h("button",{class:"btn",type:"submit"},["Raise PO"])]) ]);
+  }
+  function refreshPurchaseOrders(wrap, bgWrap){
+    api("/purchase-orders").then(function(r){
+      wrap.innerHTML="";
+      var rows=((r.body||{}).purchaseOrders||[]).map(function(po){
+        var actions=h("div",{class:"row"},[]);
+        function act(label, verb){ actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/purchase-orders/"+po.id+"/"+verb,{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast(t("msg.saved"),"ok"); refreshPurchaseOrders(wrap, bgWrap); refreshBudgets(bgWrap);} else if(x.status===202){ toast("Escalated for approval","ok"); } else toast(x.body.error||"err","err"); }); }},[label])); }
+        if(can("procurement.manage")){
+          if(po.status==="draft"){ act("Approve","approve"); act("Cancel","cancel"); }
+          else if(po.status==="approved"){ act("Receive","receive"); act("Close","close"); }
+          else if(po.status==="received"){ act("Close","close"); }
+        }
+        var pillCls = po.status==="closed"?"active":(po.status==="cancelled"?"terminated":"draft");
+        return h("tr",{},[ h("td",{class:"mono muted"},[po.id.replace(/^po-/,"")]), h("td",{},[fmt(po.totalCents)]), h("td",{class:"mono muted"},[po.expectedAt||"—"]), h("td",{},[h("span",{class:"pill "+pillCls},[po.status])]), h("td",{},[po.billedCents?fmt(po.billedCents):"—"]), h("td",{},[actions]) ]);
+      });
+      wrap.appendChild(tableEl([th("PO"),th("Total"),th("Expected"),th(t("field.status")),th("Billed"),th("")], rows, 6, "No purchase orders yet."));
+    });
+  }
+  function budgetForm(bgWrap){
+    var account=h("input",{value:"expenses:repairs"}); var start=h("input",{value:"2026-07-01",type:"date"}); var end=h("input",{value:"2026-08-01",type:"date"});
+    var amount=h("input",{value:"1000000",type:"number"}); var label=h("input",{placeholder:"July repairs"});
+    return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
+      api("/budgets",{method:"POST",body:{id:"bg-"+Date.now(), account:account.value, periodStart:start.value, periodEnd:end.value, amountCents:Number(amount.value), label:label.value||undefined}}).then(function(r){
+        if(r.status===201){ toast(t("msg.saved"),"ok"); refreshBudgets(bgWrap); } else toast(r.body.error||"err","err");
+      });
+    }},[ field("Account",account), field("From",start), field("To",end), field("Budget (cents)",amount), field("Label",label), h("div",{},[h("button",{class:"btn",type:"submit"},["Set budget"])]) ]);
+  }
+  function refreshBudgets(wrap){
+    api("/budgets").then(function(r){
+      wrap.innerHTML="";
+      var rows=((r.body||{}).budgets||[]).map(function(b){
+        var s=b.status||{}; var pct=Math.min(100, s.usedPct||0);
+        var bar=h("div",{style:"height:6px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:5px"},[ h("div",{style:"height:6px;width:"+pct+"%;background:"+(s.overBudget?"var(--bad,#e5484d)":"var(--accent,#6d8bff)")},[]) ]);
+        return h("tr",{},[ h("td",{class:"mono"},[b.account]), h("td",{class:"muted"},[b.label||"—"]), h("td",{},[fmt(s.budgetedCents||0)]), h("td",{class:"muted"},[fmt(s.committedCents||0)]), h("td",{class:"muted"},[fmt(s.actualCents||0)]), h("td",{},[ h("div",{},[ h("span",{class:s.overBudget?"pill terminated":""},[fmt(s.remainingCents||0)]), bar ]) ]) ]);
+      });
+      wrap.appendChild(tableEl([th("Account"),th("Label"),th("Budget"),th("Committed"),th("Actual"),th("Remaining")], rows, 6, "No budgets set."));
+    });
   }
 
   function viewPeople(main) {
