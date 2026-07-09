@@ -144,6 +144,17 @@ await page.click('button:has-text("Import line")');
 await page.waitForTimeout(400);
 await shot('13-reconcile');
 
+// Integration-class: connector framework — register a lock, send a command.
+await page.click('button:has-text("Integrations")');
+await page.waitForSelector('text=Credentials live in the secret store');
+await page.fill('input[placeholder="salto"]', 'salto');
+await page.fill('input[placeholder="secret store key (optional)"]', 'salto-key');
+await page.click('button:has-text("Connect")');
+await page.waitForTimeout(400);
+const sendBtn = page.locator('button:has-text("Send")').first();
+if (await sendBtn.count()) { await sendBtn.click(); await page.waitForTimeout(400); }
+await shot('14-integrations');
+
 // Ledger.
 await page.click('button:has-text("Ledger")');
 await page.waitForTimeout(300);

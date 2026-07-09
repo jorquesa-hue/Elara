@@ -85,6 +85,8 @@ export const POLICY_RULES: readonly PolicyRule[] = [
   { id: 'pol-comms-resolve', action: 'comms.resolve', effect: 'allow', description: 'Resolving/reopening a conversation is routine.' },
   { id: 'pol-recon-import', action: 'recon.import', effect: 'allow', description: 'Importing bank transactions for reconciliation is routine.' },
   { id: 'pol-recon-match', action: 'recon.match', effect: 'allow', description: 'Matching a bank line to a payment is routine; it links, it does not move money.' },
+  { id: 'pol-integration-configure', action: 'integration.configure', effect: 'allow', description: 'Configuring an integration (non-secret settings; credentials live in the secret store) is routine admin.' },
+  { id: 'pol-connector-dispatch', action: 'connector.dispatch', effect: 'allow', description: 'Enqueuing a connector command (unlock, push inventory, pull leads) is routine; edge adapters hold the credentials.' },
   { id: 'pol-collections-remind', action: 'collections.remind', effect: 'allow', description: 'Payment reminders are routine.' },
   { id: 'pol-collections-latefee', action: 'collections.late_fee', effect: 'allow', description: 'Contractual late fees are routine.' },
   { id: 'pol-collections-suspend', action: 'collections.suspend', effect: 'escalate', description: 'Service suspension is guest-impacting: human confirms.' },

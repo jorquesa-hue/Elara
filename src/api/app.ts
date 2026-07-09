@@ -31,6 +31,7 @@ import { Reservations } from '../reservations.ts';
 import { Inspections, type InspectionKind, type InspectionItem } from '../inspection.ts';
 import { Communications, type ThreadKind, type MessageDirection } from '../communications.ts';
 import { Reconciliation, suggestMatches, type MatchCandidate, type MatchTargetType } from '../reconciliation.ts';
+import { Integrations, ConnectorOutbox, type IntegrationKind, type IntegrationStatus } from '../integrations.ts';
 import { meterSubscription, type SubscriptionPlan } from '../subscription.ts';
 import {
   ConfigStore,
@@ -144,6 +145,8 @@ export class App {
   readonly inspections = new Inspections();
   readonly comms = new Communications();
   readonly reconciliation = new Reconciliation();
+  readonly integrations = new Integrations();
+  readonly connectorOutbox = new ConnectorOutbox();
 
   readonly config: ConfigStore;
   readonly roles: RoleRegistry;
@@ -312,6 +315,28 @@ export class App {
     }
     if (t.tenantId !== ctx.tenantId) throw new HttpError(404, 'bank transaction not found');
     return t;
+  }
+
+  private ownedIntegration(ctx: AuthContext, id: string) {
+    let r;
+    try {
+      r = this.integrations.get(id);
+    } catch {
+      throw new HttpError(404, 'integration not found');
+    }
+    if (r.tenantId !== ctx.tenantId) throw new HttpError(404, 'integration not found');
+    return r;
+  }
+
+  private ownedCommand(ctx: AuthContext, id: string) {
+    let c;
+    try {
+      c = this.connectorOutbox.get(id);
+    } catch {
+      throw new HttpError(404, 'command not found');
+    }
+    if (c.tenantId !== ctx.tenantId) throw new HttpError(404, 'command not found');
+    return c;
   }
 
   /** Ledger money movements a bank line can match against: payments in (+) and
@@ -1019,6 +1044,64 @@ export class App {
     }));
 
     this.add('GET', '/reservations/:id', 'reservation.read', (ctx, p) => ({ status: 200, body: this.ownedReservation(ctx, p['id']!) }));
+
+    // --- integrations / connector framework (#7 #12 #13 #14 #16 #17) ------
+    this.add('POST', '/integrations', 'integration.manage', (ctx, _p, body) => {
+      const id = this.requireString(body, 'id');
+      const kind = this.requireString(body, 'kind') as IntegrationKind;
+      const provider = this.requireString(body, 'provider');
+      const config = body['config'] && typeof body['config'] === 'object' ? (body['config'] as Record<string, unknown>) : {};
+      return this.gated(
+        'integration.configure',
+        ctx,
+        { kind, provider },
+        // register() rejects secret-like config keys — credentials never reach the kernel.
+        () => this.integrations.register({ id, tenantId: ctx.tenantId, kind, provider, config, secretRef: this.optString(body, 'secretRef'), createdAt: this.now() }),
+        (rec) => ({ status: 201, body: rec }),
+      );
+    });
+
+    this.add('GET', '/integrations', 'integration.read', (ctx) => ({ status: 200, body: { integrations: this.integrations.list(ctx.tenantId) } }));
+
+    this.add('POST', '/integrations/:id/status', 'integration.manage', (ctx, p, body) => {
+      this.ownedIntegration(ctx, p['id']!);
+      const status = this.requireString(body, 'status') as IntegrationStatus;
+      if (status !== 'active' && status !== 'disabled') throw new HttpError(400, "status must be active|disabled");
+      return { status: 200, body: this.integrations.setStatus(p['id']!, status) };
+    });
+
+    // Enqueue an outbound command (unlock a door, push inventory, pull leads…).
+    // The command lands in the outbox; an edge adapter that holds the credentials
+    // dispatches it and reports the result.
+    this.add('POST', '/integrations/:id/commands', 'connector.dispatch', (ctx, p, body) => {
+      const integ = this.ownedIntegration(ctx, p['id']!);
+      if (integ.status !== 'active') throw new HttpError(409, 'integration is disabled');
+      const id = this.requireString(body, 'id');
+      const action = this.requireString(body, 'action');
+      const payload = body['payload'] && typeof body['payload'] === 'object' ? (body['payload'] as Record<string, unknown>) : {};
+      return this.gated(
+        'connector.dispatch',
+        ctx,
+        { integrationId: integ.id, action },
+        () => this.connectorOutbox.enqueue({ id, tenantId: ctx.tenantId, integrationId: integ.id, action, payload, createdAt: this.now() }),
+        (cmd) => ({ status: 201, body: cmd }),
+      );
+    });
+
+    this.add('GET', '/connector-commands', 'integration.read', (ctx) => ({ status: 200, body: { commands: this.connectorOutbox.list(ctx.tenantId) } }));
+
+    // Edge-worker callbacks: claim a pending command, then report its outcome.
+    this.add('POST', '/connector-commands/:id/dispatch', 'connector.dispatch', (ctx, p, _b) => {
+      const cmd = this.ownedCommand(ctx, p['id']!);
+      return { status: 200, body: this.connectorOutbox.markDispatched(cmd.id, this.now()) };
+    });
+
+    this.add('POST', '/connector-commands/:id/result', 'connector.dispatch', (ctx, p, body) => {
+      const cmd = this.ownedCommand(ctx, p['id']!);
+      const ok = body['ok'] === true;
+      const result = body['result'] && typeof body['result'] === 'object' ? (body['result'] as Record<string, unknown>) : undefined;
+      return { status: 200, body: this.connectorOutbox.markResult(cmd.id, ok, this.now(), result) };
+    });
 
     // --- bank reconciliation (#5) -----------------------------------------
     this.add('POST', '/bank-transactions', 'reconciliation.manage', (ctx, _p, body) => {
