@@ -177,6 +177,21 @@ const quoteBtn = page.locator('button:has-text("Quote")').first();
 if (await quoteBtn.count()) { await quoteBtn.click(); await page.waitForTimeout(400); }
 await shot('15-pricing');
 
+// Student housing: roommate matching — add prospects, rank matches, group rooms.
+await page.click('button:has-text("Roommates")');
+await page.waitForSelector('text=Match student/shared-housing prospects');
+await page.fill('input[placeholder="Ava Souza"]', 'Ava Souza');
+await page.click('button:has-text("Add prospect")');
+await page.waitForTimeout(400);
+await page.fill('input[placeholder="Ava Souza"]', 'Bea Lima');
+await page.click('button:has-text("Add prospect")');
+await page.waitForTimeout(400);
+const matchesBtn = page.locator('button:has-text("Matches")').first();
+if (await matchesBtn.count()) { await matchesBtn.click(); await page.waitForTimeout(400); }
+await page.click('button:has-text("Suggest groups")');
+await page.waitForTimeout(400);
+await shot('17-roommates');
+
 // Ledger.
 await page.click('button:has-text("Ledger")');
 await page.waitForTimeout(300);

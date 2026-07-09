@@ -34,6 +34,7 @@ import { Reconciliation, suggestMatches, type MatchCandidate, type MatchTargetTy
 import { Integrations, ConnectorOutbox, type IntegrationKind, type IntegrationStatus } from '../integrations.ts';
 import { RevenueManagement, revenueKpis, type PricingRule, type QuoteContext, type OccupancyTier, type LeadTimeTier, type LosDiscount, type SeasonWindow } from '../revenue.ts';
 import { Procurement, computeBudgetStatus, type PurchaseOrderLine, type Budget } from '../procurement.ts';
+import { RoommateMatcher, type RoommatePreferences, type Chronotype } from '../roommate.ts';
 import { meterSubscription, type SubscriptionPlan } from '../subscription.ts';
 import {
   ConfigStore,
@@ -151,6 +152,7 @@ export class App {
   readonly connectorOutbox = new ConnectorOutbox();
   readonly revenue = new RevenueManagement();
   readonly procurement = new Procurement();
+  readonly roommates = new RoommateMatcher();
 
   readonly config: ConfigStore;
   readonly roles: RoleRegistry;
@@ -341,6 +343,17 @@ export class App {
     }
     if (po.tenantId !== ctx.tenantId) throw new HttpError(404, 'purchase order not found');
     return po;
+  }
+
+  private ownedProspect(ctx: AuthContext, id: string) {
+    let p;
+    try {
+      p = this.roommates.get(id);
+    } catch {
+      throw new HttpError(404, 'prospect not found');
+    }
+    if (p.tenantId !== ctx.tenantId) throw new HttpError(404, 'prospect not found');
+    return p;
   }
 
   private ownedCommand(ctx: AuthContext, id: string) {
@@ -1289,6 +1302,44 @@ export class App {
       const b = this.procurement.getBudget(ctx.tenantId, p['id']!);
       if (!b) throw new HttpError(404, 'budget not found');
       return { status: 200, body: { budget: b, status: this.budgetStatus(ctx.tenantId, b) } };
+    });
+
+    // --- student roommate matching (#9) -----------------------------------
+    // Matching is config-like pure computation → RBAC-only (no PolicyEnvelope).
+    this.add('POST', '/prospects', 'roommate.manage', (ctx, _p, body) => {
+      const partyId = this.optString(body, 'partyId');
+      if (partyId && !this.parties.getParty(ctx.tenantId, partyId)) throw new HttpError(404, 'party not found');
+      const prefs = (body['preferences'] && typeof body['preferences'] === 'object' ? body['preferences'] : {}) as Record<string, unknown>;
+      const num = (k: string): number | undefined => (typeof prefs[k] === 'number' ? (prefs[k] as number) : undefined);
+      const bool = (k: string): boolean | undefined => (typeof prefs[k] === 'boolean' ? (prefs[k] as boolean) : undefined);
+      const preferences: RoommatePreferences = {
+        ...(num('budgetCents') !== undefined ? { budgetCents: num('budgetCents') } : {}),
+        ...(num('cleanliness') !== undefined ? { cleanliness: num('cleanliness') } : {}),
+        ...(num('social') !== undefined ? { social: num('social') } : {}),
+        ...(typeof prefs['chronotype'] === 'string' ? { chronotype: prefs['chronotype'] as Chronotype } : {}),
+        ...(bool('smoker') !== undefined ? { smoker: bool('smoker') } : {}),
+        ...(bool('hasPet') !== undefined ? { hasPet: bool('hasPet') } : {}),
+        ...(bool('smokeFreeOnly') !== undefined ? { smokeFreeOnly: bool('smokeFreeOnly') } : {}),
+        ...(bool('petFreeOnly') !== undefined ? { petFreeOnly: bool('petFreeOnly') } : {}),
+      };
+      return { status: 201, body: this.roommates.upsertProspect({ id: this.requireString(body, 'id'), tenantId: ctx.tenantId, name: this.requireString(body, 'name'), partyId, preferences }) };
+    });
+
+    this.add('GET', '/prospects', 'roommate.read', (ctx) => ({ status: 200, body: { prospects: this.roommates.list(ctx.tenantId) } }));
+
+    this.add('GET', '/prospects/:id', 'roommate.read', (ctx, p) => {
+      const prospect = this.ownedProspect(ctx, p['id']!);
+      return { status: 200, body: { prospect, matches: this.roommates.matchesFor(ctx.tenantId, prospect.id) } };
+    });
+
+    this.add('GET', '/prospects/:id/matches', 'roommate.read', (ctx, p) => {
+      this.ownedProspect(ctx, p['id']!);
+      return { status: 200, body: { matches: this.roommates.matchesFor(ctx.tenantId, p['id']!) } };
+    });
+
+    this.add('POST', '/roommate/grouping', 'roommate.read', (ctx, _p, body) => {
+      const capacity = this.requireInt(body, 'capacity');
+      return { status: 200, body: { groups: this.roommates.suggestGrouping(ctx.tenantId, capacity) } };
     });
 
     // --- ledger (tenant-scoped) -------------------------------------------

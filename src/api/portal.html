@@ -211,6 +211,7 @@
     integrations: '<path d="M9 2v5M15 2v5"/><path d="M6.5 7h11v3.5a5.5 5.5 0 0 1-11 0z"/><path d="M12 16v6"/>',
     pricing: '<path d="M4 13l8-8 8 8-8 8z" transform="translate(0 -1)"/><circle cx="12" cy="9.5" r="2"/><path d="M8 20h8"/>',
     purchasing: '<path d="M6 6h15l-1.5 9h-12z"/><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M6 6L5 3H3"/>',
+    roommates: '<circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><path d="M2.5 20a5.5 5.5 0 0 1 11 0"/><path d="M13 20a5.5 5.5 0 0 1 8.5-4.6"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>',
     moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z"/>'
   };
@@ -355,6 +356,7 @@
     if (can("reconciliation.read")) items.splice(items.length - 1, 0, ["reconcile", "Reconcile", ICONS.reconcile]);
     if (can("integration.read")) items.splice(items.length - 1, 0, ["integrations", "Integrations", ICONS.integrations]);
     if (can("revenue.read")) items.splice(1, 0, ["pricing", "Pricing", ICONS.pricing]);
+    if (can("roommate.read")) items.splice(items.length - 1, 0, ["roommates", "Roommates", ICONS.roommates]);
     var nav = h("nav", {}, items.map(function (it) {
       return h("button", { class: state.view === it[0] ? "active" : "", onclick: function () { state.view = it[0]; state.detailId = null; state.threadId = null; render(); } }, [ svg(it[2]), it[1] ]);
     }));
@@ -371,7 +373,7 @@
       h("main", { id: "main" }, [])
     ]));
     var main = document.getElementById("main");
-    ({ dashboard: viewDashboard, agreements: viewAgreements, pricing: viewPricing, purchasing: viewPurchasing, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
+    ({ dashboard: viewDashboard, agreements: viewAgreements, pricing: viewPricing, purchasing: viewPurchasing, roommates: viewRoommates, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
   }
 
   // ---- views --------------------------------------------------------------
@@ -1011,6 +1013,73 @@
       });
       wrap.appendChild(tableEl([th("Account"),th("Label"),th("Budget"),th("Committed"),th("Actual"),th("Remaining")], rows, 6, "No budgets set."));
     });
+  }
+
+  function viewRoommates(main){
+    main.appendChild(h("h1",{},["Roommates"]));
+    main.appendChild(h("p",{class:"sub"},["Match student/shared-housing prospects by lifestyle fit — a deterministic, explainable score (hard deal-breakers like smoke-free are always honoured). Placement uses the normal booking + transfer flow."]));
+    var formSlot=h("div",{},[]); main.appendChild(formSlot);
+    var wrap=h("div",{},[]); main.appendChild(wrap);
+    var matchSlot=h("div",{},[]); main.appendChild(matchSlot);
+    main.appendChild(h("h2",{},["Suggest room groups"]));
+    var groupSlot=h("div",{},[]); main.appendChild(groupSlot);
+    if(can("roommate.manage")) formSlot.appendChild(prospectForm(wrap, matchSlot, groupSlot));
+    groupSlot.appendChild(groupingForm(groupSlot));
+    refreshProspects(wrap, matchSlot, groupSlot);
+  }
+  function prospectForm(wrap, matchSlot, groupSlot){
+    var name=h("input",{placeholder:"Ava Souza"});
+    var clean=selectFrom([["3","cleanliness 3"],["1","1 relaxed"],["2","2"],["4","4"],["5","5 very tidy"]],"3");
+    var social=selectFrom([["3","social 3"],["1","1 quiet"],["2","2"],["4","4"],["5","5 very social"]],"3");
+    var chrono=selectFrom([["flexible","flexible"],["early","early bird"],["late","night owl"]],"flexible");
+    var smoker=h("input",{type:"checkbox"}); var smokeFree=h("input",{type:"checkbox"});
+    return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
+      if(!name.value) return toast("Enter a name","err");
+      api("/prospects",{method:"POST",body:{id:"pr-"+Date.now(), name:name.value, preferences:{ cleanliness:Number(clean.value), social:Number(social.value), chronotype:chrono.value, smoker:smoker.checked, smokeFreeOnly:smokeFree.checked }}}).then(function(r){
+        if(r.status===201){ toast(t("msg.saved"),"ok"); refreshProspects(wrap, matchSlot, groupSlot); } else toast(r.body.error||"err","err");
+      });
+    }},[ field("Name",name), field("Cleanliness",clean), field("Social",social), field("Schedule",chrono),
+      h("label",{style:"display:flex;gap:7px;align-items:center;margin-top:8px"},[smoker,"Smoker"]),
+      h("label",{style:"display:flex;gap:7px;align-items:center;margin-top:8px"},[smokeFree,"Smoke-free only"]),
+      h("div",{},[h("button",{class:"btn",type:"submit"},["Add prospect"])]) ]);
+  }
+  function refreshProspects(wrap, matchSlot, groupSlot){
+    api("/prospects").then(function(r){
+      wrap.innerHTML="";
+      var rows=((r.body||{}).prospects||[]).map(function(p){
+        var pr=p.preferences||{};
+        var chips=[]; if(pr.cleanliness) chips.push("clean "+pr.cleanliness); if(pr.social) chips.push("social "+pr.social); if(pr.chronotype) chips.push(pr.chronotype); if(pr.smoker) chips.push("smoker"); if(pr.smokeFreeOnly) chips.push("smoke-free only");
+        return h("tr",{},[ h("td",{},[p.name]), h("td",{},[h("div",{class:"perms"}, chips.map(function(c){return h("span",{class:"perm"},[c]);}))]),
+          h("td",{},[ h("button",{class:"btn ghost sm",onclick:function(){ showMatches(matchSlot, p); }},["Matches"]) ]) ]);
+      });
+      wrap.appendChild(tableEl([th("Prospect"),th("Preferences"),th("")], rows, 3, "No prospects yet."));
+    });
+  }
+  function showMatches(slot, p){
+    slot.innerHTML="";
+    api("/prospects/"+p.id+"/matches").then(function(r){
+      var matches=((r.body||{}).matches||[]);
+      var rows=matches.map(function(m){
+        return h("tr",{},[ h("td",{},[m.name]), h("td",{},[ m.compatible?h("span",{class:"pill active"},[m.score+"%"]):h("span",{class:"pill terminated"},["deal-breaker"]) ]) ]);
+      });
+      slot.appendChild(h("div",{class:"panel"},[ h("strong",{},["Best roommates for "+p.name]), tableEl([th("Prospect"),th("Fit")], rows, 2, "No other prospects to match.") ]));
+    });
+  }
+  function groupingForm(groupSlot){
+    var cap=h("input",{value:"2",type:"number",min:"2",style:"width:90px"});
+    var out=h("div",{},[]);
+    var form=h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
+      api("/roommate/grouping",{method:"POST",body:{capacity:Number(cap.value)}}).then(function(r){
+        out.innerHTML="";
+        if(r.status!==200) return out.appendChild(h("div",{class:"panel muted"},[r.body.error||"err"]));
+        var groups=((r.body||{}).groups||[]);
+        if(!groups.length) return out.appendChild(h("div",{class:"panel muted"},["Add prospects to suggest groups."]));
+        groups.forEach(function(g,i){
+          out.appendChild(h("div",{class:"panel"},[ h("div",{class:"row"},[ h("strong",{},["Room "+(i+1)]), h("span",{class:"muted"},["avg fit "+g.avgScore+"%"]) ]), h("div",{class:"perms",style:"margin-top:8px"}, g.members.map(function(id){ return h("span",{class:"perm"},[id.replace(/^pr-/,"")]); })) ]));
+        });
+      });
+    }},[ field("Beds per room",cap), h("div",{},[h("button",{class:"btn",type:"submit"},["Suggest groups"])]) ]);
+    return h("div",{},[form, out]);
   }
 
   function viewPeople(main) {
