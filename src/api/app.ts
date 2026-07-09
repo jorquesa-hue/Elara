@@ -1621,6 +1621,15 @@ export class App {
       messageThreads: this.comms.listThreads(tenantId),
       messages: this.comms.allMessages().filter((m) => threadIds.has(m.threadId)),
       bankTransactions: this.reconciliation.list(tenantId),
+      // --- feature wire-up (all upserted, so always safe to resend) ----------
+      pricingRules: this.revenue.listRules(tenantId),
+      purchaseOrders: this.procurement.list(tenantId),
+      budgets: this.procurement.listBudgets(tenantId),
+      prospects: this.roommates.list(tenantId).map((p) => ({ id: p.id, tenantId, name: p.name, partyId: p.partyId, preferences: p.preferences as Record<string, unknown> })),
+      leads: this.crm.list(tenantId).map((l) => ({
+        id: l.id, tenantId, name: l.name, source: l.source, stage: l.stage, estValueCents: l.estValueCents,
+        partyId: l.partyId, createdAt: l.createdAt, updatedAt: l.updatedAt, stageAt: l.stageAt as Record<string, unknown>, lostReason: l.lostReason,
+      })),
     };
   }
 

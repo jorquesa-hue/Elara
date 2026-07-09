@@ -99,6 +99,27 @@ export interface WorldData {
     id: string; tenantId: string; bankAccountId?: string; postedAt: string; amountCents: number;
     description: string; reference?: string; status: string; matchedType?: string; matchedId?: string; matchedAt?: string;
   }>;
+  // --- feature wire-up: revenue (#1), procurement (#2), roommate (#9), crm (#20)
+  pricingRules?: Array<{
+    id: string; tenantId: string; name: string; baseCents: number; minCents?: number; maxCents?: number;
+    weekendFactorBps?: number; occupancyTiers?: unknown[]; leadTimeTiers?: unknown[]; losDiscounts?: unknown[]; seasons?: unknown[];
+  }>;
+  purchaseOrders?: Array<{
+    id: string; tenantId: string; vendorId: string; entityId?: string; createdAt: string; expectedAt?: string;
+    currency: string; totalCents: number; status: string; billedCents: number;
+    approvedAt?: string; receivedAt?: string; closedAt?: string; cancelledAt?: string; memo?: string;
+    lines: ReadonlyArray<{ description: string; account: string; amountCents: number }>;
+  }>;
+  budgets?: Array<{
+    id: string; tenantId: string; account: string; periodStart: string; periodEnd: string; amountCents: number; label?: string;
+  }>;
+  prospects?: Array<{
+    id: string; tenantId: string; name: string; partyId?: string; preferences: Record<string, unknown>;
+  }>;
+  leads?: Array<{
+    id: string; tenantId: string; name: string; source?: string; stage: string; estValueCents: number;
+    partyId?: string; createdAt: string; updatedAt: string; stageAt: Record<string, unknown>; lostReason?: string;
+  }>;
 }
 
 function stmt(text: string, values: unknown[]): SqlStatement {
@@ -326,6 +347,46 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       stmt(
         'insert into bank_transaction (id, tenant_id, bank_account_id, posted_at, amount_cents, description, reference, status, matched_type, matched_id, matched_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) on conflict (id) do update set status = excluded.status, matched_type = excluded.matched_type, matched_id = excluded.matched_id, matched_at = excluded.matched_at',
         [bt.id, bt.tenantId, bt.bankAccountId ?? null, bt.postedAt, bt.amountCents, bt.description, bt.reference ?? null, bt.status, bt.matchedType ?? null, bt.matchedId ?? null, bt.matchedAt ?? null],
+      ),
+    );
+  }
+  for (const pr of w.pricingRules ?? []) {
+    out.push(
+      stmt(
+        'insert into pricing_rule (id, tenant_id, name, base_cents, min_cents, max_cents, weekend_factor_bps, occupancy_tiers, lead_time_tiers, los_discounts, seasons) values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb) on conflict (id) do update set name = excluded.name, base_cents = excluded.base_cents, min_cents = excluded.min_cents, max_cents = excluded.max_cents, weekend_factor_bps = excluded.weekend_factor_bps, occupancy_tiers = excluded.occupancy_tiers, lead_time_tiers = excluded.lead_time_tiers, los_discounts = excluded.los_discounts, seasons = excluded.seasons',
+        [pr.id, pr.tenantId, pr.name, pr.baseCents, pr.minCents ?? null, pr.maxCents ?? null, pr.weekendFactorBps ?? null, JSON.stringify(pr.occupancyTiers ?? []), JSON.stringify(pr.leadTimeTiers ?? []), JSON.stringify(pr.losDiscounts ?? []), JSON.stringify(pr.seasons ?? [])],
+      ),
+    );
+  }
+  for (const po of w.purchaseOrders ?? []) {
+    out.push(
+      stmt(
+        'insert into purchase_order (id, tenant_id, vendor_id, entity_id, created_at, expected_at, currency, total_cents, status, billed_cents, approved_at, received_at, closed_at, cancelled_at, memo, lines) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb) on conflict (id) do update set status = excluded.status, billed_cents = excluded.billed_cents, approved_at = excluded.approved_at, received_at = excluded.received_at, closed_at = excluded.closed_at, cancelled_at = excluded.cancelled_at, memo = excluded.memo, lines = excluded.lines',
+        [po.id, po.tenantId, po.vendorId, po.entityId ?? null, po.createdAt, po.expectedAt ?? null, po.currency, po.totalCents, po.status, po.billedCents, po.approvedAt ?? null, po.receivedAt ?? null, po.closedAt ?? null, po.cancelledAt ?? null, po.memo ?? null, JSON.stringify(po.lines ?? [])],
+      ),
+    );
+  }
+  for (const b of w.budgets ?? []) {
+    out.push(
+      stmt(
+        'insert into budget (id, tenant_id, account, period_start, period_end, amount_cents, label) values ($1, $2, $3, $4, $5, $6, $7) on conflict (id) do update set account = excluded.account, period_start = excluded.period_start, period_end = excluded.period_end, amount_cents = excluded.amount_cents, label = excluded.label',
+        [b.id, b.tenantId, b.account, b.periodStart, b.periodEnd, b.amountCents, b.label ?? null],
+      ),
+    );
+  }
+  for (const p of w.prospects ?? []) {
+    out.push(
+      stmt(
+        'insert into roommate_prospect (id, tenant_id, name, party_id, preferences) values ($1, $2, $3, $4, $5::jsonb) on conflict (id) do update set name = excluded.name, party_id = excluded.party_id, preferences = excluded.preferences',
+        [p.id, p.tenantId, p.name, p.partyId ?? null, JSON.stringify(p.preferences ?? {})],
+      ),
+    );
+  }
+  for (const l of w.leads ?? []) {
+    out.push(
+      stmt(
+        'insert into crm_lead (id, tenant_id, name, source, stage, est_value_cents, party_id, created_at, updated_at, stage_at, lost_reason) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11) on conflict (id) do update set name = excluded.name, source = excluded.source, stage = excluded.stage, est_value_cents = excluded.est_value_cents, party_id = excluded.party_id, updated_at = excluded.updated_at, stage_at = excluded.stage_at, lost_reason = excluded.lost_reason',
+        [l.id, l.tenantId, l.name, l.source ?? null, l.stage, l.estValueCents, l.partyId ?? null, l.createdAt, l.updatedAt, JSON.stringify(l.stageAt ?? {}), l.lostReason ?? null],
       ),
     );
   }

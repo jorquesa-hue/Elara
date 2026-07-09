@@ -89,6 +89,12 @@ function buildWorld(): WorldData {
     messageThreads: [{ id: 'th-1', tenantId: 't-1', subject: 'AC', kind: 'resident', status: 'open', agreementId: 'ag-1', partyId: 'p-1', createdAt: '2026-07-01T00:00:00Z' }],
     messages: [{ id: 'm-1', threadId: 'th-1', at: '2026-07-01T00:00:00Z', authorType: 'party', authorId: 'p-1', body: 'broken', direction: 'inbound' }],
     bankTransactions: [{ id: 'bt-1', tenantId: 't-1', postedAt: '2026-07-02T00:00:00Z', amountCents: 80000, description: 'PIX', status: 'matched', matchedType: 'payment', matchedId: 'pay-1', matchedAt: '2026-07-02T00:00:00Z' }],
+    // feature wire-up — exercise the new projection paths in the guard.
+    pricingRules: [{ id: 'pr-1', tenantId: 't-1', name: 'Studio', baseCents: 20000, minCents: 15000, maxCents: 60000, weekendFactorBps: 12000, occupancyTiers: [{ minOccupancyPct: 80, factorBps: 13000 }], losDiscounts: [{ minNights: 7, discountBps: 1000 }] }],
+    purchaseOrders: [{ id: 'po-1', tenantId: 't-1', vendorId: 'p-1', createdAt: '2026-07-01T00:00:00Z', expectedAt: '2026-07-15T00:00:00Z', currency: 'BRL', totalCents: 200000, status: 'approved', billedCents: 0, approvedAt: '2026-07-01T00:00:00Z', lines: [{ description: 'Roof', account: 'expenses:repairs', amountCents: 200000 }] }],
+    budgets: [{ id: 'bg-1', tenantId: 't-1', account: 'expenses:repairs', periodStart: '2026-07-01', periodEnd: '2026-08-01', amountCents: 1000000, label: 'July' }],
+    prospects: [{ id: 'pros-1', tenantId: 't-1', name: 'Ava', partyId: 'p-1', preferences: { cleanliness: 4, social: 3, chronotype: 'early' } }],
+    leads: [{ id: 'ld-1', tenantId: 't-1', name: 'Bea', source: 'website', stage: 'toured', estValueCents: 300000, partyId: 'p-1', createdAt: '2026-07-01T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z', stageAt: { new: '2026-07-01T00:00:00Z', toured: '2026-07-02T00:00:00Z' } }],
   };
 }
 
