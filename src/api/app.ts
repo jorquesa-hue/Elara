@@ -35,6 +35,7 @@ import { Integrations, ConnectorOutbox, type IntegrationKind, type IntegrationSt
 import { RevenueManagement, revenueKpis, type PricingRule, type QuoteContext, type OccupancyTier, type LeadTimeTier, type LosDiscount, type SeasonWindow } from '../revenue.ts';
 import { Procurement, computeBudgetStatus, type PurchaseOrderLine, type Budget } from '../procurement.ts';
 import { RoommateMatcher, type RoommatePreferences, type Chronotype } from '../roommate.ts';
+import { parseCsv, suggestMapping, planImport, type ImportTarget, type ColumnMapping } from '../onboarding.ts';
 import { meterSubscription, type SubscriptionPlan } from '../subscription.ts';
 import {
   ConfigStore,
@@ -343,6 +344,25 @@ export class App {
     }
     if (po.tenantId !== ctx.tenantId) throw new HttpError(404, 'purchase order not found');
     return po;
+  }
+
+  /** Shared parse for the onboarding endpoints: validate target, parse the CSV,
+   *  and layer any caller-supplied column mapping over the heuristic suggestion
+   *  (the AI-mapping seam — an LLM's mapping wins where provided). */
+  private parseOnboarding(body: Record<string, unknown>): { target: ImportTarget; headers: string[]; rows: string[][]; mapping: ColumnMapping } {
+    const target = this.requireString(body, 'target') as ImportTarget;
+    if (target !== 'units' && target !== 'guests') throw new HttpError(400, "target must be 'units' or 'guests'");
+    const csv = this.requireString(body, 'csv');
+    const { headers, rows } = parseCsv(csv);
+    if (headers.length === 0) throw new HttpError(400, 'csv has no header row');
+    const mapping: ColumnMapping = suggestMapping(target, headers);
+    const supplied = body['mapping'];
+    if (supplied && typeof supplied === 'object') {
+      for (const [k, v] of Object.entries(supplied as Record<string, unknown>)) {
+        if (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < headers.length) mapping[k] = v;
+      }
+    }
+    return { target, headers, rows, mapping };
   }
 
   private ownedProspect(ctx: AuthContext, id: string) {
@@ -1340,6 +1360,35 @@ export class App {
     this.add('POST', '/roommate/grouping', 'roommate.read', (ctx, _p, body) => {
       const capacity = this.requireInt(body, 'capacity');
       return { status: 200, body: { groups: this.roommates.suggestGrouping(ctx.tenantId, capacity) } };
+    });
+
+    // --- CSV + AI onboarding importer (#15) -------------------------------
+    // Bulk-migrate an existing portfolio. Preview is a pure dry-run; commit
+    // applies the ok rows to master data. Reuses masterdata.manage (config).
+    this.add('POST', '/onboarding/preview', 'masterdata.manage', (_ctx, _p, body) => {
+      const { target, headers, rows, mapping } = this.parseOnboarding(body);
+      return { status: 200, body: { target, headers, mapping, plan: planImport(target, headers, rows, mapping) } };
+    });
+
+    this.add('POST', '/onboarding/commit', 'masterdata.manage', (ctx, _p, body) => {
+      const { target, headers, rows, mapping } = this.parseOnboarding(body);
+      const plan = planImport(target, headers, rows, mapping);
+      const existing = new Set(
+        (target === 'units' ? this.masterData.units.list(ctx.tenantId) : this.masterData.guests.list(ctx.tenantId)).map((r) => r.code),
+      );
+      let created = 0;
+      let skipped = 0;
+      for (const row of plan.rows) {
+        if (row.status !== 'ok' || !row.record) continue;
+        const code = row.record['code']!;
+        if (existing.has(code)) { skipped++; continue; }
+        const id = `${target === 'units' ? 'unit' : 'guest'}-${code}`;
+        if (target === 'units') this.masterData.units.add({ id, tenantId: ctx.tenantId, code, label: row.record['label'] ?? code, active: true });
+        else this.masterData.guests.add({ id, tenantId: ctx.tenantId, code, fullName: row.record['fullName']!, email: row.record['email'] });
+        existing.add(code);
+        created++;
+      }
+      return { status: 201, body: { target, created, skipped, errorRows: plan.errorCount, total: plan.rows.length } };
     });
 
     // --- ledger (tenant-scoped) -------------------------------------------

@@ -212,6 +212,7 @@
     pricing: '<path d="M4 13l8-8 8 8-8 8z" transform="translate(0 -1)"/><circle cx="12" cy="9.5" r="2"/><path d="M8 20h8"/>',
     purchasing: '<path d="M6 6h15l-1.5 9h-12z"/><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M6 6L5 3H3"/>',
     roommates: '<circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><path d="M2.5 20a5.5 5.5 0 0 1 11 0"/><path d="M13 20a5.5 5.5 0 0 1 8.5-4.6"/>',
+    importer: '<path d="M12 3v11"/><path d="M8 10l4 4 4-4"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>',
     moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z"/>'
   };
@@ -357,6 +358,7 @@
     if (can("integration.read")) items.splice(items.length - 1, 0, ["integrations", "Integrations", ICONS.integrations]);
     if (can("revenue.read")) items.splice(1, 0, ["pricing", "Pricing", ICONS.pricing]);
     if (can("roommate.read")) items.splice(items.length - 1, 0, ["roommates", "Roommates", ICONS.roommates]);
+    if (can("masterdata.manage")) items.splice(items.length - 1, 0, ["import", "Import", ICONS.importer]);
     var nav = h("nav", {}, items.map(function (it) {
       return h("button", { class: state.view === it[0] ? "active" : "", onclick: function () { state.view = it[0]; state.detailId = null; state.threadId = null; render(); } }, [ svg(it[2]), it[1] ]);
     }));
@@ -373,7 +375,7 @@
       h("main", { id: "main" }, [])
     ]));
     var main = document.getElementById("main");
-    ({ dashboard: viewDashboard, agreements: viewAgreements, pricing: viewPricing, purchasing: viewPurchasing, roommates: viewRoommates, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
+    ({ dashboard: viewDashboard, agreements: viewAgreements, pricing: viewPricing, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
   }
 
   // ---- views --------------------------------------------------------------
@@ -1080,6 +1082,40 @@
       });
     }},[ field("Beds per room",cap), h("div",{},[h("button",{class:"btn",type:"submit"},["Suggest groups"])]) ]);
     return h("div",{},[form, out]);
+  }
+
+  function viewImport(main){
+    main.appendChild(h("h1",{},["Import"]));
+    main.appendChild(h("p",{class:"sub"},["Migrate an existing portfolio from CSV. Paste your file, preview the mapping and per-row validation (a dry-run), then commit — only clean rows are created, and re-importing skips codes already loaded."]));
+    var kind=selectFrom([["units","Units"],["guests","Guests / residents"]],"units");
+    var ta=h("textarea",{rows:"8",placeholder:"code,label\nRIO-101,Ocean Studio\nRIO-102,Garden Suite",style:"width:100%;font-family:ui-monospace,monospace;font-size:13px;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:inherit;box-sizing:border-box"});
+    var out=h("div",{},[]);
+    function run(path){
+      if(!ta.value.trim()) return toast("Paste some CSV first","err");
+      api("/onboarding/"+path,{method:"POST",body:{target:kind.value, csv:ta.value}}).then(function(r){
+        out.innerHTML="";
+        if(r.status!==200 && r.status!==201) return out.appendChild(h("div",{class:"panel muted"},[r.body.error||"err"]));
+        if(path==="commit"){ toast("Imported "+r.body.created+" · skipped "+r.body.skipped,"ok"); out.appendChild(h("div",{class:"panel"},[ "Created "+r.body.created+", skipped "+r.body.skipped+" (already present), "+r.body.errorRows+" row(s) with errors." ])); return; }
+        renderPlan(out, r.body);
+      });
+    }
+    main.appendChild(h("form",{class:"panel",onsubmit:function(e){e.preventDefault();run("preview");}},[
+      h("div",{class:"grid"},[ field("What",kind) ]),
+      field("CSV", ta),
+      h("div",{class:"row"},[ h("button",{class:"btn ghost",type:"submit"},["Preview"]), h("button",{class:"btn",type:"button",onclick:function(){run("commit");}},["Commit"]) ])
+    ]));
+    main.appendChild(out);
+  }
+  function renderPlan(out, body){
+    var mapChips=Object.keys(body.mapping||{}).map(function(f){ return h("span",{class:"perm"},[f+" ← "+(body.headers[body.mapping[f]]||"?")]); });
+    out.appendChild(h("div",{class:"panel"},[ h("strong",{},["Column mapping"]), h("div",{class:"perms",style:"margin-top:8px"}, mapChips.length?mapChips:[h("span",{class:"muted"},["no columns mapped"])]) ]));
+    var plan=body.plan||{};
+    out.appendChild(h("div",{class:"row",style:"margin:10px 0"},[ h("span",{class:"pill active"},[(plan.okCount||0)+" ready"]), (plan.errorCount?h("span",{class:"pill terminated"},[plan.errorCount+" with errors"]):null) ]));
+    var rows=(plan.rows||[]).map(function(r){
+      var rec=r.record||{}; var summary=r.status==="ok"?Object.keys(rec).map(function(k){return k+"="+rec[k];}).join(" · "):r.errors.join("; ");
+      return h("tr",{},[ h("td",{class:"mono muted"},[String(r.index+1)]), h("td",{},[ h("span",{class:"pill "+(r.status==="ok"?"active":"terminated")},[r.status]) ]), h("td",{class:(r.status==="ok"?"muted":"")},[summary]) ]);
+    });
+    out.appendChild(tableEl([th("Row"),th(t("field.status")),th("Details")], rows, 3, "No data rows."));
   }
 
   function viewPeople(main) {

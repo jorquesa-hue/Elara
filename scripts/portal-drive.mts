@@ -192,6 +192,16 @@ await page.click('button:has-text("Suggest groups")');
 await page.waitForTimeout(400);
 await shot('17-roommates');
 
+// Onboarding: CSV import — paste, preview the plan, commit.
+await page.click('button:has-text("Import")');
+await page.waitForSelector('text=Migrate an existing portfolio');
+await page.fill('textarea', 'code,label\nIMP-201,Imported Suite\nIMP-202,Imported Loft\n,No code\n');
+await page.click('button:has-text("Preview")');
+await page.waitForTimeout(400);
+await page.click('button:has-text("Commit")');
+await page.waitForTimeout(450);
+await shot('18-import');
+
 // Ledger.
 await page.click('button:has-text("Ledger")');
 await page.waitForTimeout(300);
