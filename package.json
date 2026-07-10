@@ -8,6 +8,7 @@
     "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
     "ci": "npm run typecheck && npm test",
+    "start": "tsx src/api/main.ts",
     "demo": "tsx demo.ts",
     "demo:live": "tsx demo-live.ts",
     "portal": "tsx demo-portal.ts",

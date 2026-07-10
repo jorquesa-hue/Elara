@@ -1,0 +1,11 @@
+node_modules
+tests
+portal-shots
+supabase
+docs
+*.md
+.git
+.github
+.claude
+demo*.ts
+scripts

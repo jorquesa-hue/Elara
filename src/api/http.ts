@@ -35,7 +35,14 @@ async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknow
   }
 }
 
-export function createHttpServer(app: App): Server {
+/** Hooks the server lifecycle (StayServer) uses to react to traffic. */
+export interface HttpHooks {
+  /** Called after each API response with the request's bearer + outcome, so the
+   *  lifecycle can flush a tenant's writes durably (debounced). */
+  onResponse?(info: { method: string; path: string; status: number; bearer?: string }): void;
+}
+
+export function createHttpServer(app: App, hooks: HttpHooks = {}): Server {
   return createServer((req: IncomingMessage, res: ServerResponse) => {
     void (async () => {
       const path = (req.url ?? '/').split('?')[0]!;
@@ -45,15 +52,12 @@ export function createHttpServer(app: App): Server {
         res.end(portalHtml());
         return;
       }
+      const bearer = req.headers['authorization'];
+      const method = req.method ?? 'GET';
       let response;
       try {
-        const body = req.method === 'GET' || req.method === 'HEAD' ? {} : await readJsonBody(req);
-        const apiReq = {
-          method: req.method ?? 'GET',
-          path,
-          body,
-          bearer: req.headers['authorization'],
-        };
+        const body = method === 'GET' || method === 'HEAD' ? {} : await readJsonBody(req);
+        const apiReq = { method, path, body, bearer };
         // /persist does durable I/O — the one async entry point on the App.
         response =
           apiReq.method === 'POST' && path === '/persist'
@@ -67,6 +71,7 @@ export function createHttpServer(app: App): Server {
       }
       res.writeHead(response.status, { 'content-type': 'application/json' });
       res.end(JSON.stringify(response.body));
+      try { hooks.onResponse?.({ method, path, status: response.status, bearer }); } catch { /* hook must never break a response */ }
     })();
   });
 }

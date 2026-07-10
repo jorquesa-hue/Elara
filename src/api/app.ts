@@ -2131,19 +2131,8 @@ export class App {
     if (!this.persistence) {
       return { status: 501, body: { error: 'no_persistence_backend', detail: 'App constructed without a persistence backend' } };
     }
-    const mark = this.flushMarks.get(ctx.tenantId);
-    const world = this.snapshotWorld(ctx.tenantId, mark);
-    const nextMark = this.highWaterMark(ctx.tenantId);
-    const delta = {
-      events: world.agreements.reduce((n, a) => n + a.events.length, 0),
-      journalLines: world.journalLines.length,
-      actionLog: world.actionLog.length,
-      invoices: world.invoices.length,
-    };
     try {
-      const result = await this.persistence.persist(world);
-      this.flushMarks.set(ctx.tenantId, nextMark); // advance only after success
-      return { status: 200, body: { ...result, delta, incremental: mark !== undefined } };
+      return { status: 200, body: await this.flushWorld(ctx.tenantId) };
     } catch (e) {
       // EdgePersistError carries the function's HTTP status + body; surface it.
       const status = (e as { status?: number }).status ?? 502;
@@ -2151,4 +2140,53 @@ export class App {
       return { status, body: { error: 'persist_failed', detail } };
     }
   }
+
+  /**
+   * Server-internal flush (no auth gate — the server owns it): send the tenant's
+   * incremental delta to the durable backend and advance the high-water mark only
+   * on success (so a failed flush safely re-sends). The lifecycle wrapper calls this
+   * after writes; /persist calls it behind the persistence.run gate. Throws if no
+   * backend is configured (the caller decides how loud to be).
+   */
+  async flushWorld(tenantId: string): Promise<Record<string, unknown>> {
+    if (!this.persistence) throw new HttpError(501, 'no_persistence_backend');
+    const mark = this.flushMarks.get(tenantId);
+    const world = this.snapshotWorld(tenantId, mark);
+    const nextMark = this.highWaterMark(tenantId);
+    const delta = {
+      events: world.agreements.reduce((n, a) => n + a.events.length, 0),
+      journalLines: world.journalLines.length,
+      actionLog: world.actionLog.length,
+      invoices: world.invoices.length,
+    };
+    const result = await this.persistence.persist(world);
+    this.flushMarks.set(tenantId, nextMark); // advance only after success
+    return { ...result, delta, incremental: mark !== undefined };
+  }
+
+  /**
+   * Cold-start boot: reconstitute in-memory state from durable storage. For each
+   * tenant the reader loads a WorldData (the inverse of the write projection) and
+   * rehydrate() folds it in. After boot the flush marks are set to each tenant's
+   * high-water mark, so the first post-boot flush sends only NEW rows (no re-send of
+   * everything just loaded). Idempotent-ish: intended to run ONCE on a fresh process.
+   */
+  async boot(reader: WorldReader, tenantIds: readonly string[]): Promise<void> {
+    for (const tenantId of tenantIds) {
+      const world = await reader.loadWorld(tenantId);
+      this.rehydrate(world);
+      this.flushMarks.set(tenantId, this.highWaterMark(tenantId));
+    }
+  }
+
+  /** Resolve a bearer to its AuthContext (server lifecycle needs the tenant to flush). */
+  identify(bearer: string | undefined): AuthContext | null {
+    return this.auth.authenticate(bearer);
+  }
+}
+
+/** The read side the boot lifecycle consumes — the inverse of the write backend.
+ *  Repositories(tenantId, executor).loadWorld() implements this per tenant. */
+export interface WorldReader {
+  loadWorld(tenantId: string): Promise<WorldData>;
 }

@@ -1,0 +1,33 @@
+# Example Fly.io deploy for the Unified Stay OS App runtime. Any container host
+# (Cloud Run, Render, Railway, ECS) works the same way: build the Dockerfile, set
+# the env/secrets below, expose 8080.
+#
+# Secrets (set with `fly secrets set NAME=value`, never commit them):
+#   JWT_SECRET, SUPABASE_SERVICE_ROLE_KEY, DATABASE_URL
+# Non-secret config (here or via `fly secrets`):
+#   SUPABASE_FUNCTIONS_URL
+#
+# IMPORTANT: run a SINGLE instance. The App holds tenant state in memory and flushes
+# to durable storage; horizontal scaling would fork that state. Scale up (bigger
+# machine), not out, until a shared-cache design lands.
+
+app = "unified-stay-os"
+primary_region = "gru"  # São Paulo — near a BR-first deployment
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  # SUPABASE_FUNCTIONS_URL = "https://<ref>.supabase.co/functions/v1"  # set per deploy
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false   # keep the single stateful instance warm
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
