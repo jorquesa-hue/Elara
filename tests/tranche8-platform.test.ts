@@ -16,9 +16,10 @@ test('config: setup-time locale + currency switch, with validation', () => {
   const store = new ConfigStore();
   // Defaults for an unconfigured tenant.
   assert.equal(store.get('t-1').currency, 'USD');
-  const cfg = store.set({ tenantId: 't-1', displayName: 'Rio Ops', locale: 'pt-BR', currency: 'BRL', timezone: 'America/Sao_Paulo', businessStructure: 'short_stay' });
+  const cfg = store.set({ tenantId: 't-1', displayName: 'Rio Ops', locale: 'pt-BR', currency: 'BRL', timezone: 'America/Sao_Paulo', businessStructure: 'short_stay', country: 'BR', jurisdiction: 'BR' });
   assert.equal(cfg.locale, 'pt-BR');
   assert.equal(cfg.currency, 'BRL');
+  assert.equal(cfg.jurisdiction, 'BR'); // derived from country
   // One-click currency change.
   assert.equal(store.update('t-1', { currency: 'EUR' }).currency, 'EUR');
   // Unsupported values are rejected.

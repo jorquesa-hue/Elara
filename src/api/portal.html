@@ -309,10 +309,18 @@
   function renderSetup(initial) {
     var cfg = state.config, opt = state.options;
     var name = h("input", { value: initial ? "" : cfg.displayName, placeholder: "e.g. Copacabana Stays" });
+    var countries = opt.countries || [];
+    var country = selectFrom(countries.map(function (c){ return [c.code, c.name]; }), cfg.country);
     var locale = selectFrom(opt.locales.map(function (l){ return [l.code, l.name]; }), cfg.locale);
     var currency = selectFrom(opt.currencies.map(function (c){ return [c.code, c.code + " — " + c.name]; }), cfg.currency);
     var tz = h("input", { value: cfg.timezone });
     var biz = selectFrom(opt.businessStructures.map(function (b){ return [b, b.replace(/_/g," ")]; }), cfg.businessStructure);
+    // Picking a country seeds currency / language / timezone from its profile —
+    // the master-data structure is identical everywhere, only config differs.
+    country.addEventListener("change", function () {
+      var p = countries.find(function (c){ return c.code === country.value; });
+      if (p) { currency.value = p.currency; locale.value = p.locale; tz.value = p.timezone; }
+    });
     var root = document.getElementById("root"); root.innerHTML = "";
     root.appendChild(h("div", { class: "center" }, [
       h("div", { class: "wizard" }, [
@@ -321,12 +329,13 @@
           h("h1", { style:"font-size:19px" }, [t("setup.title")]),
           h("p", { class: "sub" }, ["Switch language and currency any time — it flows through the whole ledger."]),
           field(t("setup.displayName"), name),
+          field("Country", country),
           field(t("setup.language"), locale),
           field(t("setup.currency"), currency),
           field(t("setup.timezone"), tz),
           field(t("setup.businessStructure"), biz),
           h("button", { class: "btn", style:"margin-top:10px; width:100%", onclick: function () {
-            api("/config", { method: "PUT", body: { displayName: name.value || "My Workspace", locale: locale.value, currency: currency.value, timezone: tz.value, businessStructure: biz.value } })
+            api("/config", { method: "PUT", body: { displayName: name.value || "My Workspace", country: country.value, locale: locale.value, currency: currency.value, timezone: tz.value, businessStructure: biz.value } })
               .then(function (r) {
                 if (r.status !== 200) return toast(r.body.error || t("msg.denied"), "err");
                 state.config = r.body;

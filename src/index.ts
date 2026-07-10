@@ -35,6 +35,7 @@ export * from './persistence/project.ts';
 export * from './persistence/repository.ts';
 export * from './persistence/edge-client.ts';
 export * from './subscription.ts';
+export * from './country.ts';
 export * from './config.ts';
 export * from './i18n.ts';
 export * from './rbac.ts';

@@ -21,7 +21,11 @@ import type { Deposit } from '../deposits.ts';
 import type { ActionLogRecord } from '../agent-runtime.ts';
 
 export interface WorldData {
-  tenants: Array<{ id: string; name: string }>;
+  tenants: Array<{
+    id: string; name: string;
+    displayName?: string; locale?: string; currency?: string; timezone?: string;
+    businessStructure?: string; country?: string; jurisdiction?: string;
+  }>;
   units: Array<{ id: string; tenantId: string; label: string }>;
   guests: Array<{ id: string; tenantId: string; fullName: string }>;
   ratePlans?: Array<{
@@ -120,6 +124,22 @@ export interface WorldData {
     id: string; tenantId: string; name: string; source?: string; stage: string; estValueCents: number;
     partyId?: string; createdAt: string; updatedAt: string; stageAt: Record<string, unknown>; lostReason?: string;
   }>;
+  // --- full persistence: platform users, custom roles, e-sign, connectors -----
+  users?: Array<{ id: string; tenantId: string; code: string; displayName: string; roleId: string; active: boolean }>;
+  customRoles?: Array<{ tenantId: string; roleId: string; name: string; description?: string; permissions: readonly string[] }>;
+  integrations?: Array<{
+    id: string; tenantId: string; kind: string; provider: string; status: string;
+    config: Record<string, unknown>; secretRef?: string; createdAt: string;
+  }>;
+  connectorCommands?: Array<{
+    id: string; tenantId: string; integrationId: string; action: string; payload: Record<string, unknown>;
+    status: string; createdAt: string; dispatchedAt?: string; resolvedAt?: string; result?: Record<string, unknown>;
+  }>;
+  signatureEnvelopes?: Array<{
+    id: string; tenantId: string; documentName: string; provider: string; providerRef?: string;
+    leadId?: string; agreementId?: string; signers: readonly unknown[]; status: string;
+    createdAt: string; sentAt?: string; completedAt?: string; voidReason?: string; declineReason?: string;
+  }>;
 }
 
 function stmt(text: string, values: unknown[]): SqlStatement {
@@ -131,7 +151,12 @@ export function projectWorld(w: WorldData): SqlStatement[] {
   const out: SqlStatement[] = [];
 
   for (const t of w.tenants) {
-    out.push(stmt('insert into tenant (id, name) values ($1, $2) on conflict (id) do update set name = excluded.name', [t.id, t.name]));
+    out.push(
+      stmt(
+        'insert into tenant (id, name, display_name, locale, currency, timezone, business_structure, country, jurisdiction) values ($1, $2, $3, $4, $5, $6, $7, $8, $9) on conflict (id) do update set name = excluded.name, display_name = excluded.display_name, locale = excluded.locale, currency = excluded.currency, timezone = excluded.timezone, business_structure = excluded.business_structure, country = excluded.country, jurisdiction = excluded.jurisdiction',
+        [t.id, t.name, t.displayName ?? t.name, t.locale ?? 'en', t.currency ?? 'USD', t.timezone ?? 'UTC', t.businessStructure ?? 'mixed_portfolio', t.country ?? 'US', t.jurisdiction ?? 'US'],
+      ),
+    );
   }
   for (const e of w.legalEntities ?? []) {
     out.push(
@@ -387,6 +412,46 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       stmt(
         'insert into crm_lead (id, tenant_id, name, source, stage, est_value_cents, party_id, created_at, updated_at, stage_at, lost_reason) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11) on conflict (id) do update set name = excluded.name, source = excluded.source, stage = excluded.stage, est_value_cents = excluded.est_value_cents, party_id = excluded.party_id, updated_at = excluded.updated_at, stage_at = excluded.stage_at, lost_reason = excluded.lost_reason',
         [l.id, l.tenantId, l.name, l.source ?? null, l.stage, l.estValueCents, l.partyId ?? null, l.createdAt, l.updatedAt, JSON.stringify(l.stageAt ?? {}), l.lostReason ?? null],
+      ),
+    );
+  }
+  for (const u of w.users ?? []) {
+    out.push(
+      stmt(
+        'insert into app_user (id, tenant_id, code, display_name, role_id, active) values ($1, $2, $3, $4, $5, $6) on conflict (id) do update set code = excluded.code, display_name = excluded.display_name, role_id = excluded.role_id, active = excluded.active',
+        [u.id, u.tenantId, u.code, u.displayName, u.roleId, u.active],
+      ),
+    );
+  }
+  for (const cr of w.customRoles ?? []) {
+    out.push(
+      stmt(
+        'insert into custom_role (tenant_id, role_id, name, description, permissions) values ($1, $2, $3, $4, $5::jsonb) on conflict (tenant_id, role_id) do update set name = excluded.name, description = excluded.description, permissions = excluded.permissions',
+        [cr.tenantId, cr.roleId, cr.name, cr.description ?? null, JSON.stringify(cr.permissions ?? [])],
+      ),
+    );
+  }
+  for (const it of w.integrations ?? []) {
+    out.push(
+      stmt(
+        'insert into integration (id, tenant_id, kind, provider, status, config, secret_ref, created_at) values ($1, $2, $3, $4, $5, $6::jsonb, $7, $8) on conflict (id) do update set status = excluded.status, config = excluded.config, secret_ref = excluded.secret_ref',
+        [it.id, it.tenantId, it.kind, it.provider, it.status, JSON.stringify(it.config ?? {}), it.secretRef ?? null, it.createdAt],
+      ),
+    );
+  }
+  for (const c of w.connectorCommands ?? []) {
+    out.push(
+      stmt(
+        'insert into connector_command (id, tenant_id, integration_id, action, payload, status, created_at, dispatched_at, resolved_at, result) values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10::jsonb) on conflict (id) do update set status = excluded.status, dispatched_at = excluded.dispatched_at, resolved_at = excluded.resolved_at, result = excluded.result',
+        [c.id, c.tenantId, c.integrationId, c.action, JSON.stringify(c.payload ?? {}), c.status, c.createdAt, c.dispatchedAt ?? null, c.resolvedAt ?? null, c.result === undefined ? null : JSON.stringify(c.result)],
+      ),
+    );
+  }
+  for (const e of w.signatureEnvelopes ?? []) {
+    out.push(
+      stmt(
+        'insert into signature_envelope (id, tenant_id, document_name, provider, provider_ref, lead_id, agreement_id, signers, status, created_at, sent_at, completed_at, void_reason, decline_reason) values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12, $13, $14) on conflict (id) do update set provider_ref = excluded.provider_ref, signers = excluded.signers, status = excluded.status, sent_at = excluded.sent_at, completed_at = excluded.completed_at, void_reason = excluded.void_reason, decline_reason = excluded.decline_reason',
+        [e.id, e.tenantId, e.documentName, e.provider, e.providerRef ?? null, e.leadId ?? null, e.agreementId ?? null, JSON.stringify(e.signers ?? []), e.status, e.createdAt, e.sentAt ?? null, e.completedAt ?? null, e.voidReason ?? null, e.declineReason ?? null],
       ),
     );
   }

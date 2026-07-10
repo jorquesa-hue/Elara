@@ -181,6 +181,15 @@ export class RoleRegistry {
     }
     return out;
   }
+
+  /** Only a tenant's CUSTOM roles — the persistable, non-built-in ones. */
+  customRolesFor(tenantId: string): RoleDef[] {
+    const out: RoleDef[] = [];
+    for (const [key, def] of this.custom) {
+      if (key.startsWith(`${tenantId}:`)) out.push(def);
+    }
+    return out;
+  }
 }
 
 export function can(perms: ReadonlySet<Permission>, permission: Permission): boolean {

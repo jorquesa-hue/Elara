@@ -5,6 +5,8 @@
 // storage concern. This keeps the ledger currency-agnostic and lets reporting
 // format the same stored integers for any audience.
 
+import { countryProfile } from './country.ts';
+
 export interface CurrencyDef {
   code: string; // ISO 4217
   minorUnits: number; // decimal places (2 for most, 0 for JPY, 3 for BHD)
@@ -53,6 +55,10 @@ export interface TenantConfig {
   timezone: string;
   /** A preset label or a custom string — flexible per deployment. */
   businessStructure: string;
+  /** ISO 3166-1 alpha-2 country of this environment. */
+  country: string;
+  /** Legal jurisdiction the policy envelope reasons about (derived from country). */
+  jurisdiction: string;
 }
 
 export class ConfigError extends Error {}
@@ -62,6 +68,8 @@ const DEFAULTS: Omit<TenantConfig, 'tenantId' | 'displayName'> = {
   currency: 'USD',
   timezone: 'UTC',
   businessStructure: 'mixed_portfolio',
+  country: 'US',
+  jurisdiction: 'US',
 };
 
 export function currencyDef(code: string): CurrencyDef {
@@ -87,10 +95,12 @@ export class ConfigStore {
     return { tenantId, displayName: tenantId, ...DEFAULTS };
   }
 
-  /** Create/replace a tenant's config, validating locale + currency. */
+  /** Create/replace a tenant's config, validating locale + currency. The
+   *  jurisdiction always follows the country (it is never set independently). */
   set(cfg: TenantConfig): TenantConfig {
-    this.validate(cfg);
-    this.byTenant.set(cfg.tenantId, { ...cfg });
+    const withJurisdiction = { ...cfg, jurisdiction: countryProfile(cfg.country).jurisdiction };
+    this.validate(withJurisdiction);
+    this.byTenant.set(cfg.tenantId, { ...withJurisdiction });
     return this.get(cfg.tenantId);
   }
 
@@ -100,12 +110,30 @@ export class ConfigStore {
     return this.set(next);
   }
 
+  /** Set up a tenant for a country: currency/locale/timezone default from the
+   *  country profile unless the caller overrides them. Master-data structure is
+   *  untouched — only config + jurisdiction differ by country. */
+  setupForCountry(tenantId: string, displayName: string, country: string, overrides: Partial<Omit<TenantConfig, 'tenantId' | 'displayName' | 'country' | 'jurisdiction'>> = {}): TenantConfig {
+    const p = countryProfile(country);
+    return this.set({
+      tenantId,
+      displayName,
+      country,
+      jurisdiction: p.jurisdiction,
+      currency: overrides.currency ?? p.currency,
+      locale: overrides.locale ?? p.locale,
+      timezone: overrides.timezone ?? p.timezone,
+      businessStructure: overrides.businessStructure ?? DEFAULTS.businessStructure,
+    });
+  }
+
   private validate(cfg: TenantConfig): void {
     if (!cfg.tenantId) throw new ConfigError('tenantId is required');
     if (!SUPPORTED_LOCALES.some((l) => l.code === cfg.locale)) {
       throw new ConfigError(`unsupported locale: ${cfg.locale}`);
     }
     currencyDef(cfg.currency); // throws if unsupported
+    countryProfile(cfg.country); // throws if unsupported
     if (!cfg.displayName || cfg.displayName.length === 0) {
       throw new ConfigError('displayName is required');
     }

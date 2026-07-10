@@ -46,6 +46,7 @@ import {
   BUSINESS_STRUCTURES,
   type TenantConfig,
 } from '../config.ts';
+import { COUNTRY_PROFILES } from '../country.ts';
 import { RoleRegistry, PERMISSIONS, type Permission } from '../rbac.ts';
 import { MasterData } from '../master-data.ts';
 import { catalog } from '../i18n.ts';
@@ -236,7 +237,10 @@ export class App {
   ): ApiResponse {
     const result: ToolCallResult<T> = this.runtime.execute(
       action,
-      { actor: ctx.actor, tenantId: ctx.tenantId, ...extra },
+      // The tenant's country jurisdiction rides in the policy context, so a rule
+      // may be jurisdiction-scoped (e.g. lease.execute in BR/EU) without any code
+      // fork — the master-data structure is identical for every country.
+      { actor: ctx.actor, tenantId: ctx.tenantId, jurisdiction: this.config.get(ctx.tenantId).jurisdiction, ...extra },
       this.now(),
       fn,
     );
@@ -454,12 +458,30 @@ export class App {
           locales: SUPPORTED_LOCALES,
           currencies: SUPPORTED_CURRENCIES,
           businessStructures: BUSINESS_STRUCTURES,
+          countries: COUNTRY_PROFILES,
         },
       },
     }));
 
-    // Setup-time: change language, currency, timezone, business structure.
+    // The country environments this deployment can serve. Same master-data
+    // structure everywhere; only config + jurisdiction differ per country.
+    this.add('GET', '/countries', null, () => ({ status: 200, body: { countries: COUNTRY_PROFILES } }));
+
+    // Setup-time: change country, language, currency, timezone, business
+    // structure. Setting a country re-derives the jurisdiction (never set alone)
+    // and, when currency/locale/timezone are omitted, seeds them from the
+    // country profile — but the master-data structure is identical for all.
     this.add('PUT', '/config', 'config.manage', (ctx, _p, body) => {
+      const country = this.optString(body, 'country');
+      if (country !== undefined) {
+        const overrides: Partial<Omit<TenantConfig, 'tenantId' | 'displayName' | 'country' | 'jurisdiction'>> = {};
+        for (const k of ['locale', 'currency', 'timezone', 'businessStructure'] as const) {
+          const v = this.optString(body, k);
+          if (v !== undefined) overrides[k] = v;
+        }
+        const displayName = this.optString(body, 'displayName') ?? this.config.get(ctx.tenantId).displayName;
+        return { status: 200, body: this.config.setupForCountry(ctx.tenantId, displayName, country, overrides) };
+      }
       const patch: Partial<Omit<TenantConfig, 'tenantId'>> = {};
       for (const k of ['displayName', 'locale', 'currency', 'timezone', 'businessStructure'] as const) {
         const v = this.optString(body, k);
@@ -1642,7 +1664,8 @@ export class App {
     const threadIds = new Set(this.comms.listThreads(tenantId).map((th) => th.id));
 
     return {
-      tenants: [{ id: tenantId, name: cfg.displayName ?? tenantId }],
+      // The tenant row now carries its full country-environment config.
+      tenants: [{ id: tenantId, name: cfg.displayName ?? tenantId, displayName: cfg.displayName, locale: cfg.locale, currency: cfg.currency, timezone: cfg.timezone, businessStructure: cfg.businessStructure, country: cfg.country, jurisdiction: cfg.jurisdiction }],
       units: this.masterData.units.list(tenantId).map((u) => ({ id: u.id, tenantId, label: u.label })),
       guests: this.masterData.guests.list(tenantId).map((g) => ({ id: g.id, tenantId, fullName: g.fullName })),
       ratePlans: this.masterData.ratePlans.list(tenantId).map((r) => ({
@@ -1699,6 +1722,16 @@ export class App {
       leads: this.crm.list(tenantId).map((l) => ({
         id: l.id, tenantId, name: l.name, source: l.source, stage: l.stage, estValueCents: l.estValueCents,
         partyId: l.partyId, createdAt: l.createdAt, updatedAt: l.updatedAt, stageAt: l.stageAt as Record<string, unknown>, lostReason: l.lostReason,
+      })),
+      // --- full persistence: platform users, custom roles, e-sign, connectors --
+      users: this.masterData.users.list(tenantId),
+      customRoles: this.roles.customRolesFor(tenantId).map((r) => ({ tenantId, roleId: r.id, name: r.name, description: r.description, permissions: r.permissions === '*' ? [...this.roles.permissionsFor(tenantId, r.id)] : (r.permissions as readonly string[]) })),
+      integrations: this.integrations.list(tenantId),
+      connectorCommands: this.connectorOutbox.list(tenantId),
+      signatureEnvelopes: this.signatures.list(tenantId).map((e) => ({
+        id: e.id, tenantId, documentName: e.documentName, provider: e.provider, providerRef: e.providerRef,
+        leadId: e.leadId, agreementId: e.agreementId, signers: e.signers, status: e.status,
+        createdAt: e.createdAt, sentAt: e.sentAt, completedAt: e.completedAt, voidReason: e.voidReason, declineReason: e.declineReason,
       })),
     };
   }

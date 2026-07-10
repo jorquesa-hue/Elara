@@ -62,7 +62,7 @@ function buildWorld(): WorldData {
   deposits.hold({ id: 'dep-1', agreementId: 'ag-1', amountCents: 50000, heldAt: '2026-07-02T00:00:00Z' });
 
   return {
-    tenants: [{ id: 't-1', name: 'Rio Ops' }],
+    tenants: [{ id: 't-1', name: 'Rio Ops', displayName: 'Rio Ops', locale: 'pt-BR', currency: 'BRL', timezone: 'America/Sao_Paulo', businessStructure: 'short_stay', country: 'BR', jurisdiction: 'BR' }],
     units: [{ id: 'u-1', tenantId: 't-1', label: '101' }],
     guests: [{ id: 'g-1', tenantId: 't-1', fullName: 'Ana' }],
     agreements: [{ id: 'ag-1', tenantId: 't-1', guestId: 'g-1', unitId: 'u-1', events: a.history }],
@@ -95,6 +95,12 @@ function buildWorld(): WorldData {
     budgets: [{ id: 'bg-1', tenantId: 't-1', account: 'expenses:repairs', periodStart: '2026-07-01', periodEnd: '2026-08-01', amountCents: 1000000, label: 'July' }],
     prospects: [{ id: 'pros-1', tenantId: 't-1', name: 'Ava', partyId: 'p-1', preferences: { cleanliness: 4, social: 3, chronotype: 'early' } }],
     leads: [{ id: 'ld-1', tenantId: 't-1', name: 'Bea', source: 'website', stage: 'toured', estValueCents: 300000, partyId: 'p-1', createdAt: '2026-07-01T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z', stageAt: { new: '2026-07-01T00:00:00Z', toured: '2026-07-02T00:00:00Z' } }],
+    // full persistence — exercise the config + platform + connector paths.
+    users: [{ id: 'usr-1', tenantId: 't-1', code: 'U-1', displayName: 'Manager', roleId: 'manager', active: true }],
+    customRoles: [{ tenantId: 't-1', roleId: 'housekeeping_lead', name: 'Housekeeping Lead', description: 'HK', permissions: ['agreement.read', 'maintenance.manage'] }],
+    integrations: [{ id: 'int-1', tenantId: 't-1', kind: 'lock', provider: 'salto', status: 'active', config: { site: 'bldg-a' }, secretRef: 'salto-key', createdAt: '2026-07-01T00:00:00Z' }],
+    connectorCommands: [{ id: 'cmd-1', tenantId: 't-1', integrationId: 'int-1', action: 'lock.unlock', payload: { spaceId: 's-u' }, status: 'succeeded', createdAt: '2026-07-01T00:00:00Z', dispatchedAt: '2026-07-01T00:01:00Z', resolvedAt: '2026-07-01T00:02:00Z', result: { code: 200 } }],
+    signatureEnvelopes: [{ id: 'env-1', tenantId: 't-1', documentName: 'Lease', provider: 'docusign', providerRef: 'ext-1', leadId: 'ld-1', agreementId: 'ag-1', signers: [{ name: 'Ana', email: 'ana@x.com', role: 'resident', signedAt: '2026-07-03T00:00:00Z' }], status: 'signed', createdAt: '2026-07-01T00:00:00Z', sentAt: '2026-07-01T00:05:00Z', completedAt: '2026-07-03T00:00:00Z' }],
   };
 }
 
