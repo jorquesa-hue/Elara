@@ -45,7 +45,7 @@ function jwtRole(auth: string | null): string | null {
 }
 
 // --- routing policy: verbatim twin of src/connector-adapters.ts -------------
-const DISPATCHABLE_KINDS = ['lock', 'access_control', 'elevator', 'website', 'crm'];
+const DISPATCHABLE_KINDS = ['lock', 'access_control', 'elevator', 'website', 'crm', 'fiscal'];
 const MONEY_KINDS = ['bank', 'payment_gateway'];
 
 function planConnectorCommand(input: { action: string; kind: string; secretResolved: boolean }): { decision: string; reason: string } {

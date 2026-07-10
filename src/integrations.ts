@@ -10,7 +10,7 @@
 // stored by the kernel. register() actively rejects secret-looking config keys.
 
 export type IntegrationKind =
-  | 'lock' | 'access_control' | 'elevator' | 'bank' | 'payment_gateway' | 'website' | 'crm';
+  | 'lock' | 'access_control' | 'elevator' | 'bank' | 'payment_gateway' | 'website' | 'crm' | 'fiscal';
 
 export type IntegrationStatus = 'active' | 'disabled';
 
@@ -26,7 +26,7 @@ export interface IntegrationRecord {
 }
 
 export const INTEGRATION_KINDS: readonly IntegrationKind[] = [
-  'lock', 'access_control', 'elevator', 'bank', 'payment_gateway', 'website', 'crm',
+  'lock', 'access_control', 'elevator', 'bank', 'payment_gateway', 'website', 'crm', 'fiscal',
 ];
 
 // Substrings that mark a key as secret-bearing. A key is collapsed to

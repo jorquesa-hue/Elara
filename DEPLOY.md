@@ -186,6 +186,24 @@ Optionally pass `{"tenantId":"…"}` to drain one tenant. A retry re-enqueues a 
 notification (a `failed` row is terminal); only `pending` rows are claimed, so a
 re-run never double-sends.
 
+## Fiscal documents (NF-e / NFS-e emission)
+
+Emitting an electronic fiscal invoice is an **outbound connector command** to the
+tenant's `fiscal` integration — the same pluggable pattern as door locks or banks.
+`POST /invoices/:id/emit-nfe` (perm `connector.dispatch`) resolves the tenant's
+active `fiscal` integration, builds a credential-free `emit_invoice` command (the
+`generic_fiscal` adapter attaches the vendor request; recipient tax id comes from
+the invoice's bill-to party), and enqueues it. The `connector-worker` edge function
+(v3, `fiscal` is a dispatchable non-money kind) resolves the certificate/API key
+from the secret store and performs the real call to the provider (Focus NFe /
+NFe.io / a municipal NFS-e gateway). The authorization returns asynchronously via
+`POST /integrations/:id/events` with `fiscal.invoice_authorized` (carrying the
+access key / fiscal reference), recorded on the integration's inbound events thread.
+
+Onboarding a fiscal provider = register the integration (`kind: "fiscal"`,
+`baseUrl` in config, the API key as a `secretRef` in the vault) — no kernel change;
+a vendor-specific adapter is a copy of `generic_fiscal` with the real endpoints.
+
 ## Live acceptance (the one end-to-end that can't run in the build sandbox)
 
 The sandbox that authors this repo has no egress to Postgres/the edge, so this must

@@ -1638,6 +1638,50 @@ export class App {
       }
     });
 
+    // --- fiscal document emission (NF-e / NFS-e) --------------------------
+    // Emitting an electronic fiscal invoice is an OUTBOUND connector command to
+    // the tenant's `fiscal` integration (Focus NFe / NFe.io / a municipal NFS-e
+    // gateway). Same discipline as every connector: the kernel enqueues a
+    // CREDENTIAL-FREE command (the adapter attaches the vendor _request template),
+    // the connector-worker edge function resolves the certificate/API key from the
+    // secret store and performs the real call, and the authorization comes back
+    // asynchronously via POST /integrations/:id/events (fiscal.invoice_authorized).
+    // Gated connector.dispatch (fiscal is a dispatchable, non-money kind).
+    this.add('POST', '/invoices/:id/emit-nfe', 'connector.dispatch', (ctx, p, _body) => {
+      const invoiceId = p['id']!;
+      if (this.invoiceTenant.get(invoiceId) !== ctx.tenantId) throw new HttpError(404, 'invoice not found');
+      const inv = this.billing.get(invoiceId);
+      const integ = this.integrations.list(ctx.tenantId, { kind: 'fiscal' }).find((i) => i.status === 'active');
+      if (!integ) throw new HttpError(409, 'no active fiscal integration configured for this tenant');
+
+      // Recipient tax id (CPF/CNPJ) comes from the invoice's bill-to party — never a secret.
+      const billToTaxId = inv.billToPartyId ? this.parties.getParty(ctx.tenantId, inv.billToPartyId)?.taxId : undefined;
+      const payload: Record<string, unknown> = {
+        invoiceId: inv.id,
+        agreementId: inv.agreementId,
+        totalCents: inv.totalCents,
+        currency: inv.currency,
+        issuedAt: inv.issuedAt,
+        lines: inv.lines.map((l) => ({ description: l.description, amountCents: l.amountCents })),
+        recipient: { taxId: billToTaxId },
+      };
+      const adapter = this.adapters.resolve(integ.kind, integ.provider);
+      if (adapter) {
+        if (!adapter.actions.includes('emit_invoice')) throw new HttpError(400, `${integ.provider} does not support emit_invoice`);
+        if (adapter.enabled) {
+          try { payload['_request'] = adapter.buildRequest('emit_invoice', payload, integ.config); }
+          catch (e) { throw new HttpError(400, e instanceof AdapterError ? e.message : 'adapter could not build the request'); }
+        }
+      }
+      return this.gated(
+        'connector.dispatch',
+        ctx,
+        { integrationId: integ.id, action: 'emit_invoice', integrationKind: integ.kind },
+        () => this.connectorOutbox.enqueue({ id: `nfe-${invoiceId}`, tenantId: ctx.tenantId, integrationId: integ.id, action: 'emit_invoice', payload, createdAt: this.now() }),
+        (cmd) => ({ status: 202, body: { status: 'queued', command: cmd } }),
+      );
+    });
+
     // --- notifications (email/SMS transport) ------------------------------
     // The kernel RECORDS a notification; the notification-worker edge function
     // drains the outbox and sends it, resolving the provider credential from the

@@ -118,8 +118,10 @@ export const genericWebhookWebsite: Adapter = {
   buildRequest(action, payload, config) {
     const base = baseUrl(config, 'generic_webhook website');
     switch (action) {
-      case 'push_inventory': return { method: 'POST', url: `${base}/inventory`, auth: { scheme: 'header', name: 'X-Api-Key' }, body: payload };
-      case 'push_rates': return { method: 'POST', url: `${base}/rates`, auth: { scheme: 'header', name: 'X-Api-Key' }, body: payload };
+      // Snapshot the body (see the fiscal adapter): the caller assigns the request
+      // back onto the same payload, so `body: payload` would create a cycle.
+      case 'push_inventory': return { method: 'POST', url: `${base}/inventory`, auth: { scheme: 'header', name: 'X-Api-Key' }, body: { ...payload } };
+      case 'push_rates': return { method: 'POST', url: `${base}/rates`, auth: { scheme: 'header', name: 'X-Api-Key' }, body: { ...payload } };
       case 'pull_bookings': return { method: 'GET', url: `${base}/bookings?since=${enc(payload['since'])}`, auth: { scheme: 'header', name: 'X-Api-Key' } };
       default: throw new AdapterError(`generic_webhook website: unsupported action '${action}'`);
     }
@@ -145,6 +147,30 @@ export const genericRestBank: Adapter = {
   },
 };
 
+// A fiscal-document port (NF-e / NFS-e emission). This is NOT a money rail — it
+// emits a tax document for money that already settled — so it ships ENABLED. A
+// real provider (Focus NFe, NFe.io, eNotas, a municipal NFS-e gateway) is a copy
+// of this with the real endpoints; the certificate/API key is resolved by the edge
+// from the secret store (never in the kernel). The emitted document's authorization
+// comes back asynchronously via the inbound events port (fiscal.invoice_authorized).
+export const genericFiscal: Adapter = {
+  kind: 'fiscal',
+  provider: 'generic_rest',
+  actions: ['emit_invoice', 'cancel_invoice', 'get_status'],
+  enabled: true,
+  buildRequest(action, payload, config) {
+    const base = baseUrl(config, 'generic_rest fiscal');
+    switch (action) {
+      // Snapshot the body — the caller assigns the built request back onto the same
+      // payload object (payload._request = req), so `body: payload` would make a cycle.
+      case 'emit_invoice': return { method: 'POST', url: `${base}/nfe`, auth: { scheme: 'bearer' }, body: { ...payload } };
+      case 'cancel_invoice': return { method: 'POST', url: `${base}/nfe/${enc(payload['fiscalRef'] ?? payload['invoiceId'])}/cancel`, auth: { scheme: 'bearer' }, body: { reason: payload['reason'] ?? null } };
+      case 'get_status': return { method: 'GET', url: `${base}/nfe/${enc(payload['fiscalRef'] ?? payload['invoiceId'])}`, auth: { scheme: 'bearer' } };
+      default: throw new AdapterError(`generic_rest fiscal: unsupported action '${action}'`);
+    }
+  },
+};
+
 /** The default registry: the generic reference adapters. A deployment adds its
  *  real vendor adapters on top (or swaps a generic one for a vendor-specific one). */
 export function defaultAdapterRegistry(): AdapterRegistry {
@@ -152,5 +178,6 @@ export function defaultAdapterRegistry(): AdapterRegistry {
     .register(genericRestLock)
     .register(genericRestAccessControl)
     .register(genericWebhookWebsite)
-    .register(genericRestBank);
+    .register(genericRestBank)
+    .register(genericFiscal);
 }
