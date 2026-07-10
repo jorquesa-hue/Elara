@@ -50,11 +50,15 @@ or cross-tenant *write* hole.
   list, and `GET /invoices/:id` all enforce it, returning 404 (never leaking existence) for
   anything else. Operator tokens carry no `partyId` and are unaffected. Covered by
   `tests/tranche33-guest-scope.test.ts` (5 tests).
-- **E-sign completion is relayed from a client-supplied email (LOW).** `POST
-  /signature-envelopes/:id/sign` trusts `{email}`. It does not execute the lease (that stays
-  `lease.execute` escalate), so impact is limited to sales-state/audit integrity.
-  *Recommended fix:* restrict the sign/void relay to a service/webhook role and verify
-  against the provider (`providerRef`).
+- **E-sign completion is relayed from a client-supplied email — FIXED.** `POST
+  /signature-envelopes/:id/sign` now requires the new `esign.complete` permission, held
+  only by owner/service (via `'*'`) and deliberately NOT in OPS — so an operator/agent
+  cannot forge a signature. It also verifies the request carries the envelope's stored
+  `providerRef` (the provider's external envelope id set at send), so only a genuine
+  provider callback can complete it. Covered by `tranche26` (an agent completion → 403; a
+  missing/mismatched providerRef → 403; the service webhook with the matching providerRef →
+  completes). The portal's sign action is gated on `esign.complete` and passes the
+  providerRef, honestly modelling the provider webhook.
 - **Jurisdiction is tenant-mutable (LOW).** `PUT /config` re-derives `jurisdiction` from the
   chosen country, and jurisdiction-scoped rules (e.g. the BR/EU deposit cap) key off it, so a
   tenant admin can weaken a regulated control by switching country. *Recommended fix:* treat

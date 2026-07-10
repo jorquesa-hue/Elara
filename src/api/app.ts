@@ -1539,11 +1539,19 @@ export class App {
       return this.gated('esign.send', ctx, { id: env.id }, () => this.signatures.send(env.id, this.now(), this.optString(body, 'providerRef')), (e) => ({ status: 200, body: e }));
     });
 
-    // Record a signer's completion (the provider webhook, relayed here). When
-    // every signer has signed, advance the linked CRM lead to 'signed' — the
-    // SALES outcome. The binding lease execution stays a separate human step.
-    this.add('POST', '/signature-envelopes/:id/sign', 'esign.manage', (ctx, p, body) => {
+    // Record a signer's completion. This IS the provider's webhook, relayed by
+    // the service role — it requires esign.complete (NOT esign.manage), so an
+    // operator/agent cannot forge a signature by POSTing an email. When the
+    // envelope was dispatched to a real provider it carries a providerRef (the
+    // external envelope id); the callback must present the matching providerRef,
+    // proving it is a genuine provider callback and not a spoofed request. When
+    // every signer has signed, advance the linked CRM lead to 'signed' — the SALES
+    // outcome. The binding lease execution stays a separate human step.
+    this.add('POST', '/signature-envelopes/:id/sign', 'esign.complete', (ctx, p, body) => {
       const env = this.ownedEnvelope(ctx, p['id']!);
+      if (env.providerRef && this.optString(body, 'providerRef') !== env.providerRef) {
+        throw new HttpError(403, 'providerRef mismatch: completion must be relayed from the provider');
+      }
       const email = this.requireString(body, 'email');
       if (body['decline'] === true) {
         return { status: 200, body: this.signatures.decline(env.id, email, this.optString(body, 'reason') ?? 'declined', this.now()) };

@@ -1047,9 +1047,13 @@
         var actions=h("div",{class:"row"},[]);
         if(can("esign.manage")){
           if(env.status==="draft"){ actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/signature-envelopes/"+env.id+"/send",{method:"POST",body:{providerRef:"ext-"+Date.now()}}).then(function(x){ handleEnv(x,wrap); }); }},["Send"])); }
-          if(env.status==="sent"){ (env.signers||[]).filter(function(s){return !s.signedAt && !s.declinedAt;}).forEach(function(s){ actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/signature-envelopes/"+env.id+"/sign",{method:"POST",body:{email:s.email}}).then(function(x){ if(x.status===200){ toast("Signed: "+s.email,"ok"); refreshEnvelopes(wrap);} else toast(x.body.error||"err","err"); }); }},["Sign: "+s.name.split(" ")[0]])); }); }
           if(env.status==="draft"||env.status==="sent"){ actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/signature-envelopes/"+env.id+"/void",{method:"POST",body:{reason:"cancelled"}}).then(function(x){ handleEnv(x,wrap); }); }},["Void"])); }
         }
+        // Recording a signature IS the provider's webhook — relayed by the service
+        // role (esign.complete), never forgeable from the operator UI. Signers sign
+        // on the provider's hosted page; this button simulates that callback and
+        // must carry the provider's envelope id (providerRef).
+        if(can("esign.complete") && env.status==="sent"){ (env.signers||[]).filter(function(s){return !s.signedAt && !s.declinedAt;}).forEach(function(s){ actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/signature-envelopes/"+env.id+"/sign",{method:"POST",body:{email:s.email, providerRef:env.providerRef}}).then(function(x){ if(x.status===200){ toast("Signed (webhook): "+s.email,"ok"); refreshEnvelopes(wrap);} else toast((x.body&&x.body.error)||"err","err"); }); }},["Webhook sign: "+s.name.split(" ")[0]])); }); }
         var signed=(env.signers||[]).filter(function(s){return s.signedAt;}).length;
         var pillCls = env.status==="signed"?"active":(env.status==="declined"||env.status==="voided"?"terminated":"draft");
         return h("tr",{},[ h("td",{},[env.documentName]), h("td",{class:"mono muted"},[env.provider]), h("td",{class:"muted"},[signed+"/"+(env.signers||[]).length+" signed"]), h("td",{},[h("span",{class:"pill "+pillCls},[env.status])]), h("td",{},[actions]) ]);

@@ -88,20 +88,39 @@ function makeApp() {
   const agent: AuthContext = { actor: 'bot', tenantId: 't1', role: 'agent' };
   const reader: AuthContext = { actor: 'aud', tenantId: 't1', role: 'read_only' };
   const acct: AuthContext = { actor: 'fin', tenantId: 't1', role: 'accountant' };
-  const auth = new StaticTokenAuthenticator({ own: owner, bot: agent, ro: reader, fin: acct });
+  const service: AuthContext = { actor: 'webhook', tenantId: 't1', role: 'service' };
+  const auth = new StaticTokenAuthenticator({ own: owner, bot: agent, ro: reader, fin: acct, svc: service });
   return new App({ authenticator: auth, now: () => T });
 }
 const envBody = (over: Record<string, unknown> = {}) => ({ id: 'env-1', documentName: 'Lease 2026', provider: 'docusign', signers: twoSigners, ...over });
 
-test('API: create → send → sign completes the envelope', () => {
+test('API: create → send → sign (provider webhook) completes the envelope', () => {
   const app = makeApp();
   assert.equal(D(app, 'POST', '/signature-envelopes', 'own', envBody()).status, 201);
   assert.equal((D(app, 'POST', '/signature-envelopes/env-1/send', 'own', { providerRef: 'ext-9' }).body as { status: string }).status, 'sent');
-  D(app, 'POST', '/signature-envelopes/env-1/sign', 'own', { email: 'ana@x.com' });
-  const done = D(app, 'POST', '/signature-envelopes/env-1/sign', 'own', { email: 'pat@x.com' });
+  // Completion is the provider's webhook, relayed by the service role and carrying
+  // the provider's envelope id (providerRef).
+  D(app, 'POST', '/signature-envelopes/env-1/sign', 'svc', { email: 'ana@x.com', providerRef: 'ext-9' });
+  const done = D(app, 'POST', '/signature-envelopes/env-1/sign', 'svc', { email: 'pat@x.com', providerRef: 'ext-9' });
   const b = done.body as { completed: boolean; envelope: { status: string } };
   assert.equal(b.completed, true);
   assert.equal(b.envelope.status, 'signed');
+});
+
+test('API: an operator/agent CANNOT forge a completion (esign.complete is service-only)', () => {
+  const app = makeApp();
+  D(app, 'POST', '/signature-envelopes', 'own', envBody());
+  D(app, 'POST', '/signature-envelopes/env-1/send', 'own', { providerRef: 'ext-9' });
+  // agent holds esign.manage (sends) but NOT esign.complete → 403.
+  assert.equal(D(app, 'POST', '/signature-envelopes/env-1/sign', 'bot', { email: 'ana@x.com', providerRef: 'ext-9' }).status, 403);
+});
+
+test('API: a completion without the matching providerRef is refused (spoof guard)', () => {
+  const app = makeApp();
+  D(app, 'POST', '/signature-envelopes', 'own', envBody());
+  D(app, 'POST', '/signature-envelopes/env-1/send', 'own', { providerRef: 'ext-9' });
+  assert.equal(D(app, 'POST', '/signature-envelopes/env-1/sign', 'svc', { email: 'ana@x.com' }).status, 403); // missing
+  assert.equal(D(app, 'POST', '/signature-envelopes/env-1/sign', 'svc', { email: 'ana@x.com', providerRef: 'wrong' }).status, 403); // mismatch
 });
 
 test('API: a completed envelope advances its linked CRM lead to signed — but not the lease', () => {

@@ -69,6 +69,10 @@ export const PERMISSIONS = [
   'crm.manage',
   'esign.read',
   'esign.manage',
+  // Recording a signer's COMPLETION is the provider's webhook, relayed by the
+  // service role — deliberately NOT in OPS, so an operator/agent cannot forge a
+  // signature. Only owner/service hold it (via '*').
+  'esign.complete',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
