@@ -46,7 +46,7 @@ import {
   BUSINESS_STRUCTURES,
   type TenantConfig,
 } from '../config.ts';
-import { COUNTRY_PROFILES } from '../country.ts';
+import { COUNTRY_PROFILES, countryProfile } from '../country.ts';
 import { buildEnvironment } from '../environment.ts';
 import { RoleRegistry, PERMISSIONS, type Permission } from '../rbac.ts';
 import { MasterData } from '../master-data.ts';
@@ -501,7 +501,19 @@ export class App {
           if (v !== undefined) overrides[k] = v;
         }
         const displayName = this.optString(body, 'displayName') ?? this.config.get(ctx.tenantId).displayName;
-        return { status: 200, body: this.config.setupForCountry(ctx.tenantId, displayName, country, overrides) };
+        // Changing an ALREADY-ESTABLISHED jurisdiction (not first-time setup) can
+        // weaken a jurisdiction-scoped control, so it escalates to a human and is
+        // audited in the action_log. countryProfile() derives the target jurisdiction.
+        // A tenant that has never been explicitly configured is being set up, not
+        // changed, so it applies directly.
+        const established = this.config.has(ctx.tenantId);
+        const current = this.config.get(ctx.tenantId).jurisdiction;
+        const next = countryProfile(country).jurisdiction;
+        const apply = () => this.config.setupForCountry(ctx.tenantId, displayName, country, overrides);
+        if (established && next !== current) {
+          return this.gated('config.change_jurisdiction', ctx, { from: current, to: next }, apply, (cfg) => ({ status: 200, body: cfg }));
+        }
+        return { status: 200, body: apply() };
       }
       const patch: Partial<Omit<TenantConfig, 'tenantId'>> = {};
       for (const k of ['displayName', 'locale', 'currency', 'timezone', 'businessStructure'] as const) {

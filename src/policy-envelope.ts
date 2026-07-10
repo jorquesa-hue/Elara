@@ -135,6 +135,12 @@ export const POLICY_RULES: readonly PolicyRule[] = [
   },
   { id: 'pol-connector-dispatch', action: 'connector.dispatch', effect: 'allow', description: 'Enqueuing a non-money connector command (unlock, push inventory, pull leads) is routine; edge adapters hold the credentials.' },
   { id: 'pol-esign-send', action: 'esign.send', effect: 'allow', description: 'Sending a lease document out for e-signature is routine and audited; it does not execute the lease (lease.execute stays human-gated).' },
+  {
+    id: 'pol-config-change-jurisdiction',
+    action: 'config.change_jurisdiction',
+    effect: 'escalate',
+    description: 'Changing an ESTABLISHED tenant jurisdiction can weaken a regulated control (e.g. move BR→US to escape the deposit cap): a human confirms. Initial setup (no prior jurisdiction) is not this action.',
+  },
   { id: 'pol-collections-remind', action: 'collections.remind', effect: 'allow', description: 'Payment reminders are routine.' },
   { id: 'pol-collections-latefee', action: 'collections.late_fee', effect: 'allow', description: 'Contractual late fees are routine.' },
   { id: 'pol-collections-suspend', action: 'collections.suspend', effect: 'escalate', description: 'Service suspension is guest-impacting: human confirms.' },

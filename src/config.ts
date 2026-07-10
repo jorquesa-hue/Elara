@@ -95,6 +95,12 @@ export class ConfigStore {
     return { tenantId, displayName: tenantId, ...DEFAULTS };
   }
 
+  /** Whether this tenant has been explicitly configured (vs. returning defaults).
+   *  A jurisdiction "change" only matters once a tenant is really set up. */
+  has(tenantId: string): boolean {
+    return this.byTenant.has(tenantId);
+  }
+
   /** Create/replace a tenant's config, validating locale + currency. The
    *  jurisdiction always follows the country (it is never set independently). */
   set(cfg: TenantConfig): TenantConfig {

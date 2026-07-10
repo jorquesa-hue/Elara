@@ -65,12 +65,13 @@ insert into policy_rule (id, action, effect, description, condition_note, ordina
   ('pol-connector-dispatch-payout', 'connector.dispatch', 'escalate', 'A money-moving command to a bank or payment-gateway integration above R$5,000 is a real payout/charge over an external rail — the same money-out control as bill.pay applies: human approval required. Closes the parallel rail that would otherwise bypass the AP escalation.', 'integration_kind in (bank,payment_gateway) and amount_cents > 500000', 40),
   ('pol-connector-dispatch', 'connector.dispatch', 'allow', 'Enqueuing a non-money connector command (unlock, push inventory, pull leads) is routine; edge adapters hold the credentials.', null, 41),
   ('pol-esign-send', 'esign.send', 'allow', 'Sending a lease document out for e-signature is routine and audited; it does not execute the lease (lease.execute stays human-gated).', null, 42),
-  ('pol-collections-remind', 'collections.remind', 'allow', 'Payment reminders are routine.', null, 43),
-  ('pol-collections-latefee', 'collections.late_fee', 'allow', 'Contractual late fees are routine.', null, 44),
-  ('pol-collections-suspend', 'collections.suspend', 'escalate', 'Service suspension is guest-impacting: human confirms.', null, 45),
-  ('pol-collections-evict', 'collections.evict', 'escalate', 'Eviction is irreversible and regulated: propose to human, never execute.', null, 46),
-  ('pol-groupblock-create', 'group_block.create', 'allow', 'Agents may place group blocks.', null, 47),
-  ('pol-groupblock-pickup', 'group_block.pickup', 'allow', 'Agents may convert block holds into agreements.', null, 48);
+  ('pol-config-change-jurisdiction', 'config.change_jurisdiction', 'escalate', 'Changing an ESTABLISHED tenant jurisdiction can weaken a regulated control (e.g. move BR→US to escape the deposit cap): a human confirms. Initial setup (no prior jurisdiction) is not this action.', null, 43),
+  ('pol-collections-remind', 'collections.remind', 'allow', 'Payment reminders are routine.', null, 44),
+  ('pol-collections-latefee', 'collections.late_fee', 'allow', 'Contractual late fees are routine.', null, 45),
+  ('pol-collections-suspend', 'collections.suspend', 'escalate', 'Service suspension is guest-impacting: human confirms.', null, 46),
+  ('pol-collections-evict', 'collections.evict', 'escalate', 'Eviction is irreversible and regulated: propose to human, never execute.', null, 47),
+  ('pol-groupblock-create', 'group_block.create', 'allow', 'Agents may place group blocks.', null, 48),
+  ('pol-groupblock-pickup', 'group_block.pickup', 'allow', 'Agents may convert block holds into agreements.', null, 49);
 
 delete from collection_stage;
 insert into collection_stage (id, min_days_overdue, action, policy_action, description, fee_bps, ordinal) values

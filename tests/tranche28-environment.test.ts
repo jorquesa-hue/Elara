@@ -88,7 +88,8 @@ test('lease.execute stays escalate in every jurisdiction (regulated everywhere)'
 
 function makeApp() {
   const owner: AuthContext = { actor: 'ana', tenantId: 't1', role: 'owner' };
-  const auth = new StaticTokenAuthenticator({ own: owner });
+  const usOwner: AuthContext = { actor: 'bob', tenantId: 't2', role: 'owner' };
+  const auth = new StaticTokenAuthenticator({ own: owner, us: usOwner });
   return new App({ authenticator: auth, now: () => T });
 }
 
@@ -103,9 +104,23 @@ test('API: GET /environment returns the tenant country blueprint', () => {
   assert.ok(env.masterDataStructure.includes('party') && env.masterDataStructure.includes('agreement'));
 });
 
+test('API: first-time country setup applies, but CHANGING an established jurisdiction escalates', () => {
+  const app = makeApp();
+  // First-time setup is provisioning, not a change → applies directly.
+  assert.equal(D(app, 'PUT', '/config', 'own', { displayName: 'BR Ops', country: 'BR' }).status, 200);
+  // A same-jurisdiction reconfigure (BR→PT is BR→EU, different) escalates; a pure
+  // non-country tweak does not. Switching BR→US weakens the deposit cap → escalate.
+  const change = D(app, 'PUT', '/config', 'own', { country: 'US' });
+  assert.equal(change.status, 202);
+  assert.equal((change.body as { status: string }).status, 'escalated');
+  // The jurisdiction did NOT change (parked for approval): still BR.
+  assert.equal((D(app, 'GET', '/environment', 'own').body as { jurisdiction: string }).jurisdiction, 'BR');
+});
+
 test('API: a BR tenant escalates a deposit above the cap; a US tenant does not', () => {
   const app = makeApp();
-  // shared setup: a booked agreement to hold a deposit against
+  // Two SEPARATE tenants, each set up in its own country — the realistic shape
+  // (a jurisdiction is fixed at setup; changing an established one now escalates).
   D(app, 'PUT', '/config', 'own', { displayName: 'BR Ops', country: 'BR' });
   D(app, 'POST', '/agreements', 'own', { id: 'ag-1', guestId: 'g-1', unitId: 'u-1', kind: 'lease', start: '2026-07-01', end: '2027-07-01', rateCents: 300000 });
   D(app, 'POST', '/agreements/ag-1/activate', 'own', {});
@@ -113,9 +128,11 @@ test('API: a BR tenant escalates a deposit above the cap; a US tenant does not',
   assert.equal(brBig.status, 202); // escalated under BR jurisdiction
   assert.equal((brBig.body as { status: string }).status, 'escalated');
 
-  // Same action, same amount, US environment → routine.
-  D(app, 'PUT', '/config', 'own', { displayName: 'US Ops', country: 'US' });
-  const usBig = D(app, 'POST', '/deposits', 'own', { id: 'dep-2', agreementId: 'ag-1', amountCents: 1_000_000 });
+  // Same action, same amount, a US-environment tenant → routine.
+  D(app, 'PUT', '/config', 'us', { displayName: 'US Ops', country: 'US' });
+  D(app, 'POST', '/agreements', 'us', { id: 'ag-2', guestId: 'g-2', unitId: 'u-2', kind: 'lease', start: '2026-07-01', end: '2027-07-01', rateCents: 300000 });
+  D(app, 'POST', '/agreements/ag-2/activate', 'us', {});
+  const usBig = D(app, 'POST', '/deposits', 'us', { id: 'dep-2', agreementId: 'ag-2', amountCents: 1_000_000 });
   assert.equal(usBig.status, 201); // allowed under US jurisdiction
 });
 

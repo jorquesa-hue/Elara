@@ -59,10 +59,12 @@ or cross-tenant *write* hole.
   missing/mismatched providerRef → 403; the service webhook with the matching providerRef →
   completes). The portal's sign action is gated on `esign.complete` and passes the
   providerRef, honestly modelling the provider webhook.
-- **Jurisdiction is tenant-mutable (LOW).** `PUT /config` re-derives `jurisdiction` from the
-  chosen country, and jurisdiction-scoped rules (e.g. the BR/EU deposit cap) key off it, so a
-  tenant admin can weaken a regulated control by switching country. *Recommended fix:* treat
-  jurisdiction changes as an audited/escalated operation.
+- **Jurisdiction is tenant-mutable — FIXED.** `PUT /config` still re-derives `jurisdiction`
+  from the chosen country, but CHANGING an already-established jurisdiction now dispatches
+  `config.change_jurisdiction`, an escalate rule — so weakening a regulated control (e.g.
+  BR→US to escape the deposit cap) parks for human approval and is recorded in the tenant-
+  scoped `action_log`. First-time setup (a tenant not yet configured) applies directly, as
+  does a config tweak that doesn't move the jurisdiction. Covered by `tranche28`.
 - **`lease.execute` is reserved, not wired (observational).** The escalate rule exists but no
   endpoint dispatches `lease.execute` — lease execution is deliberately out of scope for now
   (conversion to a lease agreement is routine; binding execution is not modeled). The gate is
