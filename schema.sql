@@ -400,5 +400,5 @@ alter table invoice       add column if not exists receiving_entity_id text refe
 alter table invoice_line  add column if not exists charge_type         text;
 alter table calendar_hold add column if not exists space_id            text references space(id);
 -- agreement_event.type check is widened to add: party_assigned, party_released,
--- rent_adjusted, transferred, moved_in, moved_out.
+-- rent_adjusted, transferred, moved_in, moved_out, lease_executed.
 -- All v2 tables carry deny-by-default + forced RLS (service-role only).

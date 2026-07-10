@@ -1111,6 +1111,16 @@ export class App {
       return this.gated('agreement.move', ctx, { id: a.id }, () => { a.moveOut(at, { inspectionId: this.optString(body, 'inspectionId'), note: this.optString(body, 'note') }); return a; }, (ag) => ({ status: 200, body: this.agreementSummary(ag) }));
     });
 
+    // Legally EXECUTE (bind) a lease. lease.execute ESCALATES in every jurisdiction
+    // (regulated + irreversible), so this ALWAYS parks for human approval (202) and
+    // is never auto-executed — the binding only runs when a human approves the
+    // exception. Distinct from converting the agreement kind to 'lease'.
+    this.add('POST', '/agreements/:id/execute-lease', 'agreement.execute', (ctx, p, body) => {
+      const a = this.ownedAgreement(ctx, p['id']!);
+      const at = this.optString(body, 'at') ?? this.now();
+      return this.gated('lease.execute', ctx, { id: a.id }, () => { a.executeLease(at, { documentRef: this.optString(body, 'documentRef'), note: this.optString(body, 'note') }); return a; }, (ag) => ({ status: 200, body: { ...this.agreementSummary(ag), leaseExecuted: ag.leaseExecuted } }));
+    });
+
     this.add('POST', '/inspections', 'inspection.manage', (ctx, _p, body) => {
       const id = this.requireString(body, 'id');
       const agreementId = this.requireString(body, 'agreementId');

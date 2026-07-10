@@ -17,6 +17,7 @@ export type AgreementEventType =
   | 'transferred'
   | 'moved_in'
   | 'moved_out'
+  | 'lease_executed'
   | 'completed'
   | 'terminated';
 
@@ -279,6 +280,35 @@ export class Agreement {
       throw new AgreementError(`cannot move out on agreement in status ${this.status}`);
     }
     this.append('moved_out', at, { ...(opts.inspectionId ? { inspectionId: opts.inspectionId } : {}), ...(opts.note ? { note: opts.note } : {}) });
+  }
+
+  /**
+   * Legally EXECUTE (bind) the lease — the regulated, irreversible step, distinct
+   * from converting the agreement's kind to 'lease'. It is only reachable through
+   * the policy envelope's `lease.execute` rule, which ESCALATES in every
+   * jurisdiction, so this only runs after a human approves the escalation — it is
+   * never auto-executed (behavioral guardrail). Requires a lease that is active
+   * and not already executed.
+   */
+  executeLease(at: string, opts: { documentRef?: string; note?: string } = {}): void {
+    if (this.kind !== 'lease') {
+      throw new AgreementError(`cannot execute a lease on a ${this.kind} agreement; convert to a lease first`);
+    }
+    if (this.status !== 'active') {
+      throw new AgreementError(`cannot execute lease on agreement in status ${this.status}`);
+    }
+    if (this.leaseExecuted) {
+      throw new AgreementError('lease is already executed');
+    }
+    this.append('lease_executed', at, {
+      ...(opts.documentRef ? { documentRef: opts.documentRef } : {}),
+      ...(opts.note ? { note: opts.note } : {}),
+    });
+  }
+
+  /** Whether the lease has been legally executed (a `lease_executed` event exists). */
+  get leaseExecuted(): boolean {
+    return this.events.some((e) => e.type === 'lease_executed');
   }
 
   complete(at: string): void {

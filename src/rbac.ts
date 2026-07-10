@@ -35,6 +35,11 @@ export const PERMISSIONS = [
   'persistence.run',
   'agreement.adjust',
   'agreement.transfer',
+  // Initiating a lease execution. The policy envelope ESCALATES lease.execute in
+  // every jurisdiction, so this permission only gates who may REQUEST it — the
+  // binding still needs a human to approve the escalation. Deliberately NOT in OPS
+  // (agents can't initiate a regulated binding).
+  'agreement.execute',
   'party.read',
   'party.manage',
   'space.read',
@@ -113,7 +118,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'manager',
     name: 'Manager',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'agreement.execute'],
     builtin: true,
     description: 'Runs the property: all operations, approvals, staff and master data.',
   },
@@ -121,7 +126,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'staff',
     name: 'Staff',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'masterdata.manage', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'masterdata.manage', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'agreement.execute'],
     builtin: true,
     description: 'Approvals and day-to-day management.',
   },

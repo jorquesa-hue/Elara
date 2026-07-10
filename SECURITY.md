@@ -65,10 +65,13 @@ or cross-tenant *write* hole.
   BR→US to escape the deposit cap) parks for human approval and is recorded in the tenant-
   scoped `action_log`. First-time setup (a tenant not yet configured) applies directly, as
   does a config tweak that doesn't move the jurisdiction. Covered by `tranche28`.
-- **`lease.execute` is reserved, not wired (observational).** The escalate rule exists but no
-  endpoint dispatches `lease.execute` — lease execution is deliberately out of scope for now
-  (conversion to a lease agreement is routine; binding execution is not modeled). The gate is
-  reserved for when that transition is added.
+- **`lease.execute` is reserved, not wired — FIXED.** `POST /agreements/:id/execute-lease`
+  now dispatches `lease.execute` (gated by the new `agreement.execute` permission, which is
+  NOT in OPS — agents cannot initiate). Because the rule ESCALATES in every jurisdiction, the
+  endpoint always parks for human approval (202); the binding `lease_executed` event is
+  appended only when a human approves the exception — it is never auto-executed. Covered by
+  `tranche34` (6 tests). Migration `20260710173000` widened the `agreement_event` type check;
+  applied + probed live (rolled back).
 
 ## Standing rules (unchanged)
 
