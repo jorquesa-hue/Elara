@@ -69,8 +69,14 @@ export function createHttpServer(app: App, hooks: HttpHooks = {}): Server {
             ? { status: 413, body: { error: e.message } }
             : { status: 400, body: { error: e instanceof Error ? e.message : 'bad request' } };
       }
-      res.writeHead(response.status, { 'content-type': 'application/json' });
-      res.end(JSON.stringify(response.body));
+      // A string body is written verbatim (e.g. Prometheus text at /metrics); any
+      // other body is JSON-encoded. Handler-supplied headers (Retry-After, a
+      // non-JSON content-type) merge over the JSON default.
+      const isString = typeof response.body === 'string';
+      const headers: Record<string, string> = { 'content-type': 'application/json', ...(response.headers ?? {}) };
+      const payload = isString ? (response.body as string) : JSON.stringify(response.body);
+      res.writeHead(response.status, headers);
+      res.end(payload);
       try { hooks.onResponse?.({ method, path, status: response.status, bearer }); } catch { /* hook must never break a response */ }
     })();
   });

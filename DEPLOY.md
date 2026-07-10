@@ -45,6 +45,9 @@ the `.ts` entrypoint) and the optional `pg` driver (used only for cold-start rea
 | `PORT` | no | Listen port (default 8080). |
 | `FLUSH_DEBOUNCE_MS` | no | Debounce before flushing a tenant's writes (default 1500). |
 | `PERIODIC_FLUSH_MS` | no | Safety-net flush interval for still-dirty tenants (default 30000). |
+| `LOG_LEVEL` | no | `debug`/`info`/`warn`/`error` (default `info`). Structured JSON logs to stdout. |
+| `RATE_LIMIT_RPS` | no | Sustained per-principal (tenant+actor) request rate. Unset → limiting off. |
+| `RATE_LIMIT_BURST` | no | Token-bucket capacity / max burst (default = `RATE_LIMIT_RPS`). |
 
 Without `SUPABASE_*` the App runs **in-memory only** (a valid smoke test, not durable).
 
@@ -116,6 +119,28 @@ Notes:
 - This verifier does **HS256** (the legacy shared JWT secret). If your project uses
   the newer asymmetric signing keys (RS256/ES256 + JWKS), keep the legacy JWT secret
   enabled, or extend `JwtAuthenticator` with JWKS verification.
+
+## Observability
+
+Every request emits a structured JSON log line to stdout (`{at,level,msg:"request",
+method,route,status,tenant,durationMs}`) and a metrics sample; the `route` label is
+the pattern (`/agreements/:id/billing`), never the concrete path, so cardinality
+stays bounded. The logger redacts obviously-sensitive field names and never carries
+a token. Point it at your own sink or an error tracker (Sentry/Datadog) by injecting
+`observability` into `new App({...})` — no kernel dependency, just the
+`Logger`/`Metrics`/`ErrorReporter` interfaces in `src/observability.ts`.
+
+`GET /metrics` returns Prometheus text (`GET /metrics.json` the structured
+snapshot), gated behind the `metrics.scrape` permission (owner/service/manager) —
+have your scraper carry a token with it. Exposed series:
+- `http_requests_total{method,route,status}` and `http_request_duration_ms` (histogram)
+- `http_server_errors_total{route}`, `http_rate_limited_total{tenant}`
+- `policy_decisions_total{action,outcome}` — the allow/escalate/deny split per action
+
+**Rate limiting** — set `RATE_LIMIT_RPS` (+ optional `RATE_LIMIT_BURST`) to bound
+requests per principal (tenant+actor) with a token bucket; over-limit requests get
+`429` + `Retry-After`. It applies after auth (an unauthenticated flood is cheaply
+`401`'d and should be fronted by an edge/CDN layer).
 
 ## Notifications (email / SMS)
 

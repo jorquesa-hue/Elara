@@ -24,6 +24,7 @@ import { App } from './app.ts';
 import { StayServer } from './server.ts';
 import { JwtAuthenticator } from './context.ts';
 import { defaultAdapterRegistry } from '../adapter-registry.ts';
+import { defaultObservability, type LogLevel } from '../observability.ts';
 import { edgePersistenceBackend, type PersistenceBackend } from '../persistence/edge-client.ts';
 import { PgQueryExecutor, Repositories } from '../persistence/repository.ts';
 import type { WorldReader } from './app.ts';
@@ -71,7 +72,18 @@ async function main(): Promise<void> {
     ? { authUrl: `${process.env.SUPABASE_URL.replace(/\/+$/, '')}/auth/v1`, anonKey: process.env.SUPABASE_ANON_KEY }
     : undefined;
 
-  const app = new App({ authenticator, persistence, adapters: defaultAdapterRegistry(), authConfig });
+  // Observability: JSON structured logs to stdout at LOG_LEVEL (default info).
+  const observability = defaultObservability({ level: (process.env.LOG_LEVEL as LogLevel) ?? 'info' });
+
+  // Per-principal rate limit — a token bucket keyed on tenant+actor. Configured
+  // via RATE_LIMIT_RPS (sustained) + RATE_LIMIT_BURST (capacity); unset → disabled.
+  const rateLimit = process.env.RATE_LIMIT_RPS
+    ? { refillPerSec: Number(process.env.RATE_LIMIT_RPS), capacity: Number(process.env.RATE_LIMIT_BURST ?? process.env.RATE_LIMIT_RPS) }
+    : undefined;
+
+  const app = new App({ authenticator, persistence, adapters: defaultAdapterRegistry(), authConfig, observability, rateLimit });
+
+  observability.logger.info('starting', { port, durable: !!persistence, bootTenants: tenantIds.length, rateLimited: !!rateLimit });
 
   const server = new StayServer(app, {
     reader,

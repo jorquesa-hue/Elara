@@ -58,6 +58,8 @@ import { catalog } from '../i18n.ts';
 import type { WorldData } from '../persistence/project.ts';
 import type { PersistenceBackend } from '../persistence/edge-client.ts';
 import { StaticTokenAuthenticator, type Authenticator, type AuthContext } from './context.ts';
+import { defaultObservability, silentSink, type Observability } from '../observability.ts';
+import { RateLimiter } from '../ratelimit.ts';
 
 export interface ApiRequest {
   method: string;
@@ -69,6 +71,9 @@ export interface ApiRequest {
 export interface ApiResponse {
   status: number;
   body: unknown;
+  /** Optional response headers (e.g. Retry-After, a non-JSON content-type). The
+   *  http binding merges these over its defaults; a string body is written raw. */
+  headers?: Record<string, string>;
 }
 
 /** High-water mark of what has already been flushed to durable storage for a
@@ -107,6 +112,8 @@ function statusForError(e: unknown): number {
 
 interface Route {
   method: string;
+  /** The original pattern, used as a low-cardinality metric label (not the raw path). */
+  pattern: string;
   regex: RegExp;
   keys: string[];
   permission: Permission | null;
@@ -144,6 +151,13 @@ export interface AppConfig {
    *  set, GET /auth/config advertises it so the SPA shows a real login; omit for
    *  the dev "paste a token" mode. The anonKey is a PUBLIC (publishable) key. */
   authConfig?: { authUrl: string; anonKey: string };
+  /** Structured logging + metrics + error reporting. Omit → console logger + a
+   *  fresh in-memory metrics registry (scrapable at GET /metrics). Inject partials
+   *  to point at your own sink/reporter (e.g. Sentry) without a kernel dependency. */
+  observability?: Partial<Observability>;
+  /** Per-principal request rate limit. Pass a RateLimiter, or a {capacity,
+   *  refillPerSec} to build a token bucket, or omit to disable limiting. */
+  rateLimit?: RateLimiter | { capacity: number; refillPerSec: number };
 }
 
 export class App {
@@ -185,6 +199,9 @@ export class App {
   private readonly plan: SubscriptionPlan;
   private readonly persistence?: PersistenceBackend;
   private readonly now: () => string;
+  /** Structured logger + metrics registry + error reporter (see GET /metrics). */
+  readonly obs: Observability;
+  private readonly rateLimiter?: RateLimiter;
   private readonly agreements = new Map<string, { agreement: Agreement; tenantId: string }>();
   private readonly invoiceTenant = new Map<string, string>();
   private readonly depositTenant = new Map<string, string>();
@@ -206,6 +223,15 @@ export class App {
     this.roles = config.roles ?? new RoleRegistry();
     this.masterData = config.masterData ?? new MasterData();
     this.now = config.now ?? (() => new Date().toISOString());
+    // Silent by default (tests / in-process callers log nothing); a deployment
+    // opts into a real sink via config.observability (main.ts wires stdout).
+    this.obs = { ...defaultObservability({ sink: silentSink }), ...config.observability };
+    this.rateLimiter =
+      config.rateLimit instanceof RateLimiter
+        ? config.rateLimit
+        : config.rateLimit
+          ? new RateLimiter(config.rateLimit)
+          : undefined;
     for (const u of config.units ?? []) {
       if (!this.masterData.units.get(u.tenantId, u.id)) {
         this.masterData.units.add({ id: u.id, tenantId: u.tenantId, code: u.id, label: u.id, active: true });
@@ -215,21 +241,83 @@ export class App {
   }
 
   // --- transport-agnostic entry point --------------------------------------
+  // A thin instrumentation shell around route(): every request emits a metrics
+  // sample (count by method/route/status + a latency histogram) and a structured
+  // log line, and an error that escapes a handler is captured (not leaked as a
+  // stack) — so operations are observable without any per-handler boilerplate.
   dispatch(req: ApiRequest): ApiResponse {
+    const startMs = Date.now();
+    let routePattern = 'unmatched';
+    let tenant = '-';
+    let response: ApiResponse;
+    try {
+      const routed = this.route(req);
+      response = routed.response;
+      routePattern = routed.pattern;
+      tenant = routed.tenant;
+    } catch (e) {
+      // A bug escaped a handler's own guard — report it and return a bare 500
+      // rather than leak an internal stack to the caller.
+      this.obs.errors.capture(e, { method: req.method, path: req.path });
+      response = { status: 500, body: { error: 'internal error' } };
+    }
+    const durationMs = Date.now() - startMs;
+    try {
+      const m = this.obs.metrics;
+      m.increment('http_requests_total', { method: req.method, route: routePattern, status: String(response.status) });
+      m.observe('http_request_duration_ms', durationMs, { route: routePattern });
+      if (response.status >= 500) m.increment('http_server_errors_total', { route: routePattern });
+      this.obs.logger.info('request', { method: req.method, route: routePattern, status: response.status, tenant, durationMs });
+    } catch {
+      /* observability must never break a response */
+    }
+    return response;
+  }
+
+  /** The router proper. Returns the response plus the low-cardinality labels the
+   *  dispatch() instrumentation needs (matched route pattern + tenant). */
+  private route(req: ApiRequest): { response: ApiResponse; pattern: string; tenant: string } {
     // PUBLIC, pre-auth: the SPA fetches this to learn HOW to sign in (which is a
     // chicken-and-egg before it has a token). It exposes only the auth mode + the
     // GoTrue base URL + the PUBLIC anon key — never a secret.
     if (req.method === 'GET' && req.path === '/auth/config') {
       return {
-        status: 200,
-        body: this.authConfig
-          ? { mode: 'supabase', authUrl: this.authConfig.authUrl, anonKey: this.authConfig.anonKey }
-          : { mode: 'dev' },
+        response: {
+          status: 200,
+          body: this.authConfig
+            ? { mode: 'supabase', authUrl: this.authConfig.authUrl, anonKey: this.authConfig.anonKey }
+            : { mode: 'dev' },
+        },
+        pattern: '/auth/config',
+        tenant: '-',
       };
     }
 
     const ctx = this.auth.authenticate(req.bearer);
-    if (!ctx) return { status: 401, body: { error: 'unauthenticated' } };
+    if (!ctx) return { response: { status: 401, body: { error: 'unauthenticated' } }, pattern: 'unauthenticated', tenant: '-' };
+
+    // Per-principal rate limit — keyed on tenant+actor so it applies AFTER auth
+    // (an unauthenticated flood is bounded upstream at the edge/CDN, cheaply 401'd
+    // here). Refused requests never reach a handler.
+    if (this.rateLimiter) {
+      const decision = this.rateLimiter.take(`${ctx.tenantId}:${ctx.actor}`);
+      if (!decision.allowed) {
+        this.obs.metrics.increment('http_rate_limited_total', { tenant: ctx.tenantId });
+        return {
+          response: {
+            status: 429,
+            body: { error: 'rate_limited', retryAfterSec: decision.retryAfterSec },
+            headers: {
+              'retry-after': String(decision.retryAfterSec),
+              'x-ratelimit-limit': String(decision.limit),
+              'x-ratelimit-remaining': String(decision.remaining),
+            },
+          },
+          pattern: 'rate_limited',
+          tenant: ctx.tenantId,
+        };
+      }
+    }
 
     for (const route of this.routes) {
       if (route.method !== req.method) continue;
@@ -239,24 +327,27 @@ export class App {
       if (route.permission) {
         const perms = this.roles.permissionsFor(ctx.tenantId, ctx.role);
         if (!perms.has(route.permission)) {
-          return { status: 403, body: { error: 'forbidden', permission: route.permission } };
+          return { response: { status: 403, body: { error: 'forbidden', permission: route.permission } }, pattern: route.pattern, tenant: ctx.tenantId };
         }
       }
 
       const params: Record<string, string> = {};
       route.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1]!)));
       try {
-        return route.handler(ctx, params, req.body ?? {});
+        return { response: route.handler(ctx, params, req.body ?? {}), pattern: route.pattern, tenant: ctx.tenantId };
       } catch (e) {
-        return { status: statusForError(e), body: { error: e instanceof Error ? e.message : String(e) } };
+        const status = statusForError(e);
+        // A 500 is an unexpected fault (not a state conflict) — surface it to the reporter.
+        if (status >= 500) this.obs.errors.capture(e, { route: route.pattern, tenant: ctx.tenantId, actor: ctx.actor });
+        return { response: { status, body: { error: e instanceof Error ? e.message : String(e) } }, pattern: route.pattern, tenant: ctx.tenantId };
       }
     }
-    return { status: 404, body: { error: 'not found' } };
+    return { response: { status: 404, body: { error: 'not found' } }, pattern: 'unmatched', tenant: ctx.tenantId };
   }
 
   private add(method: string, pattern: string, permission: Permission | null, handler: Route['handler']): void {
     const { regex, keys } = compile(pattern);
-    this.routes.push({ method, regex, keys, permission, handler });
+    this.routes.push({ method, pattern, regex, keys, permission, handler });
   }
 
   private gated<T>(
@@ -275,6 +366,13 @@ export class App {
       this.now(),
       fn,
     );
+    // Every policy decision is a metric — the allow/escalate/deny split per action
+    // is the headline signal for whether the envelope is behaving in production.
+    try {
+      this.obs.metrics.increment('policy_decisions_total', { action, outcome: result.outcome });
+    } catch {
+      /* never break a decision on a metric */
+    }
     if (result.outcome === 'executed') return onExecuted(result.result as T);
     if (result.outcome === 'escalated') {
       return { status: 202, body: { status: 'escalated', exceptionId: result.exceptionId, reason: result.reason } };
@@ -578,6 +676,17 @@ export class App {
 
   private registerRoutes(): void {
     this.add('GET', '/health', null, () => ({ status: 200, body: { ok: true } }));
+
+    // Process-wide operational metrics in Prometheus text format. Aggregate counts
+    // (requests, latencies, policy decisions, rate-limits) — not tenant records —
+    // gated behind metrics.scrape (owner/service/manager), which a deployment's
+    // scraper carries. `?format=json` returns the structured snapshot instead.
+    this.add('GET', '/metrics', 'metrics.scrape', (_ctx, _p, _b) => ({
+      status: 200,
+      body: this.obs.metrics.renderProm(),
+      headers: { 'content-type': 'text/plain; version=0.0.4; charset=utf-8' },
+    }));
+    this.add('GET', '/metrics.json', 'metrics.scrape', () => ({ status: 200, body: this.obs.metrics.snapshot() }));
 
     // --- session / config --------------------------------------------------
     // Who am I + my permissions — the first call the portal makes.

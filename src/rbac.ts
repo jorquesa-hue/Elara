@@ -88,6 +88,10 @@ export const PERMISSIONS = [
   // routine (front-of-house), so send is in OPS; the actual delivery is an edge worker.
   'notification.read',
   'notification.send',
+  // Scraping the process-wide operational metrics (GET /metrics). Aggregate counts,
+  // not tenant records — held by owner/service/manager, deliberately NOT a `.read`
+  // (so it isn't auto-granted to the generic read_only bundle) and NOT in OPS.
+  'metrics.scrape',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -129,7 +133,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'manager',
     name: 'Manager',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'agreement.execute', 'collections.run'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'agreement.execute', 'collections.run', 'metrics.scrape'],
     builtin: true,
     description: 'Runs the property: all operations, approvals, staff and master data.',
   },
@@ -137,7 +141,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'staff',
     name: 'Staff',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'masterdata.manage', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'agreement.execute', 'collections.run'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'masterdata.manage', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'agreement.execute', 'collections.run', 'metrics.scrape'],
     builtin: true,
     description: 'Approvals and day-to-day management.',
   },
