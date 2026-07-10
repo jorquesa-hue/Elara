@@ -197,6 +197,7 @@ create index on policy_rule (action, ordinal);
 
 create table action_log (
   seq          bigint generated always as identity primary key,
+  tenant_id    text,  -- the tenant whose action this was; reads MUST filter on it
   at           timestamptz not null,
   actor        text not null,
   action       text not null,
@@ -206,6 +207,7 @@ create table action_log (
   reason       text not null,
   exception_id text
 );
+create index on action_log (tenant_id, seq);
 
 create table exception_item (
   id          text primary key,

@@ -29,22 +29,44 @@ export const INTEGRATION_KINDS: readonly IntegrationKind[] = [
   'lock', 'access_control', 'elevator', 'bank', 'payment_gateway', 'website', 'crm',
 ];
 
-// Config keys that smell like a secret — refused so credentials never land in
-// the kernel or the DB. Compared case-insensitively with -/space normalised to _.
-const SECRET_KEYS = new Set([
-  'secret', 'password', 'passwd', 'apikey', 'api_key', 'token', 'access_token',
-  'client_secret', 'private_key', 'access_key', 'secret_key', 'credential', 'pin',
-]);
+// Substrings that mark a key as secret-bearing. A key is collapsed to
+// lowercase alphanumerics first, so snake_case, kebab-case AND camelCase all
+// reduce to the same form (access_token / access-token / accessToken ->
+// 'accesstoken', which contains 'token'). Substring (not exact) matching means
+// 'clientSecret', 'secretKey', 'refreshToken' etc. are all caught.
+const SECRET_SUBSTRINGS = [
+  'secret', 'password', 'passwd', 'apikey', 'token', 'credential',
+  'privatekey', 'accesskey', 'passphrase', 'authorization',
+];
+// Short, ambiguous tokens matched only exactly (substring would over-reject,
+// e.g. 'pin' inside 'shipping').
+const SECRET_EXACT = new Set(['pin', 'otp', 'cvv']);
+
+function isSecretKey(key: string): boolean {
+  const collapsed = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (SECRET_EXACT.has(collapsed)) return true;
+  return SECRET_SUBSTRINGS.some((s) => collapsed.includes(s));
+}
 
 export class IntegrationError extends Error {}
 
-function assertNoSecrets(config: Record<string, unknown>): void {
-  for (const k of Object.keys(config)) {
-    if (SECRET_KEYS.has(k.toLowerCase().replace(/[-\s]/g, '_'))) {
+// Recursively reject secret-like keys — a credential nested inside an object or
+// array (e.g. { auth: { accessToken: '…' } }) must not slip past into the DB.
+// The same guard protects both integration config and connector-command
+// payloads, since both are persisted verbatim as jsonb.
+export function assertNoSecrets(value: unknown, where = 'config'): void {
+  if (Array.isArray(value)) {
+    for (const item of value) assertNoSecrets(item, where);
+    return;
+  }
+  if (value === null || typeof value !== 'object') return;
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (isSecretKey(k)) {
       throw new IntegrationError(
-        `config may not contain the secret-like key '${k}'; store the credential in the secret store and pass a secretRef`,
+        `${where} may not contain the secret-like key '${k}'; store the credential in the secret store and pass a secretRef`,
       );
     }
+    assertNoSecrets(v, where);
   }
 }
 
@@ -139,6 +161,9 @@ export class ConnectorOutbox {
   }): ConnectorCommand {
     if (this.byId.has(input.id)) throw new IntegrationError(`duplicate command: ${input.id}`);
     if (!input.action) throw new IntegrationError(`command ${input.id}: action is required`);
+    // A command payload is persisted verbatim as jsonb; a credential must never
+    // travel this path — the edge worker resolves the integration's secretRef.
+    assertNoSecrets(input.payload ?? {}, 'payload');
     const cmd: ConnectorCommand = {
       id: input.id,
       tenantId: input.tenantId,

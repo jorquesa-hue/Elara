@@ -41,6 +41,29 @@ test('a secret-like config key is refused (credentials never enter the kernel)',
   assert.equal(D(app, 'POST', '/integrations', 'own', { id: 'int-y', kind: 'lock', provider: 'yale', config: { password: 'hunter2' } }).status, 409);
 });
 
+test('a secret nested inside a config object is also refused (recursive scan)', () => {
+  const app = makeApp();
+  // Shallow scans miss this; the recursive guard must still catch it.
+  assert.equal(D(app, 'POST', '/integrations', 'own', { id: 'int-n', kind: 'bank', provider: 'itau', config: { auth: { password: 'hunter2' } } }).status, 409);
+  assert.equal(D(app, 'POST', '/integrations', 'own', { id: 'int-a', kind: 'crm', provider: 'zoho', config: { creds: [{ token: 'sk-live' }] } }).status, 409);
+});
+
+test('camelCase secret keys are refused (accessToken/clientSecret/privateKey)', () => {
+  const app = makeApp();
+  // Snake-case-only matching missed these; the collapsed-alphanumeric matcher catches them.
+  assert.equal(D(app, 'POST', '/integrations', 'own', { id: 'int-c1', kind: 'crm', provider: 'sf', config: { accessToken: 'x' } }).status, 409);
+  assert.equal(D(app, 'POST', '/integrations', 'own', { id: 'int-c2', kind: 'bank', provider: 'itau', config: { clientSecret: 'x' } }).status, 409);
+  assert.equal(D(app, 'POST', '/integrations', 'own', { id: 'int-c3', kind: 'lock', provider: 'salto', config: { privateKey: 'x' } }).status, 409);
+});
+
+test('a secret in a connector-command payload is refused (jsonb is persisted verbatim)', () => {
+  const app = makeApp();
+  D(app, 'POST', '/integrations', 'own', lock());
+  assert.equal(D(app, 'POST', '/integrations/int-lock/commands', 'own', { id: 'cmd-secret', action: 'lock.unlock', payload: { api_key: 'sk-live-123' } }).status, 409);
+  // a clean payload still enqueues fine
+  assert.equal(D(app, 'POST', '/integrations/int-lock/commands', 'own', { id: 'cmd-ok', action: 'lock.unlock', payload: { spaceId: 's-1' } }).status, 201);
+});
+
 test('enqueue a connector command (unlock a door) → pending in the outbox (#7)', () => {
   const app = makeApp();
   D(app, 'POST', '/integrations', 'own', lock());

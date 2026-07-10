@@ -11,6 +11,9 @@ export type ActionOutcome = 'executed' | 'denied' | 'escalated';
 
 export interface ActionLogRecord {
   seq: number;
+  // The tenant whose action this was — the audit stream is a shared append-only
+  // log, so every read/snapshot MUST filter by this to stay tenant-isolated.
+  tenantId: string;
   at: string;
   actor: string;
   action: string;
@@ -41,7 +44,7 @@ export class AgentRuntime {
 
     if (decision.effect === 'allow') {
       const result = fn();
-      this.record(at, ctx.actor, action, decision.effect, decision.ruleId, 'executed', decision.reason);
+      this.record(ctx.tenantId ?? '', at, ctx.actor, action, decision.effect, decision.ruleId, 'executed', decision.reason);
       return { outcome: 'executed', result, reason: decision.reason };
     }
 
@@ -53,15 +56,16 @@ export class AgentRuntime {
         at,
         execute: fn,
       });
-      this.record(at, ctx.actor, action, decision.effect, decision.ruleId, 'escalated', decision.reason, item.id);
+      this.record(ctx.tenantId ?? '', at, ctx.actor, action, decision.effect, decision.ruleId, 'escalated', decision.reason, item.id);
       return { outcome: 'escalated', exceptionId: item.id, reason: decision.reason };
     }
 
-    this.record(at, ctx.actor, action, decision.effect, decision.ruleId, 'denied', decision.reason);
+    this.record(ctx.tenantId ?? '', at, ctx.actor, action, decision.effect, decision.ruleId, 'denied', decision.reason);
     return { outcome: 'denied', reason: decision.reason };
   }
 
   private record(
+    tenantId: string,
     at: string,
     actor: string,
     action: string,
@@ -74,6 +78,7 @@ export class AgentRuntime {
     this.log.push(
       Object.freeze({
         seq: this.log.length + 1,
+        tenantId,
         at,
         actor,
         action,
@@ -88,6 +93,12 @@ export class AgentRuntime {
 
   actionLog(): readonly ActionLogRecord[] {
     return [...this.log];
+  }
+
+  /** The audit stream for a single tenant — the shared log filtered so a
+   *  snapshot never carries another tenant's entries. */
+  actionLogFor(tenantId: string): readonly ActionLogRecord[] {
+    return this.log.filter((r) => r.tenantId === tenantId);
   }
 
   /** Restore the persisted action-log audit stream on cold-start rehydration. */

@@ -745,7 +745,11 @@ export class App {
         const o = d as Record<string, unknown>;
         return { reason: String(o['reason'] ?? ''), amountCents: Number(o['amountCents']) };
       });
-      return this.gated('deposit.refund', ctx, { depositId: id }, () => this.deposits.refund(id, at, deductions), (d) => ({ status: 200, body: d }));
+      // Thread the NET refund (held − deductions) into the policy context so a
+      // large money-out refund escalates like bill.pay (pol-deposit-refund-large).
+      const deducted = deductions.reduce((s, d) => s + d.amountCents, 0);
+      const refundCents = Math.max(0, this.deposits.get(id).amountCents - deducted);
+      return this.gated('deposit.refund', ctx, { depositId: id, amountCents: refundCents }, () => this.deposits.refund(id, at, deductions), (d) => ({ status: 200, body: d }));
     });
 
     // --- parties (person/org, related to agreements by role) --------------
@@ -1193,10 +1197,14 @@ export class App {
       const id = this.requireString(body, 'id');
       const action = this.requireString(body, 'action');
       const payload = body['payload'] && typeof body['payload'] === 'object' ? (body['payload'] as Record<string, unknown>) : {};
+      // A bank/payment-gateway command carrying a large amountCents is a real
+      // payout — thread the integration kind + amount so pol-connector-dispatch-payout
+      // escalates it (no parallel money-out rail around bill.pay).
+      const payoutAmount = typeof payload['amountCents'] === 'number' ? (payload['amountCents'] as number) : undefined;
       return this.gated(
         'connector.dispatch',
         ctx,
-        { integrationId: integ.id, action },
+        { integrationId: integ.id, action, integrationKind: integ.kind, amountCents: payoutAmount },
         () => this.connectorOutbox.enqueue({ id, tenantId: ctx.tenantId, integrationId: integ.id, action, payload, createdAt: this.now() }),
         (cmd) => ({ status: 201, body: cmd }),
       );
@@ -1704,7 +1712,9 @@ export class App {
       ),
       payments: this.payments.all().filter((p) => invoiceIds.has(p.invoiceId)),
       deposits: this.deposits.all().filter((d) => agreementIds.has(d.agreementId)),
-      actionLog: this.runtime.actionLog().slice(since?.actionLog ?? 0),
+      // Tenant-scoped: the action log is a shared append-only stream, so filter
+      // to THIS tenant before slicing the tail past the (per-tenant) mark.
+      actionLog: this.runtime.actionLogFor(tenantId).slice(since?.actionLog ?? 0),
       // --- master-data reshape v2 (all upserted, so always safe to resend) ----
       legalEntities: this.entities.listEntities(tenantId),
       parties: this.parties.listParties(tenantId),
@@ -1819,7 +1829,7 @@ export class App {
     return {
       events,
       journalLines: this.ledger.allLines.filter((l) => l.agreementId != null && agreementIds.has(l.agreementId)).length,
-      actionLog: this.runtime.actionLog().length,
+      actionLog: this.runtime.actionLogFor(tenantId).length,
       invoiceLines: this.billing.allInvoices().filter((i) => i.tenantId === tenantId).map((i) => i.id),
       bills: this.payables.allBills().filter((b) => b.tenantId === tenantId).map((b) => b.id),
     };

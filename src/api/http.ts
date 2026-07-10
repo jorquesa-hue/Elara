@@ -5,9 +5,25 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import type { App } from './app.ts';
 import { portalHtml } from './portal.ts';
 
+// Reject oversized bodies before buffering them fully — an unbounded POST is a
+// trivial memory-exhaustion DoS. 1 MiB is generous for this JSON API (the
+// largest legitimate payload is a CSV onboarding preview, still well under it).
+const MAX_BODY_BYTES = 1 << 20;
+
+class PayloadTooLargeError extends Error {}
+
 async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
+  let total = 0;
+  for await (const chunk of req) {
+    const buf = chunk as Buffer;
+    total += buf.length;
+    if (total > MAX_BODY_BYTES) {
+      req.destroy();
+      throw new PayloadTooLargeError('request body exceeds 1 MiB limit');
+    }
+    chunks.push(buf);
+  }
   if (chunks.length === 0) return {};
   const raw = Buffer.concat(chunks).toString('utf8').trim();
   if (!raw) return {};
@@ -44,7 +60,10 @@ export function createHttpServer(app: App): Server {
             ? await app.persist(apiReq)
             : app.dispatch(apiReq);
       } catch (e) {
-        response = { status: 400, body: { error: e instanceof Error ? e.message : 'bad request' } };
+        response =
+          e instanceof PayloadTooLargeError
+            ? { status: 413, body: { error: e.message } }
+            : { status: 400, body: { error: e instanceof Error ? e.message : 'bad request' } };
       }
       res.writeHead(response.status, { 'content-type': 'application/json' });
       res.end(JSON.stringify(response.body));

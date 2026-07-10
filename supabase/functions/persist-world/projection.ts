@@ -76,6 +76,7 @@ interface Deposit {
 }
 interface ActionLogRecord {
   seq: number;
+  tenantId: string;
   at: string;
   actor: string;
   action: string;
@@ -522,8 +523,8 @@ export function projectWorld(w: WorldData): SqlStatement[] {
   for (const r of [...w.actionLog].sort((x, y) => x.seq - y.seq)) {
     out.push(
       stmt(
-        'insert into action_log (at, actor, action, effect, rule_id, outcome, reason, exception_id) values ($1, $2, $3, $4, $5, $6, $7, $8)',
-        [r.at, r.actor, r.action, r.effect, r.ruleId ?? null, r.outcome, r.reason, r.exceptionId ?? null],
+        'insert into action_log (tenant_id, at, actor, action, effect, rule_id, outcome, reason, exception_id) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+        [r.tenantId, r.at, r.actor, r.action, r.effect, r.ruleId ?? null, r.outcome, r.reason, r.exceptionId ?? null],
       ),
     );
   }
