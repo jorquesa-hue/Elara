@@ -1,0 +1,33 @@
+name: CI
+
+# Run the full kernel suite + typecheck on every push and PR. The gate the
+# behavioral guardrail relies on: "must be N/N before any commit" — enforced here.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+jobs:
+  test:
+    name: typecheck + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # The kernel is zero-runtime-dependency; devDeps are tsx + typescript +
+      # @types/node (pg is optional and not needed for the suite).
+      - name: Install dev dependencies
+        run: npm ci --omit=optional
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run the kernel test suite
+        run: npm test
