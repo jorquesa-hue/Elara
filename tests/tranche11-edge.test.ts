@@ -63,8 +63,8 @@ function buildWorld(): WorldData {
 
   return {
     tenants: [{ id: 't-1', name: 'Rio Ops', displayName: 'Rio Ops', locale: 'pt-BR', currency: 'BRL', timezone: 'America/Sao_Paulo', businessStructure: 'short_stay', country: 'BR', jurisdiction: 'BR' }],
-    units: [{ id: 'u-1', tenantId: 't-1', label: '101' }],
-    guests: [{ id: 'g-1', tenantId: 't-1', fullName: 'Ana' }],
+    units: [{ id: 'u-1', tenantId: 't-1', label: '101', code: 'RIO-101', active: true }],
+    guests: [{ id: 'g-1', tenantId: 't-1', fullName: 'Ana', code: 'G-1', email: 'ana@x.com' }],
     agreements: [{ id: 'ag-1', tenantId: 't-1', guestId: 'g-1', unitId: 'u-1', events: a.history }],
     holds: calendar.allHolds(),
     journalLines: ledger.allLines,

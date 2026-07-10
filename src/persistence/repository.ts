@@ -148,8 +148,8 @@ export class Repositories {
       id: String(r['id']), name: String(r['name']), displayName: s(r['display_name']), locale: s(r['locale']), currency: s(r['currency']),
       timezone: s(r['timezone']), businessStructure: s(r['business_structure']), country: s(r['country']), jurisdiction: s(r['jurisdiction']),
     }));
-    const units = (await one('select id, tenant_id, label from unit where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, label: String(r['label']) }));
-    const guests = (await one('select id, tenant_id, full_name from guest where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, fullName: String(r['full_name']) }));
+    const units = (await one('select id, tenant_id, label, code, active from unit where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, label: String(r['label']), code: s(r['code']), active: r['active'] == null ? undefined : Boolean(r['active']) }));
+    const guests = (await one('select id, tenant_id, full_name, code, email from guest where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, fullName: String(r['full_name']), code: s(r['code']), email: s(r['email']) }));
     const ratePlans = (await one('select id, tenant_id, name, kind, base_cents, currency, deposit_cents from rate_plan where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, name: String(r['name']), kind: String(r['kind']), baseCents: Number(r['base_cents']), currency: String(r['currency']), depositCents: n(r['deposit_cents']) }));
     const users = (await one('select id, tenant_id, code, display_name, role_id, active from app_user where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, code: String(r['code']), displayName: String(r['display_name']), roleId: String(r['role_id']), active: Boolean(r['active']) }));
     const customRoles = (await one('select tenant_id, role_id, name, description, permissions from custom_role where tenant_id = $1')).map((r) => ({ tenantId: tid, roleId: String(r['role_id']), name: String(r['name']), description: s(r['description']), permissions: arr(r['permissions']) as string[] }));

@@ -26,8 +26,8 @@ export interface WorldData {
     displayName?: string; locale?: string; currency?: string; timezone?: string;
     businessStructure?: string; country?: string; jurisdiction?: string;
   }>;
-  units: Array<{ id: string; tenantId: string; label: string }>;
-  guests: Array<{ id: string; tenantId: string; fullName: string }>;
+  units: Array<{ id: string; tenantId: string; label: string; code?: string; active?: boolean }>;
+  guests: Array<{ id: string; tenantId: string; fullName: string; code?: string; email?: string }>;
   ratePlans?: Array<{
     id: string;
     tenantId: string;
@@ -176,15 +176,17 @@ export function projectWorld(w: WorldData): SqlStatement[] {
   }
   for (const u of w.units) {
     out.push(
-      stmt('insert into unit (id, tenant_id, label) values ($1, $2, $3) on conflict (id) do update set label = excluded.label', [u.id, u.tenantId, u.label]),
+      stmt('insert into unit (id, tenant_id, label, code, active) values ($1, $2, $3, $4, $5) on conflict (id) do update set label = excluded.label, code = excluded.code, active = excluded.active', [u.id, u.tenantId, u.label, u.code ?? u.id, u.active ?? true]),
     );
   }
   for (const g of w.guests) {
     out.push(
-      stmt('insert into guest (id, tenant_id, full_name) values ($1, $2, $3) on conflict (id) do update set full_name = excluded.full_name', [
+      stmt('insert into guest (id, tenant_id, full_name, code, email) values ($1, $2, $3, $4, $5) on conflict (id) do update set full_name = excluded.full_name, code = excluded.code, email = excluded.email', [
         g.id,
         g.tenantId,
         g.fullName,
+        g.code ?? g.id,
+        g.email ?? null,
       ]),
     );
   }

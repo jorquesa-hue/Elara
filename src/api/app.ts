@@ -1676,8 +1676,8 @@ export class App {
     return {
       // The tenant row now carries its full country-environment config.
       tenants: [{ id: tenantId, name: cfg.displayName ?? tenantId, displayName: cfg.displayName, locale: cfg.locale, currency: cfg.currency, timezone: cfg.timezone, businessStructure: cfg.businessStructure, country: cfg.country, jurisdiction: cfg.jurisdiction }],
-      units: this.masterData.units.list(tenantId).map((u) => ({ id: u.id, tenantId, label: u.label })),
-      guests: this.masterData.guests.list(tenantId).map((g) => ({ id: g.id, tenantId, fullName: g.fullName })),
+      units: this.masterData.units.list(tenantId).map((u) => ({ id: u.id, tenantId, label: u.label, code: u.code, active: u.active })),
+      guests: this.masterData.guests.list(tenantId).map((g) => ({ id: g.id, tenantId, fullName: g.fullName, code: g.code, email: g.email })),
       ratePlans: this.masterData.ratePlans.list(tenantId).map((r) => ({
         id: r.id, tenantId, name: r.name, kind: r.kind, baseCents: r.baseMinor, currency: cfg.currency,
       })),
@@ -1761,10 +1761,9 @@ export class App {
         businessStructure: t.businessStructure ?? 'mixed_portfolio', country: t.country ?? 'US', jurisdiction: t.jurisdiction ?? 'US',
       });
     }
-    // Master data (unit.code/active + guest.email are not persisted — the
-    // projection stores only id/label/full_name — so they default on reload).
-    for (const u of world.units) this.masterData.units.add({ id: u.id, tenantId: u.tenantId, code: u.id, label: u.label, active: true });
-    for (const g of world.guests) this.masterData.guests.add({ id: g.id, tenantId: g.tenantId, code: g.id, fullName: g.fullName });
+    // Master data (unit code/active + guest code/email are all persisted now).
+    for (const u of world.units) this.masterData.units.add({ id: u.id, tenantId: u.tenantId, code: u.code ?? u.id, label: u.label, active: u.active ?? true });
+    for (const g of world.guests) this.masterData.guests.add({ id: g.id, tenantId: g.tenantId, code: g.code ?? g.id, fullName: g.fullName, email: g.email });
     for (const r of world.ratePlans ?? []) this.masterData.ratePlans.add({ id: r.id, tenantId: r.tenantId, code: r.id, name: r.name, kind: r.kind as 'nightly' | 'monthly' | 'lease', baseMinor: r.baseCents });
     for (const u of world.users ?? []) this.masterData.users.add({ id: u.id, tenantId: u.tenantId, code: u.code, displayName: u.displayName, roleId: u.roleId, active: u.active });
     for (const cr of world.customRoles ?? []) this.roles.defineRole(cr.tenantId, { id: cr.roleId, name: cr.name, permissions: cr.permissions as Permission[], description: cr.description });
