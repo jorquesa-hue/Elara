@@ -118,6 +118,72 @@ test('API: a caller-supplied mapping overrides the heuristic', () => {
   assert.ok(guests.find((g) => g.code === 'G-1' && g.fullName === 'Ana Souza'));
 });
 
+// ---- agreements import target (#7) ---------------------------------------
+
+// Seed the master data an agreement row references, then import agreements.
+function seedMasterData(app: App) {
+  D(app, 'POST', '/units', 'own', { id: 'unit-RIO-101', code: 'RIO-101', label: 'Studio' });
+  D(app, 'POST', '/units', 'own', { id: 'unit-RIO-102', code: 'RIO-102', label: 'Suite' });
+  D(app, 'POST', '/guests', 'own', { id: 'guest-G1', code: 'G1', fullName: 'Ana' });
+  D(app, 'POST', '/guests', 'own', { id: 'guest-G2', code: 'G2', fullName: 'Bea' });
+}
+const AGREEMENTS_CSV =
+  'Contract,Guest,Unit,Type,From,To,Rent\n' +
+  'C-1,G1,RIO-101,monthly,2026-07-01,2027-07-01,300000\n' +
+  'C-2,G2,RIO-102,lease,2026-07-01,2027-07-01,450000\n';
+
+test('agreements: preview maps the funnel columns to canonical fields', () => {
+  const app = makeApp();
+  const r = D(app, 'POST', '/onboarding/preview', 'own', { target: 'agreements', csv: AGREEMENTS_CSV });
+  assert.equal(r.status, 200);
+  const b = r.body as { plan: { okCount: number }; mapping: Record<string, number> };
+  assert.equal(b.plan.okCount, 2);
+  assert.deepEqual(b.mapping, { code: 0, guestCode: 1, unitCode: 2, kind: 3, start: 4, end: 5, rateCents: 6 });
+});
+
+test('agreements: commit BOOKS a draft agreement per ok row (resolving guest/unit codes)', () => {
+  const app = makeApp();
+  seedMasterData(app);
+  const r = D(app, 'POST', '/onboarding/commit', 'own', { target: 'agreements', csv: AGREEMENTS_CSV });
+  assert.equal(r.status, 201);
+  const b = r.body as { created: number; failed: number };
+  assert.equal(b.created, 2);
+  assert.equal(b.failed, 0);
+  const list = D(app, 'GET', '/agreements', 'own').body as { agreements: Array<{ id: string; kind: string; unitId: string }> };
+  const ids = list.agreements.map((a) => a.id).sort();
+  assert.deepEqual(ids, ['agr-C-1', 'agr-C-2']);
+});
+
+test('agreements: a row with an unknown guest/unit code fails (never silently dropped)', () => {
+  const app = makeApp();
+  seedMasterData(app);
+  const csv = 'Contract,Guest,Unit,Type,From,To,Rent\nC-9,GHOST,RIO-101,monthly,2026-07-01,2027-07-01,300000\n';
+  const r = D(app, 'POST', '/onboarding/commit', 'own', { target: 'agreements', csv });
+  const b = r.body as { created: number; failed: number; failures: Array<{ code: string; errors: string[] }> };
+  assert.equal(b.created, 0);
+  assert.equal(b.failed, 1);
+  assert.match(b.failures[0]!.errors[0]!, /unknown guestCode/);
+});
+
+test('agreements: an invalid kind or rate fails the row at commit', () => {
+  const app = makeApp();
+  seedMasterData(app);
+  const csv = 'Contract,Guest,Unit,Type,From,To,Rent\nC-8,G1,RIO-101,weekly,2026-07-01,2027-07-01,notanumber\n';
+  const b = D(app, 'POST', '/onboarding/commit', 'own', { target: 'agreements', csv }).body as { failed: number; failures: Array<{ errors: string[] }> };
+  assert.equal(b.failed, 1);
+  assert.ok(b.failures[0]!.errors.some((e) => /invalid kind/.test(e)));
+  assert.ok(b.failures[0]!.errors.some((e) => /invalid rateCents/.test(e)));
+});
+
+test('agreements: re-commit skips already-booked contracts (idempotent)', () => {
+  const app = makeApp();
+  seedMasterData(app);
+  D(app, 'POST', '/onboarding/commit', 'own', { target: 'agreements', csv: AGREEMENTS_CSV });
+  const again = D(app, 'POST', '/onboarding/commit', 'own', { target: 'agreements', csv: AGREEMENTS_CSV }).body as { created: number; skipped: number };
+  assert.equal(again.created, 0);
+  assert.equal(again.skipped, 2);
+});
+
 test('API: RBAC — front desk cannot onboard (needs masterdata.manage)', () => {
   const app = makeApp();
   assert.equal(D(app, 'POST', '/onboarding/preview', 'desk', { target: 'units', csv: UNITS_CSV }).status, 403);

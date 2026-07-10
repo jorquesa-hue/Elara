@@ -9,7 +9,7 @@
 // written here: planImport is a dry-run preview; the App applies the ok rows to
 // master data through the same authenticated surface as everything else.
 
-export type ImportTarget = 'units' | 'guests';
+export type ImportTarget = 'units' | 'guests' | 'agreements';
 
 export interface FieldSpec { field: string; required: boolean; aliases: string[]; }
 
@@ -23,6 +23,19 @@ export const TARGET_FIELDS: Record<ImportTarget, FieldSpec[]> = {
     { field: 'code', required: true, aliases: ['code', 'ref', 'reference', 'id', 'cpf', 'document', 'doc'] },
     { field: 'fullName', required: true, aliases: ['fullname', 'full name', 'name', 'guest', 'resident', 'tenant', 'contact'] },
     { field: 'email', required: false, aliases: ['email', 'e-mail', 'mail', 'email address'] },
+  ],
+  // An existing lease/stay: its external ref + which guest and unit it binds, the
+  // kind, the [start,end) window, and the rate. Commit BOOKS a draft agreement per
+  // ok row through the same event-sourced path as the API (guest/unit codes are
+  // resolved to master-data records; the calendar guards double-booking).
+  agreements: [
+    { field: 'code', required: true, aliases: ['code', 'ref', 'reference', 'id', 'agreement', 'contract', 'lease', 'number', 'no'] },
+    { field: 'guestCode', required: true, aliases: ['guestcode', 'guest code', 'guest', 'resident', 'tenant', 'guest ref', 'guest id', 'cpf'] },
+    { field: 'unitCode', required: true, aliases: ['unitcode', 'unit code', 'unit', 'unit ref', 'unit id', 'property'] },
+    { field: 'kind', required: true, aliases: ['kind', 'type', 'agreement type', 'tenure'] },
+    { field: 'start', required: true, aliases: ['start', 'start date', 'from', 'check in', 'checkin', 'begin', 'move in'] },
+    { field: 'end', required: true, aliases: ['end', 'end date', 'to', 'check out', 'checkout', 'finish', 'move out'] },
+    { field: 'rateCents', required: true, aliases: ['ratecents', 'rate cents', 'rate', 'amount', 'price', 'value', 'monthly rent', 'rent'] },
   ],
 };
 

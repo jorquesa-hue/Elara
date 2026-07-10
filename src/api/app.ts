@@ -371,7 +371,7 @@ export class App {
    *  (the AI-mapping seam — an LLM's mapping wins where provided). */
   private parseOnboarding(body: Record<string, unknown>): { target: ImportTarget; headers: string[]; rows: string[][]; mapping: ColumnMapping } {
     const target = this.requireString(body, 'target') as ImportTarget;
-    if (target !== 'units' && target !== 'guests') throw new HttpError(400, "target must be 'units' or 'guests'");
+    if (target !== 'units' && target !== 'guests' && target !== 'agreements') throw new HttpError(400, "target must be 'units', 'guests' or 'agreements'");
     const csv = this.requireString(body, 'csv');
     const { headers, rows } = parseCsv(csv);
     if (headers.length === 0) throw new HttpError(400, 'csv has no header row');
@@ -1479,6 +1479,48 @@ export class App {
     this.add('POST', '/onboarding/commit', 'masterdata.manage', (ctx, _p, body) => {
       const { target, headers, rows, mapping } = this.parseOnboarding(body);
       const plan = planImport(target, headers, rows, mapping);
+
+      // Agreements are event-sourced aggregates, not flat master data: each ok row
+      // BOOKS a draft agreement through the same path as POST /agreements (guest and
+      // unit codes resolve to master-data ids; the calendar guards double-booking).
+      // A row whose codes don't resolve — or whose booking trips a constraint —
+      // is reported as failed, never silently dropped.
+      if (target === 'agreements') {
+        const unitsByCode = new Map(this.masterData.units.list(ctx.tenantId).map((u) => [u.code, u]));
+        const guestsByCode = new Map(this.masterData.guests.list(ctx.tenantId).map((g) => [g.code, g]));
+        const currency = this.config.get(ctx.tenantId).currency;
+        let created = 0;
+        let skipped = 0;
+        let failed = 0;
+        const failures: Array<{ code: string; errors: string[] }> = [];
+        for (const row of plan.rows) {
+          if (row.status !== 'ok' || !row.record) continue;
+          const r = row.record;
+          const id = `agr-${r['code']}`;
+          if (this.agreements.has(id)) { skipped++; continue; }
+          const unit = unitsByCode.get(r['unitCode']!);
+          const guest = guestsByCode.get(r['guestCode']!);
+          const kind = r['kind'] as AgreementKind;
+          const rateCents = Number(r['rateCents']);
+          const problems: string[] = [];
+          if (!unit) problems.push(`unknown unitCode '${r['unitCode']}'`);
+          if (!guest) problems.push(`unknown guestCode '${r['guestCode']}'`);
+          if (!['nightly', 'monthly', 'lease'].includes(kind)) problems.push(`invalid kind '${r['kind']}'`);
+          if (!Number.isInteger(rateCents) || rateCents <= 0) problems.push(`invalid rateCents '${r['rateCents']}'`);
+          if (problems.length) { failed++; failures.push({ code: r['code']!, errors: problems }); continue; }
+          try {
+            const a = Agreement.create({ id, tenantId: ctx.tenantId, guestId: guest!.id, unitId: unit!.id, kind, start: r['start']!, end: r['end']!, rateCents, currency, at: this.now() });
+            this.calendar.hold({ id: `${id}-hold`, unitId: unit!.id, holderId: id, start: r['start']!, end: r['end']! }); // invariant 4
+            this.agreements.set(id, { agreement: a, tenantId: ctx.tenantId });
+            created++;
+          } catch (e) {
+            failed++;
+            failures.push({ code: r['code']!, errors: [e instanceof Error ? e.message : 'booking failed'] });
+          }
+        }
+        return { status: 201, body: { target, created, skipped, failed, failures, errorRows: plan.errorCount, total: plan.rows.length } };
+      }
+
       const existing = new Set(
         (target === 'units' ? this.masterData.units.list(ctx.tenantId) : this.masterData.guests.list(ctx.tenantId)).map((r) => r.code),
       );

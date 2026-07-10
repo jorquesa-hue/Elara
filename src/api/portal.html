@@ -1198,15 +1198,17 @@
   function viewImport(main){
     main.appendChild(h("h1",{},["Import"]));
     main.appendChild(h("p",{class:"sub"},["Migrate an existing portfolio from CSV. Paste your file, preview the mapping and per-row validation (a dry-run), then commit — only clean rows are created, and re-importing skips codes already loaded."]));
-    var kind=selectFrom([["units","Units"],["guests","Guests / residents"]],"units");
+    var kind=selectFrom([["units","Units"],["guests","Guests / residents"],["agreements","Agreements / leases"]],"units");
     var ta=h("textarea",{rows:"8",placeholder:"code,label\nRIO-101,Ocean Studio\nRIO-102,Garden Suite",style:"width:100%;font-family:ui-monospace,monospace;font-size:13px;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:inherit;box-sizing:border-box"});
+    // Agreements reference existing units + guests by code, so the placeholder shows that shape.
+    kind.addEventListener("change",function(){ ta.placeholder = kind.value==="agreements" ? "code,guestCode,unitCode,kind,start,end,rateCents\nC-1,G1,RIO-101,monthly,2026-07-01,2027-07-01,300000" : (kind.value==="guests" ? "code,fullName,email\nG1,Ana Souza,ana@x.com" : "code,label\nRIO-101,Ocean Studio\nRIO-102,Garden Suite"); });
     var out=h("div",{},[]);
     function run(path){
       if(!ta.value.trim()) return toast("Paste some CSV first","err");
       api("/onboarding/"+path,{method:"POST",body:{target:kind.value, csv:ta.value}}).then(function(r){
         out.innerHTML="";
         if(r.status!==200 && r.status!==201) return out.appendChild(h("div",{class:"panel muted"},[r.body.error||"err"]));
-        if(path==="commit"){ toast("Imported "+r.body.created+" · skipped "+r.body.skipped,"ok"); out.appendChild(h("div",{class:"panel"},[ "Created "+r.body.created+", skipped "+r.body.skipped+" (already present), "+r.body.errorRows+" row(s) with errors." ])); return; }
+        if(path==="commit"){ var extra = r.body.failed ? (" · "+r.body.failed+" failed") : ""; toast("Imported "+r.body.created+" · skipped "+r.body.skipped+extra, r.body.failed?"err":"ok"); out.appendChild(h("div",{class:"panel"},[ "Created "+r.body.created+", skipped "+r.body.skipped+" (already present), "+((r.body.failed||0)+(r.body.errorRows||0))+" row(s) with errors." ])); return; }
         renderPlan(out, r.body);
       });
     }
