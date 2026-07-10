@@ -89,4 +89,9 @@ export class AgentRuntime {
   actionLog(): readonly ActionLogRecord[] {
     return [...this.log];
   }
+
+  /** Restore the persisted action-log audit stream on cold-start rehydration. */
+  hydrateLog(records: readonly ActionLogRecord[]): void {
+    for (const r of records) this.log.push({ ...r });
+  }
 }

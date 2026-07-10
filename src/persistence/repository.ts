@@ -7,6 +7,7 @@
 
 import { Agreement, type AgreementEvent, type AgreementEventType, type CalendarHold } from '../agreement.ts';
 import type { SqlStatement } from './executor.ts';
+import type { WorldData } from './project.ts';
 
 export type Row = Record<string, unknown>;
 
@@ -126,6 +127,90 @@ export class Repositories {
       net += v;
     }
     return { balances, net, balanced: net === 0 };
+  }
+
+  /**
+   * Read this tenant's ENTIRE world back out of the DB into a WorldData — the
+   * inverse of projectWorld and the input to App.rehydrate. This is what a cold
+   * start runs: reconstitute everything the persistence layer captured. Every
+   * query is tenant-scoped, mirroring RLS. (Master-data code/active and guest
+   * email are not stored by the projection, so they are absent here too.)
+   */
+  async loadWorld(): Promise<WorldData> {
+    const tid = this.tenantId;
+    const one = async (text: string, values: unknown[] = [tid]) => this.q.query({ text, values });
+    const s = (v: unknown) => (v == null ? undefined : String(v));
+    const n = (v: unknown) => (v == null ? undefined : Number(v));
+    const obj = (v: unknown) => asObject(v);
+    const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : typeof v === 'string' ? JSON.parse(v) : []);
+
+    const tenants = (await one('select id, name, display_name, locale, currency, timezone, business_structure, country, jurisdiction from tenant where id = $1')).map((r) => ({
+      id: String(r['id']), name: String(r['name']), displayName: s(r['display_name']), locale: s(r['locale']), currency: s(r['currency']),
+      timezone: s(r['timezone']), businessStructure: s(r['business_structure']), country: s(r['country']), jurisdiction: s(r['jurisdiction']),
+    }));
+    const units = (await one('select id, tenant_id, label from unit where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, label: String(r['label']) }));
+    const guests = (await one('select id, tenant_id, full_name from guest where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, fullName: String(r['full_name']) }));
+    const ratePlans = (await one('select id, tenant_id, name, kind, base_cents, currency, deposit_cents from rate_plan where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, name: String(r['name']), kind: String(r['kind']), baseCents: Number(r['base_cents']), currency: String(r['currency']), depositCents: n(r['deposit_cents']) }));
+    const users = (await one('select id, tenant_id, code, display_name, role_id, active from app_user where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, code: String(r['code']), displayName: String(r['display_name']), roleId: String(r['role_id']), active: Boolean(r['active']) }));
+    const customRoles = (await one('select tenant_id, role_id, name, description, permissions from custom_role where tenant_id = $1')).map((r) => ({ tenantId: tid, roleId: String(r['role_id']), name: String(r['name']), description: s(r['description']), permissions: arr(r['permissions']) as string[] }));
+    const legalEntities = (await one('select id, tenant_id, role, name, tax_id from legal_entity where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, role: String(r['role']), name: String(r['name']), taxId: s(r['tax_id']) }));
+    const parties = (await one('select id, tenant_id, kind, display_name, legal_name, tax_id, email, phone, attributes from party where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, kind: String(r['kind']), displayName: String(r['display_name']), legalName: s(r['legal_name']), taxId: s(r['tax_id']), email: s(r['email']), phone: s(r['phone']), attributes: obj(r['attributes']) }));
+    const spaces = (await one('select id, tenant_id, parent_id, type, code, label, leasable, capacity, attributes from space where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, parentId: s(r['parent_id']), type: String(r['type']), code: String(r['code']), label: String(r['label']), leasable: Boolean(r['leasable']), capacity: n(r['capacity']), attributes: obj(r['attributes']) }));
+    const chargeTypes = (await one('select id, tenant_id, code, name, receiving_entity_id, gl_account, recurring from charge_type where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, code: String(r['code']), name: String(r['name']), receivingEntityId: String(r['receiving_entity_id']), glAccount: String(r['gl_account']), recurring: Boolean(r['recurring']) }));
+
+    const agIds = (await one('select id from agreement where tenant_id = $1 order by id')).map((r) => String(r['id']));
+    const agreements = [];
+    for (const id of agIds) {
+      const [meta] = await one('select id, tenant_id, guest_id, unit_id from agreement where id = $1 and tenant_id = $2', [id, tid]);
+      const evRows = await one('select seq, agreement_id, type, at, payload from agreement_event where agreement_id = $1 order by seq', [id]);
+      agreements.push({
+        id, tenantId: tid, guestId: meta!['guest_id'] == null ? null : String(meta!['guest_id']), unitId: String(meta!['unit_id']),
+        events: evRows.map((r) => ({ seq: Number(r['seq']), agreementId: id, type: r['type'] as AgreementEventType, at: toIso(r['at']), payload: obj(r['payload']) })),
+      });
+    }
+    const holds = await this.activeHoldsAll();
+    const journalLines = (await one(`select jl.entry_id, jl.account, jl.debit_cents, jl.credit_cents, jl.currency, jl.agreement_id, jl.memo, jl.posted_at from journal_line jl join agreement a on a.id = jl.agreement_id where a.tenant_id = $1 order by jl.entry_id`)).map((r) => ({ entryId: String(r['entry_id']), account: String(r['account']), debitCents: Number(r['debit_cents']), creditCents: Number(r['credit_cents']), currency: String(r['currency']), agreementId: s(r['agreement_id']) ?? null, memo: s(r['memo']) ?? null, postedAt: toIso(r['posted_at']) }));
+
+    const invRows = await one('select id, agreement_id, tenant_id, issued_at, due_at, currency, total_cents, paid_cents, status, receiving_entity_id from invoice where tenant_id = $1');
+    const invoices = [];
+    for (const r of invRows) {
+      const lines = (await one('select description, account, amount_cents, charge_type from invoice_line where invoice_id = $1', [String(r['id'])])).map((l) => ({ description: String(l['description']), account: String(l['account']), amountCents: Number(l['amount_cents']), chargeType: s(l['charge_type']) }));
+      invoices.push({ id: String(r['id']), agreementId: String(r['agreement_id']), tenantId: tid, issuedAt: toIso(r['issued_at']), dueAt: toIso(r['due_at']), currency: String(r['currency']), totalCents: Number(r['total_cents']), paidCents: Number(r['paid_cents']), status: String(r['status']), receivingEntityId: s(r['receiving_entity_id']), lines });
+    }
+    const payments = (await one('select p.id, p.invoice_id, p.amount_cents, p.method, p.received_at, p.status from payment p join invoice i on i.id = p.invoice_id where i.tenant_id = $1')).map((r) => ({ id: String(r['id']), invoiceId: String(r['invoice_id']), amountCents: Number(r['amount_cents']), method: String(r['method']), receivedAt: toIso(r['received_at']), status: String(r['status']) }));
+    const deposits = (await one('select d.id, d.agreement_id, d.amount_cents, d.currency, d.status, d.held_at, d.refunded_at, d.refunded_cents, d.deductions from deposit d join agreement a on a.id = d.agreement_id where a.tenant_id = $1')).map((r) => ({ id: String(r['id']), agreementId: String(r['agreement_id']), amountCents: Number(r['amount_cents']), currency: String(r['currency']), status: String(r['status']), heldAt: toIso(r['held_at']), refundedAt: r['refunded_at'] == null ? null : toIso(r['refunded_at']), refundedCents: n(r['refunded_cents']) ?? null, deductions: arr(r['deductions']) }));
+
+    const billRows = await one('select id, tenant_id, payee_id, entity_id, issued_at, due_at, currency, total_cents, paid_cents, status, memo from bill where tenant_id = $1');
+    const bills = [];
+    for (const r of billRows) {
+      const lines = (await one('select description, account, amount_cents from bill_line where bill_id = $1', [String(r['id'])])).map((l) => ({ description: String(l['description']), account: String(l['account']), amountCents: Number(l['amount_cents']) }));
+      bills.push({ id: String(r['id']), tenantId: tid, payeeId: String(r['payee_id']), entityId: s(r['entity_id']), issuedAt: toIso(r['issued_at']), dueAt: toIso(r['due_at']), currency: String(r['currency']), totalCents: Number(r['total_cents']), paidCents: Number(r['paid_cents']), status: String(r['status']), memo: s(r['memo']), lines });
+    }
+    const apPayments = (await one('select ap.id, ap.bill_id, ap.amount_cents, ap.method, ap.paid_at, ap.status from ap_payment ap join bill b on b.id = ap.bill_id where b.tenant_id = $1')).map((r) => ({ id: String(r['id']), billId: String(r['bill_id']), amountCents: Number(r['amount_cents']), method: String(r['method']), paidAt: toIso(r['paid_at']), status: String(r['status']) }));
+
+    const agreementParties = (await one('select ap.agreement_id, ap.party_id, ap.role, ap.share_pct, ap.from_date, ap.to_date from agreement_party ap join agreement a on a.id = ap.agreement_id where a.tenant_id = $1')).map((r) => ({ agreementId: String(r['agreement_id']), partyId: String(r['party_id']), role: String(r['role']), sharePct: n(r['share_pct']), from: s(r['from_date']), to: s(r['to_date']) }));
+
+    const pricingRules = (await one('select id, tenant_id, name, base_cents, min_cents, max_cents, weekend_factor_bps, occupancy_tiers, lead_time_tiers, los_discounts, seasons from pricing_rule where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, name: String(r['name']), baseCents: Number(r['base_cents']), minCents: n(r['min_cents']), maxCents: n(r['max_cents']), weekendFactorBps: n(r['weekend_factor_bps']), occupancyTiers: arr(r['occupancy_tiers']), leadTimeTiers: arr(r['lead_time_tiers']), losDiscounts: arr(r['los_discounts']), seasons: arr(r['seasons']) }));
+    const purchaseOrders = (await one('select id, tenant_id, vendor_id, entity_id, created_at, expected_at, currency, total_cents, status, billed_cents, approved_at, received_at, closed_at, cancelled_at, memo, lines from purchase_order where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, vendorId: String(r['vendor_id']), entityId: s(r['entity_id']), createdAt: toIso(r['created_at']), expectedAt: r['expected_at'] == null ? undefined : toIso(r['expected_at']), currency: String(r['currency']), totalCents: Number(r['total_cents']), status: String(r['status']), billedCents: Number(r['billed_cents']), approvedAt: r['approved_at'] == null ? undefined : toIso(r['approved_at']), receivedAt: r['received_at'] == null ? undefined : toIso(r['received_at']), closedAt: r['closed_at'] == null ? undefined : toIso(r['closed_at']), cancelledAt: r['cancelled_at'] == null ? undefined : toIso(r['cancelled_at']), memo: s(r['memo']), lines: arr(r['lines']) as Array<{ description: string; account: string; amountCents: number }> }));
+    const budgets = (await one('select id, tenant_id, account, period_start, period_end, amount_cents, label from budget where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, account: String(r['account']), periodStart: toDate(r['period_start']), periodEnd: toDate(r['period_end']), amountCents: Number(r['amount_cents']), label: s(r['label']) }));
+    const prospects = (await one('select id, tenant_id, name, party_id, preferences from roommate_prospect where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, name: String(r['name']), partyId: s(r['party_id']), preferences: obj(r['preferences']) }));
+    const leads = (await one('select id, tenant_id, name, source, stage, est_value_cents, party_id, created_at, updated_at, stage_at, lost_reason from crm_lead where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, name: String(r['name']), source: s(r['source']), stage: String(r['stage']), estValueCents: Number(r['est_value_cents']), partyId: s(r['party_id']), createdAt: toIso(r['created_at']), updatedAt: toIso(r['updated_at']), stageAt: obj(r['stage_at']), lostReason: s(r['lost_reason']) }));
+    const integrations = (await one('select id, tenant_id, kind, provider, status, config, secret_ref, created_at from integration where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, kind: String(r['kind']), provider: String(r['provider']), status: String(r['status']), config: obj(r['config']), secretRef: s(r['secret_ref']), createdAt: toIso(r['created_at']) }));
+    const connectorCommands = (await one('select id, tenant_id, integration_id, action, payload, status, created_at, dispatched_at, resolved_at, result from connector_command where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, integrationId: String(r['integration_id']), action: String(r['action']), payload: obj(r['payload']), status: String(r['status']), createdAt: toIso(r['created_at']), dispatchedAt: r['dispatched_at'] == null ? undefined : toIso(r['dispatched_at']), resolvedAt: r['resolved_at'] == null ? undefined : toIso(r['resolved_at']), result: r['result'] == null ? undefined : obj(r['result']) }));
+    const signatureEnvelopes = (await one('select id, tenant_id, document_name, provider, provider_ref, lead_id, agreement_id, signers, status, created_at, sent_at, completed_at, void_reason, decline_reason from signature_envelope where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, documentName: String(r['document_name']), provider: String(r['provider']), providerRef: s(r['provider_ref']), leadId: s(r['lead_id']), agreementId: s(r['agreement_id']), signers: arr(r['signers']), status: String(r['status']), createdAt: toIso(r['created_at']), sentAt: r['sent_at'] == null ? undefined : toIso(r['sent_at']), completedAt: r['completed_at'] == null ? undefined : toIso(r['completed_at']), voidReason: s(r['void_reason']), declineReason: s(r['decline_reason']) }));
+
+    const workOrders = (await one('select id, tenant_id, space_id, title, description, category, priority, status, requested_by_party_id, assigned_vendor_party_id, bill_id, opened_at, assigned_at, started_at, closed_at, resolution, cancel_reason from work_order where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, spaceId: s(r['space_id']), title: String(r['title']), description: s(r['description']), category: s(r['category']), priority: String(r['priority']), status: String(r['status']), requestedByPartyId: s(r['requested_by_party_id']), assignedVendorPartyId: s(r['assigned_vendor_party_id']), billId: s(r['bill_id']), openedAt: toIso(r['opened_at']), assignedAt: r['assigned_at'] == null ? undefined : toIso(r['assigned_at']), startedAt: r['started_at'] == null ? undefined : toIso(r['started_at']), closedAt: r['closed_at'] == null ? undefined : toIso(r['closed_at']), resolution: s(r['resolution']), cancelReason: s(r['cancel_reason']) }));
+    const actionLog = (await one('select seq, at, actor, action, effect, rule_id, outcome, reason, exception_id from action_log order by seq')).map((r) => ({ seq: Number(r['seq']), at: toIso(r['at']), actor: String(r['actor']), action: String(r['action']), effect: String(r['effect']), ruleId: s(r['rule_id']) ?? null, outcome: String(r['outcome']), reason: String(r['reason']), exceptionId: s(r['exception_id']) ?? null }));
+
+    return { tenants, units, guests, ratePlans, users, customRoles, legalEntities, parties, spaces, chargeTypes, agreements, holds, journalLines, invoices, payments, deposits, bills, apPayments, agreementParties, pricingRules, purchaseOrders, budgets, prospects, leads, integrations, connectorCommands, signatureEnvelopes, workOrders, actionLog } as unknown as WorldData;
+  }
+
+  private async activeHoldsAll(): Promise<CalendarHold[]> {
+    const rows = await this.q.query({
+      text: `select ch.id, ch.unit_id, ch.holder_id, ch.start_date, ch.end_date, ch.status from calendar_hold ch join unit u on u.id = ch.unit_id where u.tenant_id = $1`,
+      values: [this.tenantId],
+    });
+    return rows.map((r) => ({ id: String(r['id']), unitId: String(r['unit_id']), holderId: String(r['holder_id']), start: toDate(r['start_date']), end: toDate(r['end_date']), status: String(r['status']) as CalendarHold['status'] }));
   }
 
   /** Active calendar holds for this tenant's units. */

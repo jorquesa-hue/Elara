@@ -66,6 +66,11 @@ export function suggestMatches(
 export class Reconciliation {
   private txns = new Map<string, BankTransaction>();
 
+  /** Load stored bank transactions for cold-start rehydration. */
+  hydrate(records: readonly BankTransaction[]): void {
+    for (const r of records) this.txns.set(r.id, { ...r });
+  }
+
   import(input: {
     id: string;
     tenantId: string;

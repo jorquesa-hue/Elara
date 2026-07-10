@@ -36,6 +36,11 @@ export class MaintenanceError extends Error {}
 export class WorkOrders {
   private orders = new Map<string, WorkOrderRecord>();
 
+  /** Load stored work orders for cold-start rehydration. */
+  hydrate(records: readonly WorkOrderRecord[]): void {
+    for (const r of records) this.orders.set(r.id, { ...r });
+  }
+
   open(input: {
     id: string;
     tenantId: string;

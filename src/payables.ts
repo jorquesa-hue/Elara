@@ -48,6 +48,12 @@ export class Payables {
   private bills = new Map<string, Bill>();
   private payments = new Map<string, ApPayment>();
 
+  /** Load stored bills + AP payments for cold-start rehydration (no ledger post). */
+  hydrate(bills: readonly Bill[], apPayments: readonly ApPayment[]): void {
+    for (const b of bills) this.bills.set(b.id, { ...b, lines: b.lines.map((l) => ({ ...l })) });
+    for (const p of apPayments) this.payments.set(p.id, { ...p });
+  }
+
   constructor(private readonly ledger: Ledger) {}
 
   /** Book a bill: DR each line's account, CR accounts payable. */

@@ -69,6 +69,11 @@ export function crmKpis(leads: readonly Lead[]): CrmKpis {
 export class Crm {
   private leads = new Map<string, Lead>();
 
+  /** Load stored leads for cold-start rehydration. */
+  hydrate(records: readonly Lead[]): void {
+    for (const r of records) this.leads.set(r.id, { ...r, stageAt: { ...r.stageAt } });
+  }
+
   createLead(input: { id: string; tenantId: string; name: string; source?: string; estValueCents?: number; partyId?: string; createdAt: string }): Lead {
     if (this.leads.has(input.id)) throw new CrmError(`duplicate lead: ${input.id}`);
     if (!input.name) throw new CrmError(`lead ${input.id}: name is required`);

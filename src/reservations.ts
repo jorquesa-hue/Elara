@@ -29,6 +29,12 @@ export class ReservationError extends Error {}
 export class Reservations {
   private byId = new Map<string, ReservationRecord>();
 
+  /** Load stored reservations for cold-start rehydration. The no-overlap
+   *  calendar mirror is rebuilt from stored calendar holds separately. */
+  hydrate(records: readonly ReservationRecord[]): void {
+    for (const r of records) this.byId.set(r.id, { ...r });
+  }
+
   constructor(private readonly calendar: Calendar) {}
 
   /**

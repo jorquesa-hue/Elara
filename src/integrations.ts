@@ -51,6 +51,11 @@ function assertNoSecrets(config: Record<string, unknown>): void {
 export class Integrations {
   private byId = new Map<string, IntegrationRecord>();
 
+  /** Load stored integrations for cold-start rehydration. */
+  hydrate(records: readonly IntegrationRecord[]): void {
+    for (const r of records) this.byId.set(r.id, { ...r, config: { ...r.config } });
+  }
+
   register(input: {
     id: string;
     tenantId: string;
@@ -118,6 +123,11 @@ export interface ConnectorCommand {
 
 export class ConnectorOutbox {
   private byId = new Map<string, ConnectorCommand>();
+
+  /** Load stored connector commands for cold-start rehydration. */
+  hydrate(records: readonly ConnectorCommand[]): void {
+    for (const r of records) this.byId.set(r.id, { ...r });
+  }
 
   enqueue(input: {
     id: string;

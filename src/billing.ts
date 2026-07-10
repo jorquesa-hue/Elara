@@ -47,6 +47,11 @@ export const ACCOUNTS = {
 export class Billing {
   private invoices = new Map<string, Invoice>();
 
+  /** Load stored invoices for cold-start rehydration (no ledger post). */
+  hydrate(records: readonly Invoice[]): void {
+    for (const r of records) this.invoices.set(r.id, { ...r, lines: r.lines.map((l) => ({ ...l })) });
+  }
+
   constructor(private readonly ledger: Ledger) {}
 
   issue(input: {

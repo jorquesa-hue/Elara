@@ -35,6 +35,11 @@ export class InspectionError extends Error {}
 export class Inspections {
   private byId = new Map<string, InspectionRecord>();
 
+  /** Load stored inspections for cold-start rehydration. */
+  hydrate(records: readonly InspectionRecord[]): void {
+    for (const r of records) this.byId.set(r.id, { ...r, items: r.items.map((i) => ({ ...i })) });
+  }
+
   schedule(input: {
     id: string;
     tenantId: string;

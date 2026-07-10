@@ -29,6 +29,11 @@ export class DepositError extends Error {}
 export class Deposits {
   private deposits = new Map<string, Deposit>();
 
+  /** Load stored deposits for cold-start rehydration (no ledger post). */
+  hydrate(records: readonly Deposit[]): void {
+    for (const r of records) this.deposits.set(r.id, { ...r, deductions: (r.deductions ?? []).map((d) => ({ ...d })) });
+  }
+
   constructor(private readonly ledger: Ledger) {}
 
   hold(input: {

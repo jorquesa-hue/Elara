@@ -1746,6 +1746,71 @@ export class App {
     };
   }
 
+  /**
+   * Cold-start rehydration: reconstitute this App's full in-memory state from a
+   * WorldData read back out of the DB (Repositories.loadWorld). The symmetric
+   * inverse of snapshotWorld — after a restart the app restores everything the
+   * persistence layer captured, so nothing lives only in memory. Loads are
+   * side-effect-free (no ledger re-post): journal lines are restored as stored.
+   */
+  rehydrate(world: WorldData): void {
+    for (const t of world.tenants) {
+      this.config.set({
+        tenantId: t.id, displayName: t.displayName ?? t.name,
+        locale: t.locale ?? 'en', currency: t.currency ?? 'USD', timezone: t.timezone ?? 'UTC',
+        businessStructure: t.businessStructure ?? 'mixed_portfolio', country: t.country ?? 'US', jurisdiction: t.jurisdiction ?? 'US',
+      });
+    }
+    // Master data (unit.code/active + guest.email are not persisted — the
+    // projection stores only id/label/full_name — so they default on reload).
+    for (const u of world.units) this.masterData.units.add({ id: u.id, tenantId: u.tenantId, code: u.id, label: u.label, active: true });
+    for (const g of world.guests) this.masterData.guests.add({ id: g.id, tenantId: g.tenantId, code: g.id, fullName: g.fullName });
+    for (const r of world.ratePlans ?? []) this.masterData.ratePlans.add({ id: r.id, tenantId: r.tenantId, code: r.id, name: r.name, kind: r.kind as 'nightly' | 'monthly' | 'lease', baseMinor: r.baseCents });
+    for (const u of world.users ?? []) this.masterData.users.add({ id: u.id, tenantId: u.tenantId, code: u.code, displayName: u.displayName, roleId: u.roleId, active: u.active });
+    for (const cr of world.customRoles ?? []) this.roles.defineRole(cr.tenantId, { id: cr.roleId, name: cr.name, permissions: cr.permissions as Permission[], description: cr.description });
+    // Pass the world records through verbatim — they already carry the exact
+    // stored shape, so we don't introduce explicit-undefined optional keys.
+    for (const e of world.legalEntities ?? []) this.entities.addEntity(e as never);
+    for (const p of world.parties ?? []) this.parties.addParty(p as never);
+    // Spaces parents-first (self-referencing tree).
+    const spaces = [...(world.spaces ?? [])];
+    const placed = new Set<string>();
+    let guard = spaces.length * spaces.length + 1;
+    while (spaces.length && guard-- > 0) {
+      const idx = spaces.findIndex((s) => !s.parentId || placed.has(s.parentId));
+      const s = spaces.splice(idx === -1 ? 0 : idx, 1)[0]!;
+      placed.add(s.id);
+      this.spaces.add(s as never);
+    }
+    for (const c of world.chargeTypes ?? []) this.entities.addChargeType(c as never);
+    this.ledger.hydrate(world.journalLines);
+    this.calendar.hydrate(world.holds);
+    for (const a of world.agreements) {
+      const ag = Agreement.rehydrate({ id: a.id, tenantId: a.tenantId, guestId: a.guestId ?? '', unitId: a.unitId }, a.events);
+      this.agreements.set(a.id, { agreement: ag, tenantId: a.tenantId });
+    }
+    for (const l of world.agreementParties ?? []) this.parties.assign(l as never);
+    this.billing.hydrate(world.invoices);
+    for (const inv of world.invoices) this.invoiceTenant.set(inv.id, inv.tenantId);
+    this.payments.hydrate(world.payments);
+    this.deposits.hydrate(world.deposits);
+    for (const d of world.deposits) { const t = this.agreements.get(d.agreementId)?.tenantId; if (t) this.depositTenant.set(d.id, t); }
+    this.payables.hydrate((world.bills ?? []) as never, (world.apPayments ?? []) as never);
+    this.maintenance.hydrate((world.workOrders ?? []) as never);
+    this.reservations.hydrate((world.reservations ?? []) as never);
+    this.inspections.hydrate((world.inspections ?? []) as never);
+    this.comms.hydrate((world.messageThreads ?? []) as never, (world.messages ?? []) as never);
+    this.reconciliation.hydrate((world.bankTransactions ?? []) as never);
+    for (const pr of world.pricingRules ?? []) this.revenue.setRule(pr as never);
+    this.procurement.hydrate((world.purchaseOrders ?? []) as never, (world.budgets ?? []) as never);
+    for (const p of world.prospects ?? []) this.roommates.upsertProspect(p as never);
+    this.crm.hydrate((world.leads ?? []) as never);
+    this.signatures.hydrate((world.signatureEnvelopes ?? []) as never);
+    this.integrations.hydrate((world.integrations ?? []) as never);
+    this.connectorOutbox.hydrate((world.connectorCommands ?? []) as never);
+    this.runtime.hydrateLog(world.actionLog);
+  }
+
   /** The high-water mark of what a tenant's full current state would flush. */
   private highWaterMark(tenantId: string): FlushMark {
     const mine = [...this.agreements.values()].filter((e) => e.tenantId === tenantId);

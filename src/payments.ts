@@ -22,6 +22,11 @@ export class PaymentError extends Error {}
 export class Payments {
   private payments = new Map<string, Payment>();
 
+  /** Load stored payments for cold-start rehydration (no ledger post). */
+  hydrate(records: readonly Payment[]): void {
+    for (const r of records) this.payments.set(r.id, { ...r });
+  }
+
   constructor(
     private readonly ledger: Ledger,
     private readonly billing: Billing,

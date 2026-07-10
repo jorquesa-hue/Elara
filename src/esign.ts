@@ -48,6 +48,11 @@ function normEmail(e: string): string {
 export class Signatures {
   private envelopes = new Map<string, SignatureEnvelope>();
 
+  /** Load stored signature envelopes for cold-start rehydration. */
+  hydrate(records: readonly SignatureEnvelope[]): void {
+    for (const r of records) this.envelopes.set(r.id, { ...r, signers: r.signers.map((s) => ({ ...s })) });
+  }
+
   create(input: {
     id: string;
     tenantId: string;

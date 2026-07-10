@@ -317,6 +317,11 @@ function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: string): b
 export class Calendar {
   private holds = new Map<string, CalendarHold>();
 
+  /** Load stored calendar holds verbatim for cold-start rehydration. */
+  hydrate(records: readonly CalendarHold[]): void {
+    for (const r of records) this.holds.set(r.id, { ...r });
+  }
+
   hold(h: { id: string; unitId: string; holderId: string; start: string; end: string }): CalendarHold {
     if (this.holds.has(h.id)) throw new AgreementError(`duplicate hold id: ${h.id}`);
     if (h.start >= h.end) throw new AgreementError(`hold ${h.id}: start must be before end`);

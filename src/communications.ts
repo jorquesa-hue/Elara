@@ -42,6 +42,12 @@ export class Communications {
   private threads = new Map<string, ThreadRecord>();
   private messages: MessageRecord[] = [];
 
+  /** Load stored threads + messages for cold-start rehydration. */
+  hydrate(threads: readonly ThreadRecord[], messages: readonly MessageRecord[]): void {
+    for (const t of threads) this.threads.set(t.id, { ...t });
+    for (const m of messages) this.messages.push({ ...m });
+  }
+
   openThread(input: {
     id: string;
     tenantId: string;

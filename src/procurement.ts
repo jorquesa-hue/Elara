@@ -77,6 +77,12 @@ export class Procurement {
   private pos = new Map<string, PurchaseOrder>();
   private budgets = new Map<string, Budget>();
 
+  /** Load stored purchase orders + budgets for cold-start rehydration. */
+  hydrate(pos: readonly PurchaseOrder[], budgets: readonly Budget[]): void {
+    for (const po of pos) this.pos.set(po.id, { ...po, lines: po.lines.map((l) => ({ ...l })) });
+    for (const b of budgets) this.budgets.set(b.id, { ...b });
+  }
+
   // --- purchase orders -----------------------------------------------------
 
   /** Raise a PO in draft. Encumbers nothing until approved. */

@@ -112,4 +112,13 @@ export class Ledger {
   get allLines(): readonly JournalLine[] {
     return [...this.lines];
   }
+
+  /** Load stored journal lines verbatim for cold-start rehydration — no
+   *  re-validation or balance check (they were validated when first posted). */
+  hydrate(lines: readonly JournalLine[]): void {
+    for (const l of lines) {
+      this.lines.push(Object.freeze({ ...l }));
+      this.entryIds.add(l.entryId);
+    }
+  }
 }
