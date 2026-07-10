@@ -19,7 +19,8 @@ import { Agreement, Calendar, DoubleInventoryError, escalatedRate, type Agreemen
 import { PolicyEnvelope } from '../policy-envelope.ts';
 import { ExceptionQueue } from '../exception-queue.ts';
 import { AgentRuntime, type ToolCallResult } from '../agent-runtime.ts';
-import { Billing, type InvoiceLine } from '../billing.ts';
+import { Billing, ACCOUNTS, type InvoiceLine } from '../billing.ts';
+import { stageFor, lateFeeCents } from '../collections.ts';
 import { Payables, type ApMethod } from '../payables.ts';
 import { Payments, type PaymentMethod } from '../payments.ts';
 import { Deposits, type Deduction } from '../deposits.ts';
@@ -287,6 +288,77 @@ export class App {
   /** Is this party currently a party (any role) on the agreement? */
   private callerLinkedToAgreement(partyId: string, agreementId: string): boolean {
     return this.parties.partiesFor(agreementId).some((l) => l.partyId === partyId);
+  }
+
+  /**
+   * The overdue-collections sweep. For every open, past-due invoice, apply the
+   * highest collection stage reached — each stage's action dispatched through the
+   * policy envelope (remind/late_fee execute; suspend/evict escalate). Idempotent:
+   * each (invoice, stage) is journaled as a message on a per-invoice collections
+   * thread, so re-running never double-charges or re-escalates; a late fee posts a
+   * receivable at most once (deterministic `latefee-<invoice>` id).
+   */
+  private runCollectionsSweep(ctx: AuthContext, at: string): {
+    swept: number;
+    actions: Array<{ invoiceId: string; stage: string; action: string; outcome: string; exceptionId?: string }>;
+  } {
+    const dayMs = 86_400_000;
+    const nowMs = Date.parse(at);
+    const jurisdiction = this.config.get(ctx.tenantId).jurisdiction;
+    const overdue = this.billing
+      .openInvoices()
+      // A late fee posted by a prior sweep is itself an invoice — exclude it so the
+      // sweep never charges a fee on a fee (or escalates one).
+      .filter((i) => i.tenantId === ctx.tenantId && !i.id.startsWith('latefee-') && Date.parse(i.dueAt) < nowMs);
+    const actions: Array<{ invoiceId: string; stage: string; action: string; outcome: string; exceptionId?: string }> = [];
+
+    for (const inv of overdue) {
+      const daysOverdue = Math.floor((nowMs - Date.parse(inv.dueAt)) / dayMs);
+      const stage = stageFor(daysOverdue);
+      if (!stage) continue;
+      const threadId = `col-thread-${inv.id}`;
+      const msgId = `col-${inv.id}-${stage.id}`;
+
+      // Idempotency: this (invoice, stage) already processed?
+      let processed = false;
+      try { processed = this.comms.messagesFor(threadId).some((m) => m.id === msgId); } catch { processed = false; }
+      if (processed) { actions.push({ invoiceId: inv.id, stage: stage.id, action: stage.action, outcome: 'already_applied' }); continue; }
+
+      try { this.comms.getThread(threadId); }
+      catch { this.comms.openThread({ id: threadId, tenantId: ctx.tenantId, subject: `Collections: invoice ${inv.id}`, kind: 'finance', createdAt: at, agreementId: inv.agreementId }); }
+
+      const outstanding = inv.totalCents - inv.paidCents;
+      const decision = this.runtime.execute(
+        stage.policyAction,
+        { actor: ctx.actor, tenantId: ctx.tenantId, jurisdiction, invoiceId: inv.id, amountCents: outstanding },
+        at,
+        () => {
+          if (stage.action === 'late_fee' && stage.feeBps) {
+            const fee = lateFeeCents(outstanding, stage.feeBps);
+            const feeId = `latefee-${inv.id}`;
+            if (fee > 0 && !this.billing.allInvoices().some((x) => x.id === feeId)) {
+              this.billing.issue({
+                id: feeId,
+                agreementId: inv.agreementId,
+                tenantId: ctx.tenantId,
+                issuedAt: at,
+                dueAt: inv.dueAt,
+                currency: inv.currency,
+                lines: [{ description: `Late fee (${stage.feeBps / 100}%) on ${inv.id}`, account: ACCOUNTS.lateFeeRevenue, amountCents: fee }],
+              });
+              this.invoiceTenant.set(feeId, ctx.tenantId);
+            }
+          }
+          return true;
+        },
+      );
+
+      // Journal the stage regardless of outcome so a re-sweep skips it (no dup
+      // escalations for suspend/evict, which park pending a human).
+      this.comms.post({ id: msgId, threadId, at, authorType: 'agent', authorId: ctx.actor, body: `Stage ${stage.id} (${stage.action}) → ${decision.outcome}`, direction: 'internal' });
+      actions.push({ invoiceId: inv.id, stage: stage.id, action: stage.action, outcome: decision.outcome, ...(decision.exceptionId ? { exceptionId: decision.exceptionId } : {}) });
+    }
+    return { swept: overdue.length, actions };
   }
 
   private ownedWorkOrder(ctx: AuthContext, id: string) {
@@ -1653,6 +1725,19 @@ export class App {
       if ((item.ctx as { tenantId?: string }).tenantId !== ctx.tenantId) throw new HttpError(404, 'exception not found');
       const result = this.exceptions.approve(p['id']!, ctx.actor, this.now(), this.optString(body, 'note'));
       return { status: 200, body: { status: 'approved', result: result ?? null } };
+    });
+
+    // Run the overdue-collections sweep. A scheduler (a Supabase pg_cron job or any
+    // external cron) POSTs this on a cadence with the service role; a manager may
+    // also run it on demand. For every open, past-due invoice it finds the highest
+    // stage reached (src/collections.ts) and dispatches that stage's policy action:
+    // remind / late_fee execute (a late fee posts a real receivable once), suspend /
+    // evict ESCALATE for a human. Idempotent: each (invoice, stage) is recorded as a
+    // message on a per-invoice collections thread, so re-running the sweep never
+    // double-charges or re-escalates. `at` may be supplied (for testing/backfill).
+    this.add('POST', '/collections/sweep', 'collections.run', (ctx, _p, body) => {
+      const at = this.optString(body, 'at') ?? this.now();
+      return { status: 200, body: this.runCollectionsSweep(ctx, at) };
     });
 
     // --- billing / reporting ----------------------------------------------
