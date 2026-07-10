@@ -33,15 +33,20 @@ uses, and every agent action is gated by an explicit policy envelope.
 
 ## 3. Domain kernel (`src/`)
 
+Every module is pure and zero-runtime-dependency (invariant 7). Grouped by concern:
+
+**Core leasing + money**
+
 | Module | Responsibility |
 | --- | --- |
-| `agreement.ts` | Agreement state machine (event-sourced) + `Calendar` (in-process mirror of the double-inventory constraint) |
+| `agreement.ts` | Agreement state machine (event-sourced) + `Calendar` (in-process mirror of the double-inventory constraint); `rent_adjusted`/`transferred`/`moved_in`/`moved_out` events |
 | `ledger.ts` | Double-entry ledger; append-only; balance-enforcing |
-| `policy-envelope.ts` | `POLICY_RULES` source of truth + `decide()` |
-| `agent-runtime.ts` | The only execution path for agents; gates + logs every call |
+| `policy-envelope.ts` | `POLICY_RULES` source of truth + `decide()`; per-jurisdiction rule scoping (`jurisdictions?`, `effectiveRulesFor`) |
+| `agent-runtime.ts` | The only execution path for agents; gates + logs (tenant-scoped) every call |
 | `exception-queue.ts` | Parks escalated actions for human approval |
 | `rate-plan.ts` | Pricing + quotes |
-| `billing.ts` | Invoices → ledger; chart of accounts (`ACCOUNTS`) |
+| `billing.ts` | Invoices → ledger; chart of accounts (`ACCOUNTS`); charge-routing |
+| `payables.ts` | Accounts payable (AP): bills, bill lines, ap_payments (resident refund = bill to payee) |
 | `payments.ts` | Provider-agnostic settlement → ledger |
 | `deposits.ts` | Security deposits as a liability, refund w/ deductions |
 | `amenity.ts` | Chargeable extras catalog |
@@ -50,6 +55,43 @@ uses, and every agent action is gated by an explicit policy envelope.
 | `multigaap.ts` | Accrual vs cash revenue-recognition projections |
 | `metrics.ts` | Occupancy, ADR, RevPAR |
 | `group-block.ts` | Corporate/event blocks + pickup without double-booking |
+
+**Master-data reshape v2 (identical structure for every country)**
+
+| Module | Responsibility |
+| --- | --- |
+| `party.ts` | `PartyDirectory`: person/org parties + agreement roles (resident/guarantor/payee…); `billTo` = payer-or-resident |
+| `space.ts` | `SpaceTree`: property→building→unit→room→bed + common/amenity, leasable flag |
+| `entity.ts` | `EntityCatalog`: legal entities (operator/condominium/landlord/spe) + charge-type routing (code → gl_account + receiving entity) |
+
+**Feature modules (23-feature roadmap)**
+
+| Module | Feature |
+| --- | --- |
+| `maintenance.ts` | Work orders on spaces → vendor → AP bill (#3) |
+| `reservations.ts` | Common-area/amenity reservations over the shared calendar (#6) |
+| `inspection.ts` | Move-in/out vistorias → damage estimate feeds deposit refund (#18/#19) |
+| `communications.ts` | Threads/messages; agent-drafted sends pass policy (#4) |
+| `reconciliation.ts` | Bank-transaction import + deterministic match ranker (#5) |
+| `integrations.ts` | Connector framework: non-secret config + `secretRef` + policy-gated command outbox (#7/#12/#13/#14/#16/#17) |
+| `revenue.ts` | Dynamic pricing engine (basis-point factors) + occupancy/ADR/RevPAR KPIs (#1) |
+| `procurement.ts` | Purchase orders (encumbrances) + budgets (plan vs commitment vs actual) (#2) |
+| `roommate.ts` | Student roommate compatibility scoring + room grouping (#9) |
+| `onboarding.ts` | Zero-dep CSV importer + column-mapping "AI migration" seam (#15) |
+| `crm.ts` | Leasing pipeline funnel + KPI rollups (#20) |
+| `esign.ts` | Lease e-signature envelope state machine (advances the sale; does NOT execute the lease) (#17) |
+
+**Platform layer (per-country environments)**
+
+| Module | Responsibility |
+| --- | --- |
+| `country.ts` | `COUNTRY_PROFILES` (BR/US/PT/ES/MX/GB): currency/locale/timezone/jurisdiction/taxIdLabel |
+| `environment.ts` | `MASTER_DATA_STRUCTURE` single constant + `buildEnvironment(country)` → per-country blueprint over the identical structure |
+| `config.ts` | `TenantConfig`: country+jurisdiction (jurisdiction derived from country), locale/currency/timezone/businessStructure; `formatMoney` |
+| `i18n.ts` | en / pt-BR / es catalogs |
+| `rbac.ts` | Granular permissions + built-in + custom roles (orthogonal to the policy envelope) |
+| `master-data.ts` | Units/guests/users/rate-plans (tenant-scoped; `code` = reporting key) |
+| `subscription.ts` | Per-unit SaaS metering |
 
 ## 4. Conversion lifecycle (critical path)
 
@@ -72,18 +114,42 @@ history for that id must survive every conversion unchanged.
   on human `approve()`.
 - `deny` (incl. unknown actions, by default) → never run `fn`, log `denied`.
 
-Escalated by policy: `lease.execute`, large refunds (> R$500),
-`collections.suspend`, `collections.evict`. These are irreversible and/or
-regulated (BR/EU) and are never auto-executed.
+Escalated by policy (49 rules, `gen-seed` → seed, applied live): `lease.execute`
+(regulated everywhere), `bill.pay` and PO approval over R$5,000, **connector
+commands to a bank/payment_gateway integration over R$5,000** (closes the parallel
+money-out rail around `bill.pay`), **deposit refunds over R$5,000**, the BR/EU
+security-deposit cap over R$9,000 (jurisdiction-scoped), `collections.suspend`, and
+`collections.evict`. These move money out, or are irreversible/regulated, and are
+never auto-executed.
+
+**Per-jurisdiction divergence from one source.** A `PolicyRule` may carry
+`jurisdictions?` — undefined means global, a set means the rule applies only in those
+jurisdictions (from the tenant's country). `decide()` skips a rule whose jurisdictions
+exclude `ctx.jurisdiction`; `effectiveRulesFor(jurisdiction)` slices the global set. So
+the same action + amount can `escalate` for a BR/EU tenant and `allow` for a US tenant
+with **no code fork** — the demonstrative `pol-deposit-hold-cap` proves it.
 
 ## 6. Persistence (`schema.sql`, `supabase/migrations/`)
+
+11 migrations, all applied live to `shplrbhwpttsukwgaxli`:
 
 - `20260707170000_core_schema.sql` — tables + the three enforcement mechanisms:
   the `calendar_hold` `EXCLUDE` (invariant 4), the deferred journal-balance
   constraint trigger (invariant 6), and append-only triggers (invariant 1).
 - `20260707170001_policy_seed.sql` — **generated** from TS by `gen-seed.mjs`.
-- `20260707170002_rls.sql` — deny-by-default RLS on all 12 tenant tables; anon
-  sees nothing until a `tenant_id` JWT claim exists.
+- `20260707170002_rls.sql` / `…170003_rls_operational_tables.sql` — deny-by-default
+  RLS (forced) on every tenant table; anon sees nothing until a `tenant_id` JWT claim
+  exists; operational tables (`journal_line`, `policy_rule`, `collection_stage`,
+  `action_log`, `exception_item`) are service-role only.
+- `…master_data_v2` / `…agreement_guest_nullable` — the party/space/entity/AP reshape.
+- `…work_order` / `…phase2_tables` / `…pms_feature_tables` — feature tables (all
+  deny-by-default + forced RLS, jsonb where a value is a nested record).
+- `…config_and_full_persistence` — tenant config columns + app_user/custom_role/
+  integration/connector_command/signature_envelope (nothing lives only in memory).
+- `…master_data_fidelity` — `unit.code/active`, `guest.code/email` (closes the last
+  lossy projection edge).
+- `…action_log_tenant` — `action_log.tenant_id` so the shared audit stream is
+  tenant-scoped on read/snapshot (security fix; see SECURITY.md).
 
 ## 7. Multi-GAAP
 
@@ -103,15 +169,38 @@ one transaction for the production service-role backend (invariant 3). `pg` is
 imported dynamically so the kernel's zero-dep guarantee (invariant 7) is intact
 for anyone who doesn't opt in.
 
+## 7b. Runtime write arm + cold-start rehydration
+
+The container's egress blocks a direct `pg` connection to Postgres, so the sanctioned
+write path is the **`persist-world` Edge Function** (`supabase/functions/persist-world/`),
+hosted inside Supabase and reaching Postgres over the internal `SUPABASE_DB_URL`. It
+takes a domain-level `WorldData`, projects it FK-ordered **server-side** (callers never
+submit raw SQL — invariant 3), asserts journal balance app-side (invariant 6), then
+applies the whole batch in one transaction with `set constraints all immediate`
+(invariants 4/6). Auth = gateway `verify_jwt` **plus** in-body `role=service_role`.
+`projection.ts` is a **verbatim twin** of `src/persistence/project.ts`, held byte-identical
+by a drift-guard test — the kernel stays the single source of truth. Currently at v9.
+
+Durability is **bidirectional**. `App.snapshotWorld(tenantId)` folds in-memory state into
+a tenant-scoped, FK-parents-first, balanced `WorldData` (the write side, sent incrementally
+past a per-tenant high-water mark). `App.rehydrate(world)` is its inverse: every store has a
+side-effect-free `hydrate()`, agreements rehydrate from their event stream, and the ledger
+loads as stored (no re-post). `Repositories.loadWorld(tenantId)` reads the DB → `WorldData`
+to feed rehydrate on boot. Acceptance is a round trip — snapshot A → rehydrate a fresh App B
+→ `B.snapshotWorld` deep-equals A's, so nothing the persistence layer captures is lost.
+
 ## 8. Testing & acceptance
 
-- `npx tsx --test tests/*.test.ts` — four tranches, 19 tests, must be 19/19.
+- `npx tsx --test tests/*.test.ts` — **31 tranches, 269 tests, must be 269/269**
+  before any commit. `npx tsc --noEmit` must be clean.
 - `npx tsx demo.ts` — end-to-end lifecycle acceptance, in-process.
 - `npx tsx demo-live.ts` — the same lifecycle **persisted to the live DB** via
   the adapter (`DATABASE_URL` → commit; otherwise emit a runnable script).
-  **P0 is DONE when this runs against the live stack** — verified: the batch
-  applied to the live project, the deferred balance trigger validated (trial
-  balance 0), state confirmed, transaction rolled back clean.
+  **P0 is DONE** — verified: the batch applied to the live project, the deferred
+  balance trigger validated (trial balance 0), state confirmed, rolled back clean.
+- Live DB invariants independently verified: the `calendar_hold` EXCLUDE rejects
+  overlapping holds (inv 4), the deferred balance trigger rejects unbalanced entries
+  (inv 6), the append-only trigger rejects UPDATE/DELETE on `journal_line` (inv 1).
 
 ## 17. Platform layer — configuration, access profiling, master data (P1)
 
@@ -264,7 +353,50 @@ this one surface.
 - **Policy** — every *mutation* is executed through `AgentRuntime.execute()`, so
   `PolicyEnvelope.decide()` runs before the operation (invariant 2). Mapping:
   `allow` → 200/201, `deny` → 403, `escalate` → 202 `{ exceptionId }`.
-- **Endpoints** — agreements (create / activate / convert / read), invoices,
-  payments, deposits (hold / refund), ledger trial-balance (tenant-scoped),
-  exceptions (list / approve — approval requires a non-agent role), billing
-  subscription (per-unit SaaS), health.
+- **RBAC** — between auth and policy, the route's required `resource.action`
+  permission must be in the caller's role (`src/rbac.ts`); missing → 403. RBAC and
+  policy are orthogonal: RBAC answers "may this user do this at all?", policy answers
+  "is this action safe to auto-execute?".
+- **Endpoints** — agreements (create/activate/convert/read + adjust-rent/transfer/
+  move-in/move-out), invoices (charge-routed), payments, deposits (hold/refund),
+  parties (+ per-agreement roles), spaces, legal-entities, charge-types, bills (+ pay),
+  pricing-rules (+ quote) & revenue/summary, purchase-orders (+ approve/receive/close/
+  cancel) & budgets, prospects (+ matches) & roommate/grouping, onboarding (preview/
+  commit), leads (+ advance/lose) & crm/summary, signature-envelopes (+ send/sign/void),
+  work-orders, reservations, inspections, threads/messages, bank-transactions &
+  reconciliation, integrations & connector-commands, countries, environment, config,
+  ledger trial-balance, exceptions (list/approve — non-agent role), reporting,
+  billing subscription, `POST /persist` (durable flush), health. Every mutation passes
+  the three gates; `App.persist()`/`snapshotWorld()`/`rehydrate()` are the async I/O
+  arms off the synchronous dispatch router.
+
+## 19. Per-country environments (the architectural keystone)
+
+Every country gets its **own setup + config + jurisdiction-scoped policy**, while the
+master-data **structure** is byte-for-byte identical everywhere — so one kernel + one
+schema deploys per country (or multi-tenant across countries) with **no data-model
+fork**. This is guaranteed structurally, not by convention: `MASTER_DATA_STRUCTURE`
+(`src/environment.ts`) is a **single constant** (legal_entity, party, space, charge_type,
+unit, guest, agreement) that is not parameterised by country — being one constant is the
+guarantee it never diverges.
+
+`buildEnvironment(country, overrides?)` is pure/deterministic → an `EnvironmentBlueprint`
+{country, jurisdiction, taxIdLabel, config (currency/locale/timezone/businessStructure),
+policy (the effective jurisdiction-scoped rule set), collectionStages, masterDataStructure}.
+Provisioning BR vs US is the **same migrations + same kernel**, a different blueprint.
+`scripts/provision-country.mjs <CC>` prints a country's full setup — verified BR (47
+effective rules, 1 jurisdiction-scoped, CNPJ/CPF/BRL) vs US (46 effective, 0 scoped,
+EIN/SSN/USD). `GET /environment` returns the calling tenant's blueprint; `GET /countries`
+lists the profiles; `PUT /config` accepts a country and re-derives jurisdiction + seeds
+defaults.
+
+## 20. Security posture
+
+The full-surface review and its fixes live in **SECURITY.md**. Summary: the three-gate
+architecture holds with no policy-bypass path, agent tools reach the kernel only via
+`App.dispatch`, SQL is fully parameterized, credentials never enter the kernel
+(`secretRef`/`providerRef` only), and RLS is deny-by-default. Money-out is gated on every
+rail (invoices/AP/PO/deposit-refund/connector-payout), and the shared `action_log` audit
+stream is tenant-scoped on both write and read. Reserved/residual items (guest-role
+horizontal read pending a `partyId` claim, e-sign email trust, tenant-mutable jurisdiction,
+`lease.execute` reserved-not-wired) are documented there with recommended fixes.
