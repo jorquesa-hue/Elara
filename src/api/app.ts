@@ -60,6 +60,7 @@ import type { PersistenceBackend } from '../persistence/edge-client.ts';
 import { StaticTokenAuthenticator, type Authenticator, type AuthContext } from './context.ts';
 import { defaultObservability, silentSink, type Observability } from '../observability.ts';
 import { RateLimiter } from '../ratelimit.ts';
+import { buildSubjectAccessReport, redactPartyRecord, redactRecipient, type ErasureReceipt } from '../compliance.ts';
 
 export interface ApiRequest {
   method: string;
@@ -410,6 +411,43 @@ export class App {
       throw new HttpError(404, 'agreement not found');
     }
     return entry.agreement;
+  }
+
+  /** Assemble a data-subject access report (LGPD/GDPR) for a party from the
+   *  tenant-scoped slices across the stores. Throws 404 if the party is unknown. */
+  private subjectAccessReport(tenantId: string, partyId: string) {
+    const party = this.parties.getParty(tenantId, partyId);
+    if (!party) throw new HttpError(404, 'party not found');
+    const roles = this.parties.allLinks().filter((l) => l.partyId === partyId);
+    const invoices = this.billing.allInvoices()
+      .filter((i) => i.tenantId === tenantId && i.billToPartyId === partyId)
+      .map((i) => ({ id: i.id, agreementId: i.agreementId, totalCents: i.totalCents, status: i.status, issuedAt: i.issuedAt }));
+    const bills = this.payables.allBills()
+      .filter((b) => b.tenantId === tenantId && b.payeeId === partyId)
+      .map((b) => ({ id: b.id, totalCents: b.totalCents, status: b.status, issuedAt: b.issuedAt }));
+    const notifications = party.email
+      ? this.notifications.list(tenantId).filter((n) => n.to === party.email).map((n) => ({ id: n.id, channel: n.channel, kind: n.kind, status: n.status, createdAt: n.createdAt }))
+      : [];
+    const leads = this.crm.list(tenantId).filter((l) => l.partyId === partyId).map((l) => ({ id: l.id, stage: l.stage }));
+    const prospects = this.roommates.list(tenantId).filter((r) => r.partyId === partyId).map((r) => ({ id: r.id, name: r.name }));
+    return buildSubjectAccessReport({ generatedAt: this.now(), party, roles, invoices, bills, notifications, leads, prospects });
+  }
+
+  /** Execute an erasure: redact the party's PII + its notification recipients,
+   *  keeping the financial record (role links, invoices, bills) by opaque id. */
+  private erasePartyData(tenantId: string, partyId: string, reason?: string): ErasureReceipt {
+    const at = this.now();
+    const party = this.parties.getParty(tenantId, partyId);
+    if (!party) throw new HttpError(404, 'party not found');
+    const email = party.email;
+    const redactedFields = this.parties.erase(tenantId, partyId, (pp) => redactPartyRecord(pp, at, reason));
+    const notificationsRedacted = email ? this.notifications.redactRecipient(tenantId, email, redactRecipient()) : 0;
+    const retained = {
+      agreementRoles: this.parties.allLinks().filter((l) => l.partyId === partyId).length,
+      invoices: this.billing.allInvoices().filter((i) => i.tenantId === tenantId && i.billToPartyId === partyId).length,
+      bills: this.payables.allBills().filter((b) => b.tenantId === tenantId && b.payeeId === partyId).length,
+    };
+    return { partyId, erasedAt: at, redactedFields, notificationsRedacted, retained };
   }
 
   /** Best-effort recipient email for an agreement — the bill-to party's email.
@@ -1628,6 +1666,33 @@ export class App {
     this.add('POST', '/notifications/:id/failed', 'notification.send', (ctx, p, body) => {
       const n = this.ownedNotification(ctx, p['id']!);
       return { status: 200, body: this.notifications.markFailed(n.id, this.now(), this.optString(body, 'reason') ?? 'failed') };
+    });
+
+    // --- privacy / data-subject rights (LGPD/GDPR) ------------------------
+    // Right of access: a subject-access export of everything Elara holds about a
+    // party. Operator-gated (privacy.export = DPO/manager); a party-scoped token
+    // (a guest) may export ONLY its own party. The route permission is null so the
+    // handler can allow either path — a guest lacks privacy.export by design.
+    this.add('GET', '/privacy/parties/:id/export', null, (ctx, p) => {
+      const id = p['id']!;
+      if (ctx.partyId !== undefined) {
+        if (ctx.partyId !== id) throw new HttpError(404, 'party not found');
+      } else if (!this.roles.permissionsFor(ctx.tenantId, ctx.role).has('privacy.export')) {
+        return { status: 403, body: { error: 'forbidden', permission: 'privacy.export' } };
+      }
+      return { status: 200, body: this.subjectAccessReport(ctx.tenantId, id) };
+    });
+
+    // Right to erasure: redact the party's PII while RETAINING the append-only
+    // financial events (invariant 1) by opaque id. Policy-gated (privacy.erase,
+    // allow+audited) and restricted to privacy.manage (a human DPO — never an
+    // agent). The action_log records who erased whom and when.
+    this.add('POST', '/privacy/parties/:id/erase', 'privacy.manage', (ctx, p, body) => {
+      const id = p['id']!;
+      const party = this.parties.getParty(ctx.tenantId, id);
+      if (!party) throw new HttpError(404, 'party not found');
+      const reason = this.optString(body, 'reason');
+      return this.gated('privacy.erase', ctx, { partyId: id }, () => this.erasePartyData(ctx.tenantId, id, reason), (receipt) => ({ status: 200, body: receipt }));
     });
 
     // --- bank reconciliation (#5) -----------------------------------------

@@ -135,6 +135,7 @@ export const POLICY_RULES: readonly PolicyRule[] = [
   },
   { id: 'pol-connector-dispatch', action: 'connector.dispatch', effect: 'allow', description: 'Enqueuing a non-money connector command (unlock, push inventory, pull leads) is routine; edge adapters hold the credentials.' },
   { id: 'pol-esign-send', action: 'esign.send', effect: 'allow', description: 'Sending a lease document out for e-signature is routine and audited; it does not execute the lease (lease.execute stays human-gated).' },
+  { id: 'pol-privacy-erase', action: 'privacy.erase', effect: 'allow', description: 'Honoring a data-subject erasure request (LGPD/GDPR) is a compliance obligation: it redacts a party PII while the append-only financial events are retained by opaque id. Restricted to the DPO permission (privacy.manage, not an agent) and fully recorded in the action log, so the initiating human IS the control; no second approval is parked.' },
   {
     id: 'pol-config-change-jurisdiction',
     action: 'config.change_jurisdiction',

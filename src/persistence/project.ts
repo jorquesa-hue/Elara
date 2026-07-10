@@ -456,7 +456,7 @@ export function projectWorld(w: WorldData): SqlStatement[] {
   for (const n of w.notifications ?? []) {
     out.push(
       stmt(
-        'insert into notification (id, tenant_id, channel, recipient, kind, data, status, created_at, sent_at, failed_reason, provider_ref) values ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11) on conflict (id) do update set status = excluded.status, sent_at = excluded.sent_at, failed_reason = excluded.failed_reason, provider_ref = excluded.provider_ref',
+        'insert into notification (id, tenant_id, channel, recipient, kind, data, status, created_at, sent_at, failed_reason, provider_ref) values ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11) on conflict (id) do update set recipient = excluded.recipient, data = excluded.data, status = excluded.status, sent_at = excluded.sent_at, failed_reason = excluded.failed_reason, provider_ref = excluded.provider_ref',
         [n.id, n.tenantId, n.channel, n.to, n.kind, JSON.stringify(n.data ?? {}), n.status, n.createdAt, n.sentAt ?? null, n.failedReason ?? null, n.providerRef ?? null],
       ),
     );

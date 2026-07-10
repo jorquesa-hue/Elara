@@ -116,6 +116,20 @@ export class Notifications {
     return this.list(tenantId, { status: 'pending' });
   }
 
+  /** Redact the recipient address of every notification sent to `recipient` for a
+   *  tenant (LGPD/GDPR erasure — the recipient is the PII). The kind + financial
+   *  data keys stay as a non-identifying delivery record. Returns the count redacted. */
+  redactRecipient(tenantId: string, recipient: string, tombstone: string): number {
+    let n = 0;
+    for (const r of this.byId.values()) {
+      if (r.tenantId === tenantId && r.to === recipient) {
+        r.to = tombstone;
+        n++;
+      }
+    }
+    return n;
+  }
+
   list(tenantId: string, filter: { status?: NotificationStatus; channel?: NotificationChannel } = {}): NotificationRecord[] {
     return [...this.byId.values()]
       .filter(

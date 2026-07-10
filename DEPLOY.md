@@ -120,6 +120,26 @@ Notes:
   the newer asymmetric signing keys (RS256/ES256 + JWKS), keep the legacy JWT secret
   enabled, or extend `JwtAuthenticator` with JWKS verification.
 
+## Privacy — data-subject rights (LGPD / GDPR)
+
+Two operator endpoints handle data-subject requests, both gated on a DPO
+permission (owner/service/manager), never OPS:
+
+- `GET /privacy/parties/:id/export` (`privacy.export`) — a subject-access report
+  assembling everything Elara holds about a party (record, agreement roles,
+  invoices, AP bills, notifications, CRM/roommate links). A party-scoped token (a
+  guest) may export only its own party.
+- `POST /privacy/parties/:id/erase` (`privacy.manage`; policy `privacy.erase`) —
+  the right to be forgotten. It redacts the party's PII (name/tax id/email/phone/
+  attributes → tombstone) and its notification recipients, and **retains the
+  append-only financial record** (agreement roles, invoices, bills, journal lines)
+  by opaque party id. This is the reconciliation with invariant 1: the immutable
+  events reference the party by id, so wiping the identifying fields de-identifies
+  the subject while the balanced money history stands and financial-record
+  retention law is satisfied. The erasure itself is recorded in the tenant
+  `action_log` (who erased whom, when). The redaction propagates to the DB through
+  the normal party + notification upserts on the next flush.
+
 ## Observability
 
 Every request emits a structured JSON log line to stdout (`{at,level,msg:"request",

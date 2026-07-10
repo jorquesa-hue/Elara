@@ -92,6 +92,12 @@ export const PERMISSIONS = [
   // not tenant records — held by owner/service/manager, deliberately NOT a `.read`
   // (so it isn't auto-granted to the generic read_only bundle) and NOT in OPS.
   'metrics.scrape',
+  // Data-subject rights (LGPD/GDPR), a DPO function. `privacy.export` produces a
+  // subject-access report (PII) — deliberately NOT a `.read` so read_only doesn't
+  // inherit bulk PII export; `privacy.manage` performs an irreversible erasure.
+  // Both held by owner/service/manager, NOT in OPS (front-desk/agent can't erase).
+  'privacy.export',
+  'privacy.manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -133,7 +139,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'manager',
     name: 'Manager',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'agreement.execute', 'collections.run', 'metrics.scrape'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'agreement.execute', 'collections.run', 'metrics.scrape', 'privacy.export', 'privacy.manage'],
     builtin: true,
     description: 'Runs the property: all operations, approvals, staff and master data.',
   },
@@ -141,7 +147,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'staff',
     name: 'Staff',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'masterdata.manage', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'agreement.execute', 'collections.run', 'metrics.scrape'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'masterdata.manage', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'agreement.execute', 'collections.run', 'metrics.scrape', 'privacy.export', 'privacy.manage'],
     builtin: true,
     description: 'Approvals and day-to-day management.',
   },

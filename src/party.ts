@@ -112,4 +112,26 @@ export class PartyDirectory {
   allLinks(): readonly AgreementPartyRecord[] {
     return this.links.map((l) => ({ ...l }));
   }
+
+  /**
+   * Erase a party's PII in place (LGPD/GDPR right to be forgotten). Overwrites the
+   * name/legalName/taxId/email/phone/attributes with a tombstone, keeping the opaque
+   * id/tenant/kind that the immutable financial events reference. The role LINKS are
+   * NOT removed — they are the financial record (who was responsible for which
+   * money), retained by opaque party id. Returns the PII field names that were
+   * cleared; throws if the party is unknown for the tenant.
+   */
+  erase(tenantId: string, id: string, redactor: (p: PartyRecord) => PartyRecord): string[] {
+    const p = this.parties.get(id);
+    if (!p || p.tenantId !== tenantId) throw new PartyError(`unknown party: ${id}`);
+    const cleared: string[] = [];
+    if (p.displayName) cleared.push('displayName');
+    if (p.legalName) cleared.push('legalName');
+    if (p.taxId) cleared.push('taxId');
+    if (p.email) cleared.push('email');
+    if (p.phone) cleared.push('phone');
+    if (p.attributes && Object.keys(p.attributes).length > 0) cleared.push('attributes');
+    this.parties.set(id, redactor(p));
+    return cleared;
+  }
 }
