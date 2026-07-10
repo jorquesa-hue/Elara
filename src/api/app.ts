@@ -33,6 +33,8 @@ import { Inspections, type InspectionKind, type InspectionItem } from '../inspec
 import { Communications, type ThreadKind, type MessageDirection } from '../communications.ts';
 import { Reconciliation, suggestMatches, type MatchCandidate, type MatchTargetType } from '../reconciliation.ts';
 import { Integrations, ConnectorOutbox, type IntegrationKind, type IntegrationStatus } from '../integrations.ts';
+import { fullContract, isKnownAction, isKnownEvent } from '../integration-contract.ts';
+import { defaultAdapterRegistry, AdapterError, type AdapterRegistry } from '../adapter-registry.ts';
 import { RevenueManagement, revenueKpis, type PricingRule, type QuoteContext, type OccupancyTier, type LeadTimeTier, type LosDiscount, type SeasonWindow } from '../revenue.ts';
 import { Procurement, computeBudgetStatus, type PurchaseOrderLine, type Budget } from '../procurement.ts';
 import { RoommateMatcher, type RoommatePreferences, type Chronotype } from '../roommate.ts';
@@ -135,6 +137,8 @@ export interface AppConfig {
   now?: () => string;
   /** Durable write arm (persist-world Edge Function). Omit → /persist is 501. */
   persistence?: PersistenceBackend;
+  /** Vendor adapter registry. Omit → the generic reference adapters. */
+  adapters?: AdapterRegistry;
 }
 
 export class App {
@@ -156,6 +160,10 @@ export class App {
   readonly reconciliation = new Reconciliation();
   readonly integrations = new Integrations();
   readonly connectorOutbox = new ConnectorOutbox();
+  // The pluggable vendor adapter registry. A deployment can inject its own (with
+  // real vendor adapters registered) via AppConfig.adapters; defaults to the
+  // generic reference adapters.
+  private readonly adapters: AdapterRegistry;
   readonly revenue = new RevenueManagement();
   readonly procurement = new Procurement();
   readonly roommates = new RoommateMatcher();
@@ -185,6 +193,7 @@ export class App {
     this.auth = config.authenticator ?? new StaticTokenAuthenticator();
     this.plan = config.subscriptionPlan ?? { perUnitCents: 5000, currency: 'BRL' };
     this.persistence = config.persistence;
+    this.adapters = config.adapters ?? defaultAdapterRegistry();
     this.config = config.config ?? new ConfigStore();
     this.roles = config.roles ?? new RoleRegistry();
     this.masterData = config.masterData ?? new MasterData();
@@ -1300,15 +1309,55 @@ export class App {
       return { status: 200, body: this.integrations.setStatus(p['id']!, status) };
     });
 
+    // The canonical capability contract every port speaks — for agent/portal
+    // discovery of what actions/events each kind supports, independent of vendor.
+    this.add('GET', '/integrations/capabilities', 'integration.read', () => ({ status: 200, body: { contract: fullContract() } }));
+
+    // What THIS integration's vendor adapter can do (resolved from the registry).
+    this.add('GET', '/integrations/:id/capabilities', 'integration.read', (ctx, p) => {
+      const integ = this.ownedIntegration(ctx, p['id']!);
+      const adapter = this.adapters.resolve(integ.kind, integ.provider);
+      return {
+        status: 200,
+        body: {
+          kind: integ.kind,
+          provider: integ.provider,
+          adapterRegistered: adapter !== null,
+          enabled: adapter?.enabled ?? false,
+          actions: adapter ? adapter.actions : [],
+          contractActions: fullContract().find((c) => c.kind === integ.kind)?.actions ?? [],
+        },
+      };
+    });
+
     // Enqueue an outbound command (unlock a door, push inventory, pull leads…).
-    // The command lands in the outbox; an edge adapter that holds the credentials
-    // dispatches it and reports the result.
+    // The command lands in the outbox; the connector-worker edge function resolves
+    // the secretRef and dispatches it. If a vendor adapter is registered for this
+    // (kind, provider), the action is validated against its capabilities and a
+    // CREDENTIAL-FREE vendor request template is attached (_request) so the edge is
+    // pure plumbing (inject the secret + execute). No adapter → the command still
+    // enqueues (the edge falls back / simulates), preserving back-compat.
     this.add('POST', '/integrations/:id/commands', 'connector.dispatch', (ctx, p, body) => {
       const integ = this.ownedIntegration(ctx, p['id']!);
       if (integ.status !== 'active') throw new HttpError(409, 'integration is disabled');
       const id = this.requireString(body, 'id');
       const action = this.requireString(body, 'action');
-      const payload = body['payload'] && typeof body['payload'] === 'object' ? (body['payload'] as Record<string, unknown>) : {};
+      const payload: Record<string, unknown> = body['payload'] && typeof body['payload'] === 'object' ? { ...(body['payload'] as Record<string, unknown>) } : {};
+
+      const adapter = this.adapters.resolve(integ.kind, integ.provider);
+      if (adapter) {
+        if (!adapter.actions.includes(action)) {
+          throw new HttpError(400, `action '${action}' not supported by ${integ.provider}; supported: ${adapter.actions.join(', ')}`);
+        }
+        // Build the credential-free vendor request now (pure). A disabled adapter
+        // (e.g. a money rail awaiting human sign-off) attaches nothing → the edge
+        // won't call the vendor; the routing policy refuses money kinds regardless.
+        if (adapter.enabled) {
+          try { payload['_request'] = adapter.buildRequest(action, payload, integ.config); }
+          catch (e) { throw new HttpError(400, e instanceof AdapterError ? e.message : 'adapter could not build the request'); }
+        }
+      }
+
       // A bank/payment-gateway command carrying a large amountCents is a real
       // payout — thread the integration kind + amount so pol-connector-dispatch-payout
       // escalates it (no parallel money-out rail around bill.pay).
