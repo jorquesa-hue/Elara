@@ -1386,6 +1386,57 @@ export class App {
       return { status: 200, body: this.connectorOutbox.markResult(cmd.id, ok, this.now(), result) };
     });
 
+    // The generic INBOUND port: a vendor-initiated event (a bank transaction pushed,
+    // a CRM lead created, a door forced) relayed by the service role (the edge, which
+    // holds the credential, verifies the provider signature BEFORE relaying — the
+    // kernel requires integration.events, NOT an OPS role). The event must be in the
+    // kind's contract; it is then routed to the right domain: bank→reconciliation,
+    // crm→a lead, everything else recorded on a per-integration events thread.
+    // Idempotent on the provider's eventId.
+    this.add('POST', '/integrations/:id/events', 'integration.events', (ctx, p, body) => {
+      const integ = this.ownedIntegration(ctx, p['id']!);
+      const event = this.requireString(body, 'event');
+      if (!isKnownEvent(integ.kind, event)) throw new HttpError(400, `event '${event}' is not a '${integ.kind}' contract event`);
+      const eventId = this.requireString(body, 'eventId');
+      const payload = body['payload'] && typeof body['payload'] === 'object' ? (body['payload'] as Record<string, unknown>) : {};
+      const at = this.optString(body, 'at') ?? this.now();
+      try {
+        if (integ.kind === 'bank' && event === 'transaction_posted') {
+          const txn = this.reconciliation.import({
+            id: `evt-${eventId}`,
+            tenantId: ctx.tenantId,
+            postedAt: this.optString(payload, 'postedAt') ?? at,
+            amountCents: Number(payload['amountCents']),
+            description: this.optString(payload, 'description') ?? `${integ.provider} transaction`,
+            bankAccountId: this.optString(payload, 'bankAccountId'),
+            reference: this.optString(payload, 'reference'),
+          });
+          return { status: 201, body: { routed: 'bank_transaction', id: txn.id } };
+        }
+        if (integ.kind === 'crm' && event === 'lead_created') {
+          const lead = this.crm.createLead({
+            id: `evt-${eventId}`,
+            tenantId: ctx.tenantId,
+            name: this.optString(payload, 'name') ?? 'Lead',
+            source: integ.provider,
+            estValueCents: typeof payload['estValueCents'] === 'number' ? (payload['estValueCents'] as number) : 0,
+            createdAt: at,
+          });
+          return { status: 201, body: { routed: 'crm_lead', id: lead.id } };
+        }
+        // Default: durably record the event on a per-integration inbound thread.
+        const threadId = `integration-events-${integ.id}`;
+        try { this.comms.getThread(threadId); }
+        catch { this.comms.openThread({ id: threadId, tenantId: ctx.tenantId, subject: `Integration events: ${integ.provider}`, kind: 'internal', createdAt: at }); }
+        const msg = this.comms.post({ id: `evt-${eventId}`, threadId, at, authorType: 'agent', authorId: integ.provider, body: `${event}: ${JSON.stringify(payload)}`, direction: 'internal' });
+        return { status: 201, body: { routed: 'recorded', id: msg.id } };
+      } catch (e) {
+        // Idempotent: a re-delivered eventId (already processed) is a no-op, not an error.
+        if (e instanceof Error && /duplicate/i.test(e.message)) return { status: 200, body: { routed: 'duplicate', eventId } };
+        throw e;
+      }
+    });
+
     // --- bank reconciliation (#5) -----------------------------------------
     this.add('POST', '/bank-transactions', 'reconciliation.manage', (ctx, _p, body) => {
       const id = this.requireString(body, 'id');

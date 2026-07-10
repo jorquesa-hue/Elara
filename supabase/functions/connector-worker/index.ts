@@ -7,13 +7,17 @@
 // Contract: POST { tenantId?, limit? }. The worker claims pending connector_command
 // rows (optionally for one tenant), joins each to its integration to learn the kind
 // + secretRef, resolves the secret, applies the ROUTING POLICY (a verbatim twin of
-// src/connector-adapters.ts), performs the real vendor call for dispatchable kinds,
+// src/connector-adapters.ts), executes the CREDENTIAL-FREE vendor request the kernel
+// adapter attached (payload._request) by injecting the secret per its auth descriptor,
 // then records dispatched/succeeded/failed back on the command. All in one tx.
 //
+// A new vendor never touches THIS file: the kernel's adapter registry builds the
+// request; the edge is pure plumbing (inject secret + execute).
+//
 // SAFETY (behavioral guardrail): bank / payment_gateway commands are REFUSED here —
-// a payout adapter must be written + enabled with explicit human approval, never
-// auto-dispatched. The policy envelope already ESCALATES a large connector payout
-// before it is enqueued; this is defence-in-depth at the drain edge.
+// a payout adapter must be enabled with explicit human approval, never auto-dispatched.
+// The policy envelope already ESCALATES a large connector payout before enqueue; and
+// the money-rail adapter ships disabled so no _request is even built. Defence in depth.
 //
 // Auth: gateway verify_jwt PLUS in-body role=service_role — only the service-role
 // backend/cron may drain the outbox.
@@ -52,22 +56,51 @@ function planConnectorCommand(input: { action: string; kind: string; secretResol
   return { decision: 'dispatch', reason: 'ok' };
 }
 
-/**
- * Perform the real vendor call for a dispatchable kind. The credential is resolved
- * HERE (never in the kernel). Real provider HTTP goes behind this seam per (kind,
- * provider). Until a specific vendor adapter is wired, we record a structured
- * simulated success so the outbox drains deterministically — NEVER for money kinds
- * (those are refused before reaching here).
- */
+// --- credential-free request template built by the kernel adapter -----------
+interface VendorRequest {
+  method: string;
+  url: string;
+  auth: { scheme: string; name?: string; username?: string };
+  headers?: Record<string, string>;
+  body?: unknown;
+}
+
+/** Inject the resolved secret per the auth DESCRIPTOR — the secret never left the
+ *  edge; the kernel template carried only a scheme. */
+function injectAuth(req: VendorRequest, secret: string): Record<string, string> {
+  const headers: Record<string, string> = { ...(req.headers ?? {}) };
+  switch (req.auth?.scheme) {
+    case 'bearer': headers['Authorization'] = `Bearer ${secret}`; break;
+    case 'header': if (req.auth.name) headers[req.auth.name] = secret; break;
+    case 'basic': headers['Authorization'] = `Basic ${btoa(`${req.auth.username ?? ''}:${secret}`)}`; break;
+    // 'none' → no credential injected
+  }
+  return headers;
+}
+
 async function dispatchToVendor(
   cmd: { action: string; kind: string; provider: string; payload: Record<string, unknown> },
-  _secret: string,
+  secret: string,
 ): Promise<{ ok: boolean; reason: string; providerResponse?: Record<string, unknown> }> {
-  // TODO(adapter): switch on (cmd.kind, cmd.provider) and call the vendor API with
-  // `_secret`. e.g. Salto/Yale unlock, elevator dispatch, website inventory push,
-  // CRM lead pull. Real HTTP is intentionally not wired for providers we cannot
-  // authenticate against from this environment.
-  return { ok: true, reason: 'dispatched', providerResponse: { simulated: true, action: cmd.action } };
+  const req = cmd.payload['_request'] as VendorRequest | undefined;
+  // No pre-built request (no adapter registered for this vendor) → drain as a no-op
+  // so the outbox doesn't wedge; the operator adds a kernel adapter to wire it.
+  if (!req || !req.url) {
+    return { ok: true, reason: 'no_adapter', providerResponse: { simulated: true, action: cmd.action } };
+  }
+  const headers = injectAuth(req, secret);
+  if (req.body !== undefined && !('Content-Type' in headers)) headers['Content-Type'] = 'application/json';
+  try {
+    const res = await fetch(req.url, {
+      method: req.method,
+      headers,
+      body: req.body !== undefined ? JSON.stringify(req.body) : undefined,
+    });
+    const text = await res.text().catch(() => '');
+    return { ok: res.ok, reason: res.ok ? 'dispatched' : `http_${res.status}`, providerResponse: { status: res.status, body: text.slice(0, 2000) } };
+  } catch (e) {
+    return { ok: false, reason: 'vendor_call_failed', providerResponse: { error: (e as { message?: string }).message ?? String(e) } };
+  }
 }
 
 Deno.serve(async (req: Request) => {

@@ -81,6 +81,9 @@ export const PERMISSIONS = [
   // Running the overdue-collections sweep (usually a scheduled service-role cron,
   // or a manager on demand). Each stage action it takes is still policy-gated.
   'collections.run',
+  // Receiving a vendor-initiated integration event (the inbound webhook, relayed by
+  // the service role) — deliberately NOT in OPS, like esign.complete.
+  'integration.events',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];

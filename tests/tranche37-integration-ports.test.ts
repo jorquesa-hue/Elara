@@ -1,7 +1,7 @@
 // Tranche 37 — integration ports: the per-kind capability contract + the
 // pluggable vendor adapter registry. A vendor is onboarded by registering ONE
 // pure adapter that translates canonical commands into vendor request templates;
-// no credential ever enters the kernel. 17 tests.
+// no credential ever enters the kernel. 23 tests (outbound ports + inbound events).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -19,7 +19,8 @@ const D = (app: App, method: string, path: string, token: string, body?: Record<
   app.dispatch({ method, path, bearer: bearer(token), body });
 function makeApp() {
   const owner: AuthContext = { actor: 'ana', tenantId: 't1', role: 'owner' };
-  return new App({ authenticator: new StaticTokenAuthenticator({ own: owner }), now: () => '2026-07-01T00:00:00Z' });
+  const agent: AuthContext = { actor: 'bot', tenantId: 't1', role: 'agent' };
+  return new App({ authenticator: new StaticTokenAuthenticator({ own: owner, bot: agent }), now: () => '2026-07-01T00:00:00Z' });
 }
 
 // ---- contract ------------------------------------------------------------
@@ -154,4 +155,56 @@ test('API: an unknown vendor (no adapter) still enqueues — back-compat', () =>
   const cmd = D(app, 'POST', '/integrations/int-x/commands', 'own', { id: 'c-o', action: 'anything.goes', payload: {} });
   assert.equal(cmd.status, 201);
   assert.equal((cmd.body as { payload: { _request?: unknown } }).payload._request, undefined);
+});
+
+// ---- inbound events port (vendor -> Elara) -------------------------------
+
+test('API: a bank transaction_posted event routes to reconciliation', () => {
+  const app = makeApp();
+  D(app, 'POST', '/integrations', 'own', { id: 'int-bank', kind: 'bank', provider: 'itau', config: {}, secretRef: 'bk' });
+  const r = D(app, 'POST', '/integrations/int-bank/events', 'own', { event: 'transaction_posted', eventId: 'e1', payload: { amountCents: 50000, postedAt: '2026-07-01', description: 'PIX in' } });
+  assert.equal(r.status, 201);
+  assert.equal((r.body as { routed: string }).routed, 'bank_transaction');
+  const txns = (D(app, 'GET', '/bank-transactions', 'own').body as { transactions: unknown[] }).transactions;
+  assert.equal(txns.length, 1);
+});
+
+test('API: a crm lead_created event routes to a lead', () => {
+  const app = makeApp();
+  D(app, 'POST', '/integrations', 'own', { id: 'int-crm', kind: 'crm', provider: 'salesforce', config: {}, secretRef: 'sf' });
+  const r = D(app, 'POST', '/integrations/int-crm/events', 'own', { event: 'lead_created', eventId: 'L9', payload: { name: 'Ana Souza', estValueCents: 300000 } });
+  assert.equal(r.status, 201);
+  assert.equal((r.body as { routed: string }).routed, 'crm_lead');
+  assert.equal((D(app, 'GET', '/leads/evt-L9', 'own').body as { name: string }).name, 'Ana Souza');
+});
+
+test('API: another kind’s event is recorded on a per-integration events thread', () => {
+  const app = makeApp();
+  D(app, 'POST', '/integrations', 'own', { id: 'int-ac', kind: 'access_control', provider: 'generic_rest', config: { baseUrl: 'https://x' }, secretRef: 'k' });
+  const r = D(app, 'POST', '/integrations/int-ac/events', 'own', { event: 'door_forced', eventId: 'D1', payload: { doorId: 'lobby' } });
+  assert.equal(r.status, 201);
+  assert.equal((r.body as { routed: string }).routed, 'recorded');
+});
+
+test('API: an event not in the kind’s contract is rejected (400)', () => {
+  const app = makeApp();
+  D(app, 'POST', '/integrations', 'own', { id: 'int-bank', kind: 'bank', provider: 'itau', config: {}, secretRef: 'bk' });
+  assert.equal(D(app, 'POST', '/integrations/int-bank/events', 'own', { event: 'aliens_landed', eventId: 'x' }).status, 400);
+});
+
+test('API: a re-delivered eventId is idempotent (no duplicate transaction)', () => {
+  const app = makeApp();
+  D(app, 'POST', '/integrations', 'own', { id: 'int-bank', kind: 'bank', provider: 'itau', config: {}, secretRef: 'bk' });
+  const body = { event: 'transaction_posted', eventId: 'e1', payload: { amountCents: 50000, postedAt: '2026-07-01', description: 'x' } };
+  D(app, 'POST', '/integrations/int-bank/events', 'own', body);
+  const again = D(app, 'POST', '/integrations/int-bank/events', 'own', body);
+  assert.equal(again.status, 200);
+  assert.equal((again.body as { routed: string }).routed, 'duplicate');
+  assert.equal((D(app, 'GET', '/bank-transactions', 'own').body as { transactions: unknown[] }).transactions.length, 1);
+});
+
+test('API: an operator/agent CANNOT relay an inbound event (integration.events is service-only)', () => {
+  const app = makeApp();
+  D(app, 'POST', '/integrations', 'own', { id: 'int-bank', kind: 'bank', provider: 'itau', config: {}, secretRef: 'bk' });
+  assert.equal(D(app, 'POST', '/integrations/int-bank/events', 'bot', { event: 'transaction_posted', eventId: 'e2', payload: { amountCents: 100 } }).status, 403);
 });
