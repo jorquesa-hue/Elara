@@ -44,13 +44,12 @@ insert (deployed body verified).
 These need a design decision or infrastructure not in this pass; none is an open money-out
 or cross-tenant *write* hole.
 
-- **`guest` role reads across the tenant (MED, latent).** The built-in `guest` role grants
-  `agreement.read`/`invoice.read` but reads enforce only *tenant* ownership, not that the
-  caller is a party on the agreement. The system does not currently mint guest tokens, so
-  the exposure is latent — but issuing one would expose all agreements in the tenant.
-  *Recommended fix:* add a `partyId` claim to `AuthContext` and constrain guest reads to
-  agreements the caller is linked to (via `agreement_party`), or scope guest tokens to a
-  single agreement id.
+- **`guest` role reads across the tenant — FIXED.** `AuthContext` now carries an optional
+  `partyId` (from the `party_id` JWT claim; see `JwtAuthenticator`). A party-scoped token
+  may reach only agreements/invoices its party is linked to — `ownedAgreement`, the agreement
+  list, and `GET /invoices/:id` all enforce it, returning 404 (never leaking existence) for
+  anything else. Operator tokens carry no `partyId` and are unaffected. Covered by
+  `tests/tranche33-guest-scope.test.ts` (5 tests).
 - **E-sign completion is relayed from a client-supplied email (LOW).** `POST
   /signature-envelopes/:id/sign` trusts `{email}`. It does not execute the lease (that stays
   `lease.execute` escalate), so impact is limited to sales-state/audit integrity.

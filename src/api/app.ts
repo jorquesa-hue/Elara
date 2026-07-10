@@ -275,7 +275,18 @@ export class App {
   private ownedAgreement(ctx: AuthContext, id: string): Agreement {
     const entry = this.agreements.get(id);
     if (!entry || entry.tenantId !== ctx.tenantId) throw new HttpError(404, 'agreement not found');
+    // A party-scoped token (a guest/resident, not an operator) may only reach an
+    // agreement its party is linked to — 404 otherwise so existence is not leaked.
+    // Operator tokens carry no partyId and skip this check.
+    if (ctx.partyId !== undefined && !this.callerLinkedToAgreement(ctx.partyId, id)) {
+      throw new HttpError(404, 'agreement not found');
+    }
     return entry.agreement;
+  }
+
+  /** Is this party currently a party (any role) on the agreement? */
+  private callerLinkedToAgreement(partyId: string, agreementId: string): boolean {
+    return this.parties.partiesFor(agreementId).some((l) => l.partyId === partyId);
   }
 
   private ownedWorkOrder(ctx: AuthContext, id: string) {
@@ -630,6 +641,8 @@ export class App {
       body: {
         agreements: [...this.agreements.values()]
           .filter((e) => e.tenantId === ctx.tenantId)
+          // A party-scoped token sees only its own agreements, not the whole tenant.
+          .filter((e) => ctx.partyId === undefined || this.callerLinkedToAgreement(ctx.partyId, e.agreement.id))
           .map((e) => this.agreementSummary(e.agreement)),
       },
     }));
@@ -695,7 +708,12 @@ export class App {
 
     this.add('GET', '/invoices/:id', 'invoice.read', (ctx, p) => {
       if (this.invoiceTenant.get(p['id']!) !== ctx.tenantId) throw new HttpError(404, 'invoice not found');
-      return { status: 200, body: this.billing.get(p['id']!) };
+      const inv = this.billing.get(p['id']!);
+      // A party-scoped token may only read invoices on its own agreements.
+      if (ctx.partyId !== undefined && !this.callerLinkedToAgreement(ctx.partyId, inv.agreementId)) {
+        throw new HttpError(404, 'invoice not found');
+      }
+      return { status: 200, body: inv };
     });
 
     // --- payments ----------------------------------------------------------
