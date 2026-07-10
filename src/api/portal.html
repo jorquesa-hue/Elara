@@ -394,7 +394,7 @@
   // ---- views --------------------------------------------------------------
   function viewDashboard(main) {
     main.appendChild(h("h1", {}, [t("nav.dashboard")]));
-    main.appendChild(h("p", { class: "sub" }, [state.config.displayName + " · " + prettyBiz(state.config.businessStructure)]));
+    main.appendChild(h("p", { class: "sub" }, [state.config.displayName + " · " + prettyBiz(state.config.businessStructure) + (state.config.country ? " · " + state.config.country + " env (" + state.config.jurisdiction + ")" : "")]));
     var cards = h("div", { class: "cards" }, []);
     main.appendChild(cards);
     api("/reporting/summary").then(function (r) {

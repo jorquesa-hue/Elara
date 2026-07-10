@@ -47,6 +47,7 @@ import {
   type TenantConfig,
 } from '../config.ts';
 import { COUNTRY_PROFILES } from '../country.ts';
+import { buildEnvironment } from '../environment.ts';
 import { RoleRegistry, PERMISSIONS, type Permission } from '../rbac.ts';
 import { MasterData } from '../master-data.ts';
 import { catalog } from '../i18n.ts';
@@ -466,6 +467,15 @@ export class App {
     // The country environments this deployment can serve. Same master-data
     // structure everywhere; only config + jurisdiction differ per country.
     this.add('GET', '/countries', null, () => ({ status: 200, body: { countries: COUNTRY_PROFILES } }));
+
+    // This tenant's country environment: its config, jurisdiction, the effective
+    // (jurisdiction-scoped) policy, and the IDENTICAL master-data structure. This
+    // is the per-country setup made inspectable — proof that a country changes
+    // configuration + policy, never the shape of the data.
+    this.add('GET', '/environment', 'config.read', (ctx) => {
+      const cfg = this.config.get(ctx.tenantId);
+      return { status: 200, body: buildEnvironment(cfg.country, { currency: cfg.currency, locale: cfg.locale, timezone: cfg.timezone, businessStructure: cfg.businessStructure }) };
+    });
 
     // Setup-time: change country, language, currency, timezone, business
     // structure. Setting a country re-derives the jurisdiction (never set alone)

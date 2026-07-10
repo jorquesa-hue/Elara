@@ -22,6 +22,13 @@ export interface PolicyRule {
   when?: (ctx: PolicyContext) => boolean;
   /** Human-readable rendering of `when`, carried into the SQL seed. */
   conditionNote?: string;
+  /**
+   * If set, the rule applies ONLY in these jurisdictions (from the tenant's
+   * country). Undefined = global (every country). This is how one source of
+   * truth serves every country environment: config + policy diverge per country
+   * while the master-data STRUCTURE stays identical everywhere.
+   */
+  jurisdictions?: readonly string[];
 }
 
 export interface PolicyDecision {
@@ -57,6 +64,15 @@ export const POLICY_RULES: readonly PolicyRule[] = [
     conditionNote: 'amount_cents > 50000',
   },
   { id: 'pol-payment-refund', action: 'payment.refund', effect: 'allow', description: 'Small refunds are routine.' },
+  {
+    id: 'pol-deposit-hold-cap',
+    action: 'deposit.hold',
+    effect: 'escalate',
+    description: 'In BR/EU tenant-protection regimes a security deposit above the customary cap is human-reviewed before it is taken.',
+    jurisdictions: ['BR', 'EU'],
+    when: (ctx) => (ctx.amountCents ?? 0) > 900_000,
+    conditionNote: 'jurisdiction in (BR,EU) and amount_cents > 900000',
+  },
   { id: 'pol-deposit-hold', action: 'deposit.hold', effect: 'allow', description: 'Agents may take security deposits per rate plan.' },
   { id: 'pol-deposit-refund', action: 'deposit.refund', effect: 'allow', description: 'Deposit refunds with itemized deductions are routine.' },
   { id: 'pol-amenity-charge', action: 'amenity.charge', effect: 'allow', description: 'Agents may post catalog amenity charges.' },
@@ -114,6 +130,13 @@ export const POLICY_RULES: readonly PolicyRule[] = [
   { id: 'pol-groupblock-pickup', action: 'group_block.pickup', effect: 'allow', description: 'Agents may convert block holds into agreements.' },
 ] as const;
 
+/** The effective rule set for a jurisdiction: every global rule plus the rules
+ *  scoped to this jurisdiction. This is what a single country environment runs —
+ *  one source of truth, sliced per country. */
+export function effectiveRulesFor(jurisdiction: string, rules: readonly PolicyRule[] = POLICY_RULES): PolicyRule[] {
+  return rules.filter((r) => !r.jurisdictions || r.jurisdictions.includes(jurisdiction));
+}
+
 export class PolicyEnvelope {
   private readonly rules: readonly PolicyRule[];
 
@@ -121,10 +144,13 @@ export class PolicyEnvelope {
     this.rules = [...rules, ...extraRules];
   }
 
-  /** Decide BEFORE execution. Unknown actions are denied by default. */
+  /** Decide BEFORE execution. Unknown actions are denied by default. A rule
+   *  scoped to specific jurisdictions is skipped when the tenant's country
+   *  jurisdiction is not among them (first matching rule wins). */
   decide(action: string, ctx: PolicyContext): PolicyDecision {
     for (const rule of this.rules) {
       if (rule.action !== action) continue;
+      if (rule.jurisdictions && !(ctx.jurisdiction && rule.jurisdictions.includes(ctx.jurisdiction))) continue;
       if (rule.when && !rule.when(ctx)) continue;
       return { effect: rule.effect, action, ruleId: rule.id, reason: rule.description };
     }
