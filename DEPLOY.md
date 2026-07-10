@@ -48,6 +48,14 @@ the `.ts` entrypoint) and the optional `pg` driver (used only for cold-start rea
 
 Without `SUPABASE_*` the App runs **in-memory only** (a valid smoke test, not durable).
 
+The `notification-worker` Edge Function (not the App container) reads these from the
+Supabase secret store — they never enter the kernel or the DB:
+
+| Secret (Edge Function env) | Purpose |
+| --- | --- |
+| `SENDGRID_API_KEY` + `NOTIFICATION_EMAIL_FROM` | Email transport (SendGrid). Without both, email notifications are marked `failed` with `email_provider_not_configured`. |
+| `TWILIO_ACCOUNT_SID` + `TWILIO_AUTH_TOKEN` + `NOTIFICATION_SMS_FROM` | SMS transport (Twilio). Without all three, SMS notifications are marked `failed` with `sms_provider_not_configured`. |
+
 ## Run
 
 Local:
@@ -108,6 +116,30 @@ Notes:
 - This verifier does **HS256** (the legacy shared JWT secret). If your project uses
   the newer asymmetric signing keys (RS256/ES256 + JWKS), keep the legacy JWT secret
   enabled, or extend `JwtAuthenticator` with JWKS verification.
+
+## Notifications (email / SMS)
+
+The kernel only **records** a notification (channel + recipient + a canonical kind +
+non-secret template data) on an outbox; a domain event enqueues it (a collections
+reminder on the overdue sweep, an e-sign request per signer on send, a payment
+receipt on a recorded payment). The `notification-worker` Edge Function drains the
+outbox: it claims `pending` rows, renders the per-kind template, sends via the
+channel's provider (SendGrid for email, Twilio for SMS) resolving the credential
+from the secret store, and records `sent`/`failed` back on the row. Same discipline
+as the connector framework — **no credential ever enters the kernel or the DB**.
+
+Schedule the drain with the service role (external cron or Supabase `pg_cron` +
+`pg_net`) — e.g. every minute:
+
+```
+POST ${SUPABASE_FUNCTIONS_URL}/notification-worker
+Authorization: Bearer <service-role JWT>
+{ "limit": 100 }
+```
+
+Optionally pass `{"tenantId":"…"}` to drain one tenant. A retry re-enqueues a new
+notification (a `failed` row is terminal); only `pending` rows are claimed, so a
+re-run never double-sends.
 
 ## Live acceptance (the one end-to-end that can't run in the build sandbox)
 

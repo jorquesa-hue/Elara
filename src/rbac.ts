@@ -84,6 +84,10 @@ export const PERMISSIONS = [
   // Receiving a vendor-initiated integration event (the inbound webhook, relayed by
   // the service role) — deliberately NOT in OPS, like esign.complete.
   'integration.events',
+  // Enqueuing an outbound notification (email/SMS) + reading the outbox. Sending is
+  // routine (front-of-house), so send is in OPS; the actual delivery is an edge worker.
+  'notification.read',
+  'notification.send',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -110,6 +114,7 @@ const OPS: Permission[] = [
   'party.read', 'party.manage', 'space.read', 'entity.read', 'bill.read', 'bill.issue',
   'maintenance.read', 'maintenance.manage', 'reservation.read', 'reservation.manage',
   'comms.read', 'comms.send', 'comms.manage',
+  'notification.read', 'notification.send',
   'integration.read', 'connector.dispatch', 'revenue.read', 'procurement.read',
   'roommate.read', 'roommate.manage',
   'crm.read', 'crm.manage',

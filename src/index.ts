@@ -19,6 +19,7 @@ export * from './inspection.ts';
 export * from './communications.ts';
 export * from './reconciliation.ts';
 export * from './integrations.ts';
+export * from './notifications.ts';
 export * from './integration-contract.ts';
 export * from './adapter-registry.ts';
 export * from './revenue.ts';

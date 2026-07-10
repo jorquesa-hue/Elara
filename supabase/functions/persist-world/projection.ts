@@ -199,6 +199,10 @@ export interface WorldData {
     id: string; tenantId: string; integrationId: string; action: string; payload: Record<string, unknown>;
     status: string; createdAt: string; dispatchedAt?: string; resolvedAt?: string; result?: Record<string, unknown>;
   }>;
+  notifications?: Array<{
+    id: string; tenantId: string; channel: string; to: string; kind: string; data: Record<string, unknown>;
+    status: string; createdAt: string; sentAt?: string; failedReason?: string; providerRef?: string;
+  }>;
   signatureEnvelopes?: Array<{
     id: string; tenantId: string; documentName: string; provider: string; providerRef?: string;
     leadId?: string; agreementId?: string; signers: readonly unknown[]; status: string;
@@ -508,6 +512,14 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       stmt(
         'insert into connector_command (id, tenant_id, integration_id, action, payload, status, created_at, dispatched_at, resolved_at, result) values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10::jsonb) on conflict (id) do update set status = excluded.status, dispatched_at = excluded.dispatched_at, resolved_at = excluded.resolved_at, result = excluded.result',
         [c.id, c.tenantId, c.integrationId, c.action, JSON.stringify(c.payload ?? {}), c.status, c.createdAt, c.dispatchedAt ?? null, c.resolvedAt ?? null, c.result === undefined ? null : JSON.stringify(c.result)],
+      ),
+    );
+  }
+  for (const n of w.notifications ?? []) {
+    out.push(
+      stmt(
+        'insert into notification (id, tenant_id, channel, recipient, kind, data, status, created_at, sent_at, failed_reason, provider_ref) values ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11) on conflict (id) do update set status = excluded.status, sent_at = excluded.sent_at, failed_reason = excluded.failed_reason, provider_ref = excluded.provider_ref',
+        [n.id, n.tenantId, n.channel, n.to, n.kind, JSON.stringify(n.data ?? {}), n.status, n.createdAt, n.sentAt ?? null, n.failedReason ?? null, n.providerRef ?? null],
       ),
     );
   }

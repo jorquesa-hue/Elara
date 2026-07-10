@@ -34,6 +34,7 @@ import { Communications, type ThreadKind, type MessageDirection } from '../commu
 import { Reconciliation, suggestMatches, type MatchCandidate, type MatchTargetType } from '../reconciliation.ts';
 import { Integrations, ConnectorOutbox, type IntegrationKind, type IntegrationStatus } from '../integrations.ts';
 import { fullContract, isKnownAction, isKnownEvent } from '../integration-contract.ts';
+import { Notifications, NOTIFICATION_KINDS, isKnownNotificationKind, type NotificationChannel } from '../notifications.ts';
 import { defaultAdapterRegistry, AdapterError, type AdapterRegistry } from '../adapter-registry.ts';
 import { RevenueManagement, revenueKpis, type PricingRule, type QuoteContext, type OccupancyTier, type LeadTimeTier, type LosDiscount, type SeasonWindow } from '../revenue.ts';
 import { Procurement, computeBudgetStatus, type PurchaseOrderLine, type Budget } from '../procurement.ts';
@@ -164,6 +165,7 @@ export class App {
   readonly reconciliation = new Reconciliation();
   readonly integrations = new Integrations();
   readonly connectorOutbox = new ConnectorOutbox();
+  readonly notifications = new Notifications();
   private readonly authConfig?: { authUrl: string; anonKey: string };
   // The pluggable vendor adapter registry. A deployment can inject its own (with
   // real vendor adapters registered) via AppConfig.adapters; defaults to the
@@ -312,6 +314,28 @@ export class App {
     return entry.agreement;
   }
 
+  /** Best-effort recipient email for an agreement — the bill-to party's email.
+   *  Used to address auto-notifications; undefined → the notification is skipped. */
+  private emailForAgreement(tenantId: string, agreementId: string): string | undefined {
+    const partyId = this.parties.billTo(agreementId);
+    if (!partyId) return undefined;
+    return this.parties.getParty(tenantId, partyId)?.email;
+  }
+
+  /** Enqueue a notification, swallowing any error — notifications are best-effort
+   *  and must never break the domain write that triggered them. */
+  private notify(input: { id: string; tenantId: string; channel: NotificationChannel; to?: string; kind: string; data: Record<string, unknown> }): void {
+    if (!input.to) return;
+    try { this.notifications.enqueue({ ...input, to: input.to, createdAt: this.now() }); } catch { /* dup / best-effort */ }
+  }
+
+  private ownedNotification(ctx: AuthContext, id: string) {
+    let n;
+    try { n = this.notifications.get(id); } catch { throw new HttpError(404, 'notification not found'); }
+    if (n.tenantId !== ctx.tenantId) throw new HttpError(404, 'notification not found');
+    return n;
+  }
+
   /** Is this party currently a party (any role) on the agreement? */
   private callerLinkedToAgreement(partyId: string, agreementId: string): boolean {
     return this.parties.partiesFor(agreementId).some((l) => l.partyId === partyId);
@@ -383,6 +407,12 @@ export class App {
       // Journal the stage regardless of outcome so a re-sweep skips it (no dup
       // escalations for suspend/evict, which park pending a human).
       this.comms.post({ id: msgId, threadId, at, authorType: 'agent', authorId: ctx.actor, body: `Stage ${stage.id} (${stage.action}) → ${decision.outcome}`, direction: 'internal' });
+
+      // A guest-facing money reminder (remind/late_fee) also enqueues an email so it
+      // actually reaches the resident — best-effort, deduped by the stage message id.
+      if (decision.outcome === 'executed' && (stage.action === 'remind' || stage.action === 'late_fee')) {
+        this.notify({ id: `notif-${msgId}`, tenantId: ctx.tenantId, channel: 'email', to: this.emailForAgreement(ctx.tenantId, inv.agreementId), kind: 'collections_reminder', data: { invoiceId: inv.id, amountCents: outstanding } });
+      }
       actions.push({ invoiceId: inv.id, stage: stage.id, action: stage.action, outcome: decision.outcome, ...(decision.exceptionId ? { exceptionId: decision.exceptionId } : {}) });
     }
     return { swept: overdue.length, actions };
@@ -841,7 +871,12 @@ export class App {
         ctx,
         { amountCents, invoiceId },
         () => this.payments.record({ id, invoiceId, amountCents, method, receivedAt }),
-        (pay) => ({ status: 201, body: pay }),
+        (pay) => {
+          // Email the payer a receipt (best-effort) via the invoice's agreement.
+          const agreementId = this.billing.get(invoiceId).agreementId;
+          this.notify({ id: `notif-receipt-${pay.id}`, tenantId: ctx.tenantId, channel: 'email', to: this.emailForAgreement(ctx.tenantId, agreementId), kind: 'payment_receipt', data: { invoiceId, amountCents } });
+          return { status: 201, body: pay };
+        },
       );
     });
 
@@ -1456,6 +1491,36 @@ export class App {
       }
     });
 
+    // --- notifications (email/SMS transport) ------------------------------
+    // The kernel RECORDS a notification; the notification-worker edge function
+    // drains the outbox and sends it, resolving the provider credential from the
+    // secret store — no credential ever enters the kernel. Enqueuing is routine
+    // (OPS); an edge worker reports delivery via the callbacks below.
+    this.add('GET', '/notification-kinds', 'notification.read', () => ({ status: 200, body: { kinds: NOTIFICATION_KINDS } }));
+
+    this.add('POST', '/notifications', 'notification.send', (ctx, _p, body) => {
+      const channel = this.requireString(body, 'channel') as NotificationChannel;
+      const kind = this.requireString(body, 'kind');
+      if (!isKnownNotificationKind(kind)) throw new HttpError(400, `unknown notification kind '${kind}'`);
+      const data = body['data'] && typeof body['data'] === 'object' ? (body['data'] as Record<string, unknown>) : {};
+      return {
+        status: 201,
+        body: this.notifications.enqueue({ id: this.requireString(body, 'id'), tenantId: ctx.tenantId, channel, to: this.requireString(body, 'to'), kind, data, createdAt: this.now() }),
+      };
+    });
+
+    this.add('GET', '/notifications', 'notification.read', (ctx) => ({ status: 200, body: { notifications: this.notifications.list(ctx.tenantId) } }));
+
+    // Edge-worker delivery callbacks (service role holds notification.send via '*').
+    this.add('POST', '/notifications/:id/sent', 'notification.send', (ctx, p, body) => {
+      const n = this.ownedNotification(ctx, p['id']!);
+      return { status: 200, body: this.notifications.markSent(n.id, this.now(), this.optString(body, 'providerRef')) };
+    });
+    this.add('POST', '/notifications/:id/failed', 'notification.send', (ctx, p, body) => {
+      const n = this.ownedNotification(ctx, p['id']!);
+      return { status: 200, body: this.notifications.markFailed(n.id, this.now(), this.optString(body, 'reason') ?? 'failed') };
+    });
+
     // --- bank reconciliation (#5) -----------------------------------------
     this.add('POST', '/bank-transactions', 'reconciliation.manage', (ctx, _p, body) => {
       const id = this.requireString(body, 'id');
@@ -1791,7 +1856,13 @@ export class App {
 
     this.add('POST', '/signature-envelopes/:id/send', 'esign.manage', (ctx, p, body) => {
       const env = this.ownedEnvelope(ctx, p['id']!);
-      return this.gated('esign.send', ctx, { id: env.id }, () => this.signatures.send(env.id, this.now(), this.optString(body, 'providerRef')), (e) => ({ status: 200, body: e }));
+      return this.gated('esign.send', ctx, { id: env.id }, () => this.signatures.send(env.id, this.now(), this.optString(body, 'providerRef')), (e) => {
+        // On send, email every signer a request to sign — best-effort, deduped per signer.
+        for (const s of (e.signers ?? []) as Array<{ email: string }>) {
+          this.notify({ id: `notif-esign-${e.id}-${s.email}`, tenantId: ctx.tenantId, channel: 'email', to: s.email, kind: 'esign_request', data: { envelopeId: e.id, documentName: e.documentName } });
+        }
+        return { status: 200, body: e };
+      });
     });
 
     // Record a signer's completion. This IS the provider's webhook, relayed by
@@ -2042,6 +2113,7 @@ export class App {
       customRoles: this.roles.customRolesFor(tenantId).map((r) => ({ tenantId, roleId: r.id, name: r.name, description: r.description, permissions: r.permissions === '*' ? [...this.roles.permissionsFor(tenantId, r.id)] : (r.permissions as readonly string[]) })),
       integrations: this.integrations.list(tenantId),
       connectorCommands: this.connectorOutbox.list(tenantId),
+      notifications: this.notifications.list(tenantId),
       signatureEnvelopes: this.signatures.list(tenantId).map((e) => ({
         id: e.id, tenantId, documentName: e.documentName, provider: e.provider, providerRef: e.providerRef,
         leadId: e.leadId, agreementId: e.agreementId, signers: e.signers, status: e.status,
@@ -2111,6 +2183,7 @@ export class App {
     this.signatures.hydrate((world.signatureEnvelopes ?? []) as never);
     this.integrations.hydrate((world.integrations ?? []) as never);
     this.connectorOutbox.hydrate((world.connectorCommands ?? []) as never);
+    this.notifications.hydrate((world.notifications ?? []) as never);
     this.runtime.hydrateLog(world.actionLog);
   }
 
