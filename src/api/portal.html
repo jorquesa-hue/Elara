@@ -214,6 +214,7 @@
     roommates: '<circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><path d="M2.5 20a5.5 5.5 0 0 1 11 0"/><path d="M13 20a5.5 5.5 0 0 1 8.5-4.6"/>',
     importer: '<path d="M12 3v11"/><path d="M8 10l4 4 4-4"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/>',
     crm: '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
+    esign: '<path d="M4 18c3-6 5-9 7-9s0 6 2 6 3-3 5-3"/><path d="M3 21h18"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>',
     moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z"/>'
   };
@@ -359,6 +360,7 @@
     if (can("integration.read")) items.splice(items.length - 1, 0, ["integrations", "Integrations", ICONS.integrations]);
     if (can("revenue.read")) items.splice(1, 0, ["pricing", "Pricing", ICONS.pricing]);
     if (can("crm.read")) items.splice(1, 0, ["crm", "Pipeline", ICONS.crm]);
+    if (can("esign.read")) items.splice(2, 0, ["esign", "E-sign", ICONS.esign]);
     if (can("roommate.read")) items.splice(items.length - 1, 0, ["roommates", "Roommates", ICONS.roommates]);
     if (can("masterdata.manage")) items.splice(items.length - 1, 0, ["import", "Import", ICONS.importer]);
     var nav = h("nav", {}, items.map(function (it) {
@@ -377,7 +379,7 @@
       h("main", { id: "main" }, [])
     ]));
     var main = document.getElementById("main");
-    ({ dashboard: viewDashboard, agreements: viewAgreements, pricing: viewPricing, crm: viewCrm, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
+    ({ dashboard: viewDashboard, agreements: viewAgreements, pricing: viewPricing, crm: viewCrm, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
   }
 
   // ---- views --------------------------------------------------------------
@@ -1007,6 +1009,46 @@
     });
   }
   function handleLead(x, wrap, kpiWrap){ if(x.status===200){ toast(t("msg.saved"),"ok"); refreshLeads(wrap, kpiWrap);} else toast(x.body.error||"err","err"); }
+
+  function viewEsign(main){
+    main.appendChild(h("h1",{},["E-signature"]));
+    main.appendChild(h("p",{class:"sub"},["Send a lease out for signature (the provider's credentials live in the secret store). A fully signed envelope marks the pipeline lead won — the binding lease execution stays a separate, human-confirmed step."]));
+    var formSlot=h("div",{},[]); main.appendChild(formSlot);
+    var wrap=h("div",{},[]); main.appendChild(wrap);
+    if(can("esign.manage")) formSlot.appendChild(esignForm(wrap));
+    refreshEnvelopes(wrap);
+  }
+  function esignForm(wrap){
+    var doc=h("input",{placeholder:"Lease — Unit 101"}); var provider=selectFrom([["docusign","DocuSign"],["clicksign","Clicksign"],["dropbox_sign","Dropbox Sign"]],"docusign");
+    var n1=h("input",{placeholder:"Resident name"}); var e1=h("input",{placeholder:"resident@email.com"});
+    var n2=h("input",{placeholder:"Guarantor name (optional)"}); var e2=h("input",{placeholder:"guarantor@email.com (optional)"});
+    return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
+      if(!doc.value||!n1.value||!e1.value) return toast("Document + first signer required","err");
+      var signers=[{name:n1.value,email:e1.value,role:"resident"}];
+      if(n2.value&&e2.value) signers.push({name:n2.value,email:e2.value,role:"guarantor"});
+      api("/signature-envelopes",{method:"POST",body:{id:"env-"+Date.now(), documentName:doc.value, provider:provider.value, signers:signers}}).then(function(r){
+        if(r.status===201){ toast(t("msg.saved"),"ok"); refreshEnvelopes(wrap); } else toast(r.body.error||"err","err");
+      });
+    }},[ field("Document",doc), field("Provider",provider), field("Resident",n1), field("Resident email",e1), field("Guarantor",n2), field("Guarantor email",e2), h("div",{},[h("button",{class:"btn",type:"submit"},["Prepare envelope"])]) ]);
+  }
+  function refreshEnvelopes(wrap){
+    api("/signature-envelopes").then(function(r){
+      wrap.innerHTML="";
+      var rows=((r.body||{}).envelopes||[]).map(function(env){
+        var actions=h("div",{class:"row"},[]);
+        if(can("esign.manage")){
+          if(env.status==="draft"){ actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/signature-envelopes/"+env.id+"/send",{method:"POST",body:{providerRef:"ext-"+Date.now()}}).then(function(x){ handleEnv(x,wrap); }); }},["Send"])); }
+          if(env.status==="sent"){ (env.signers||[]).filter(function(s){return !s.signedAt && !s.declinedAt;}).forEach(function(s){ actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/signature-envelopes/"+env.id+"/sign",{method:"POST",body:{email:s.email}}).then(function(x){ if(x.status===200){ toast("Signed: "+s.email,"ok"); refreshEnvelopes(wrap);} else toast(x.body.error||"err","err"); }); }},["Sign: "+s.name.split(" ")[0]])); }); }
+          if(env.status==="draft"||env.status==="sent"){ actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/signature-envelopes/"+env.id+"/void",{method:"POST",body:{reason:"cancelled"}}).then(function(x){ handleEnv(x,wrap); }); }},["Void"])); }
+        }
+        var signed=(env.signers||[]).filter(function(s){return s.signedAt;}).length;
+        var pillCls = env.status==="signed"?"active":(env.status==="declined"||env.status==="voided"?"terminated":"draft");
+        return h("tr",{},[ h("td",{},[env.documentName]), h("td",{class:"mono muted"},[env.provider]), h("td",{class:"muted"},[signed+"/"+(env.signers||[]).length+" signed"]), h("td",{},[h("span",{class:"pill "+pillCls},[env.status])]), h("td",{},[actions]) ]);
+      });
+      wrap.appendChild(tableEl([th("Document"),th("Provider"),th("Signers"),th(t("field.status")),th("")], rows, 5, "No envelopes yet."));
+    });
+  }
+  function handleEnv(x, wrap){ if(x.status===200){ toast(t("msg.saved"),"ok"); refreshEnvelopes(wrap);} else toast(x.body.error||"err","err"); }
 
   function viewPurchasing(main){
     main.appendChild(h("h1",{},["Purchasing"]));

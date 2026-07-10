@@ -100,6 +100,7 @@ export const POLICY_RULES: readonly PolicyRule[] = [
   { id: 'pol-recon-match', action: 'recon.match', effect: 'allow', description: 'Matching a bank line to a payment is routine; it links, it does not move money.' },
   { id: 'pol-integration-configure', action: 'integration.configure', effect: 'allow', description: 'Configuring an integration (non-secret settings; credentials live in the secret store) is routine admin.' },
   { id: 'pol-connector-dispatch', action: 'connector.dispatch', effect: 'allow', description: 'Enqueuing a connector command (unlock, push inventory, pull leads) is routine; edge adapters hold the credentials.' },
+  { id: 'pol-esign-send', action: 'esign.send', effect: 'allow', description: 'Sending a lease document out for e-signature is routine and audited; it does not execute the lease (lease.execute stays human-gated).' },
   { id: 'pol-collections-remind', action: 'collections.remind', effect: 'allow', description: 'Payment reminders are routine.' },
   { id: 'pol-collections-latefee', action: 'collections.late_fee', effect: 'allow', description: 'Contractual late fees are routine.' },
   { id: 'pol-collections-suspend', action: 'collections.suspend', effect: 'escalate', description: 'Service suspension is guest-impacting: human confirms.' },

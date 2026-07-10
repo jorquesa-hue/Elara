@@ -187,6 +187,20 @@ const advanceBtn = page.locator('button:has-text("→ toured")').first();
 if (await advanceBtn.count()) { await advanceBtn.click(); await page.waitForTimeout(400); }
 await shot('19-pipeline');
 
+// E-signature: prepare an envelope, send it, sign it.
+await page.click('button:has-text("E-sign")');
+await page.waitForSelector('text=Send a lease out for signature');
+await page.fill('input[placeholder="Lease — Unit 101"]', 'Lease — Unit 101');
+await page.fill('input[placeholder="Resident name"]', 'Ana Souza');
+await page.fill('input[placeholder="resident@email.com"]', 'ana@email.com');
+await page.click('button:has-text("Prepare envelope")');
+await page.waitForTimeout(450);
+const sendEnv = page.locator('button:has-text("Send")').first();
+if (await sendEnv.count()) { await sendEnv.click(); await page.waitForTimeout(400); }
+const signEnv = page.locator('button:has-text("Sign: Ana")').first();
+if (await signEnv.count()) { await signEnv.click(); await page.waitForTimeout(400); }
+await shot('20-esign');
+
 // Student housing: roommate matching — add prospects, rank matches, group rooms.
 await page.click('button:has-text("Roommates")');
 await page.waitForSelector('text=Match student/shared-housing prospects');

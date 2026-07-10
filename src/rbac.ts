@@ -67,6 +67,8 @@ export const PERMISSIONS = [
   'roommate.manage',
   'crm.read',
   'crm.manage',
+  'esign.read',
+  'esign.manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -96,6 +98,7 @@ const OPS: Permission[] = [
   'integration.read', 'connector.dispatch', 'revenue.read', 'procurement.read',
   'roommate.read', 'roommate.manage',
   'crm.read', 'crm.manage',
+  'esign.read', 'esign.manage',
   'ledger.read', 'exception.read', 'subscription.read',
   'masterdata.read', 'config.read',
 ];

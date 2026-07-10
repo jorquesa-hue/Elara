@@ -45,12 +45,13 @@ insert into policy_rule (id, action, effect, description, condition_note, ordina
   ('pol-recon-match', 'recon.match', 'allow', 'Matching a bank line to a payment is routine; it links, it does not move money.', null, 36),
   ('pol-integration-configure', 'integration.configure', 'allow', 'Configuring an integration (non-secret settings; credentials live in the secret store) is routine admin.', null, 37),
   ('pol-connector-dispatch', 'connector.dispatch', 'allow', 'Enqueuing a connector command (unlock, push inventory, pull leads) is routine; edge adapters hold the credentials.', null, 38),
-  ('pol-collections-remind', 'collections.remind', 'allow', 'Payment reminders are routine.', null, 39),
-  ('pol-collections-latefee', 'collections.late_fee', 'allow', 'Contractual late fees are routine.', null, 40),
-  ('pol-collections-suspend', 'collections.suspend', 'escalate', 'Service suspension is guest-impacting: human confirms.', null, 41),
-  ('pol-collections-evict', 'collections.evict', 'escalate', 'Eviction is irreversible and regulated: propose to human, never execute.', null, 42),
-  ('pol-groupblock-create', 'group_block.create', 'allow', 'Agents may place group blocks.', null, 43),
-  ('pol-groupblock-pickup', 'group_block.pickup', 'allow', 'Agents may convert block holds into agreements.', null, 44);
+  ('pol-esign-send', 'esign.send', 'allow', 'Sending a lease document out for e-signature is routine and audited; it does not execute the lease (lease.execute stays human-gated).', null, 39),
+  ('pol-collections-remind', 'collections.remind', 'allow', 'Payment reminders are routine.', null, 40),
+  ('pol-collections-latefee', 'collections.late_fee', 'allow', 'Contractual late fees are routine.', null, 41),
+  ('pol-collections-suspend', 'collections.suspend', 'escalate', 'Service suspension is guest-impacting: human confirms.', null, 42),
+  ('pol-collections-evict', 'collections.evict', 'escalate', 'Eviction is irreversible and regulated: propose to human, never execute.', null, 43),
+  ('pol-groupblock-create', 'group_block.create', 'allow', 'Agents may place group blocks.', null, 44),
+  ('pol-groupblock-pickup', 'group_block.pickup', 'allow', 'Agents may convert block holds into agreements.', null, 45);
 
 delete from collection_stage;
 insert into collection_stage (id, min_days_overdue, action, policy_action, description, fee_bps, ordinal) values

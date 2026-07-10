@@ -37,6 +37,7 @@ import { Procurement, computeBudgetStatus, type PurchaseOrderLine, type Budget }
 import { RoommateMatcher, type RoommatePreferences, type Chronotype } from '../roommate.ts';
 import { parseCsv, suggestMapping, planImport, type ImportTarget, type ColumnMapping } from '../onboarding.ts';
 import { Crm, type LeadStage } from '../crm.ts';
+import { Signatures } from '../esign.ts';
 import { meterSubscription, type SubscriptionPlan } from '../subscription.ts';
 import {
   ConfigStore,
@@ -156,6 +157,7 @@ export class App {
   readonly procurement = new Procurement();
   readonly roommates = new RoommateMatcher();
   readonly crm = new Crm();
+  readonly signatures = new Signatures();
 
   readonly config: ConfigStore;
   readonly roles: RoleRegistry;
@@ -365,6 +367,17 @@ export class App {
       }
     }
     return { target, headers, rows, mapping };
+  }
+
+  private ownedEnvelope(ctx: AuthContext, id: string) {
+    let e;
+    try {
+      e = this.signatures.get(id);
+    } catch {
+      throw new HttpError(404, 'signature envelope not found');
+    }
+    if (e.tenantId !== ctx.tenantId) throw new HttpError(404, 'signature envelope not found');
+    return e;
   }
 
   private ownedLead(ctx: AuthContext, id: string) {
@@ -1438,6 +1451,63 @@ export class App {
     this.add('GET', '/leads/:id', 'crm.read', (ctx, p) => ({ status: 200, body: this.ownedLead(ctx, p['id']!) }));
 
     this.add('GET', '/crm/summary', 'crm.read', (ctx) => ({ status: 200, body: this.crm.kpis(ctx.tenantId) }));
+
+    // --- e-signature for lease execution (#17) ----------------------------
+    // The CRM → lease → e-sign tail. The provider I/O lives in an edge adapter
+    // (secretRef); a fully signed envelope advances the CRM lead but does NOT
+    // execute the lease — lease.execute stays a human-gated escalation.
+    this.add('POST', '/signature-envelopes', 'esign.manage', (ctx, _p, body) => {
+      const leadId = this.optString(body, 'leadId');
+      if (leadId) this.ownedLead(ctx, leadId); // 404 if not this tenant's lead
+      const agreementId = this.optString(body, 'agreementId');
+      if (agreementId) this.ownedAgreement(ctx, agreementId);
+      const rawSigners = Array.isArray(body['signers']) ? (body['signers'] as unknown[]) : [];
+      const signers = rawSigners.map((s) => {
+        const o = s as Record<string, unknown>;
+        return { name: String(o['name'] ?? ''), email: String(o['email'] ?? ''), role: String(o['role'] ?? 'resident'), partyId: this.optString(o, 'partyId'), order: typeof o['order'] === 'number' ? (o['order'] as number) : undefined };
+      });
+      const env = this.signatures.create({
+        id: this.requireString(body, 'id'),
+        tenantId: ctx.tenantId,
+        documentName: this.requireString(body, 'documentName'),
+        provider: this.requireString(body, 'provider'),
+        leadId, agreementId, signers, createdAt: this.now(),
+      });
+      return { status: 201, body: env };
+    });
+
+    this.add('POST', '/signature-envelopes/:id/send', 'esign.manage', (ctx, p, body) => {
+      const env = this.ownedEnvelope(ctx, p['id']!);
+      return this.gated('esign.send', ctx, { id: env.id }, () => this.signatures.send(env.id, this.now(), this.optString(body, 'providerRef')), (e) => ({ status: 200, body: e }));
+    });
+
+    // Record a signer's completion (the provider webhook, relayed here). When
+    // every signer has signed, advance the linked CRM lead to 'signed' — the
+    // SALES outcome. The binding lease execution stays a separate human step.
+    this.add('POST', '/signature-envelopes/:id/sign', 'esign.manage', (ctx, p, body) => {
+      const env = this.ownedEnvelope(ctx, p['id']!);
+      const email = this.requireString(body, 'email');
+      if (body['decline'] === true) {
+        return { status: 200, body: this.signatures.decline(env.id, email, this.optString(body, 'reason') ?? 'declined', this.now()) };
+      }
+      const { envelope, completed } = this.signatures.recordSigned(env.id, email, this.now());
+      if (completed && envelope.leadId) {
+        try {
+          const lead = this.crm.get(envelope.leadId);
+          if (lead.tenantId === ctx.tenantId && lead.stage !== 'signed' && lead.stage !== 'lost') this.crm.advance(envelope.leadId, 'signed', this.now());
+        } catch { /* lead gone — envelope still records the signature */ }
+      }
+      return { status: 200, body: { envelope, completed } };
+    });
+
+    this.add('POST', '/signature-envelopes/:id/void', 'esign.manage', (ctx, p, body) => {
+      const env = this.ownedEnvelope(ctx, p['id']!);
+      return { status: 200, body: this.signatures.void(env.id, this.optString(body, 'reason') ?? 'voided', this.now()) };
+    });
+
+    this.add('GET', '/signature-envelopes', 'esign.read', (ctx) => ({ status: 200, body: { envelopes: this.signatures.list(ctx.tenantId) } }));
+
+    this.add('GET', '/signature-envelopes/:id', 'esign.read', (ctx, p) => ({ status: 200, body: this.ownedEnvelope(ctx, p['id']!) }));
 
     // --- ledger (tenant-scoped) -------------------------------------------
     this.add('GET', '/ledger/trial-balance', 'ledger.read', (ctx) => ({ status: 200, body: this.trialBalance(ctx.tenantId) }));
