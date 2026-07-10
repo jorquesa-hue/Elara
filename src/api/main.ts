@@ -64,7 +64,14 @@ async function main(): Promise<void> {
       : (await executor.query({ text: 'select id from tenant order by id', values: [] })).map((r) => String(r['id']));
   }
 
-  const app = new App({ authenticator, persistence, adapters: defaultAdapterRegistry() });
+  // Auth config for the portal login screen. With SUPABASE_URL + SUPABASE_ANON_KEY
+  // the SPA shows a real email/password login against GoTrue; without them it falls
+  // back to the dev "paste a token" mode.
+  const authConfig = process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY
+    ? { authUrl: `${process.env.SUPABASE_URL.replace(/\/+$/, '')}/auth/v1`, anonKey: process.env.SUPABASE_ANON_KEY }
+    : undefined;
+
+  const app = new App({ authenticator, persistence, adapters: defaultAdapterRegistry(), authConfig });
 
   const server = new StayServer(app, {
     reader,

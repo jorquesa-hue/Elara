@@ -139,6 +139,10 @@ export interface AppConfig {
   persistence?: PersistenceBackend;
   /** Vendor adapter registry. Omit → the generic reference adapters. */
   adapters?: AdapterRegistry;
+  /** Where the portal sends users to authenticate (Supabase Auth / GoTrue). When
+   *  set, GET /auth/config advertises it so the SPA shows a real login; omit for
+   *  the dev "paste a token" mode. The anonKey is a PUBLIC (publishable) key. */
+  authConfig?: { authUrl: string; anonKey: string };
 }
 
 export class App {
@@ -160,6 +164,7 @@ export class App {
   readonly reconciliation = new Reconciliation();
   readonly integrations = new Integrations();
   readonly connectorOutbox = new ConnectorOutbox();
+  private readonly authConfig?: { authUrl: string; anonKey: string };
   // The pluggable vendor adapter registry. A deployment can inject its own (with
   // real vendor adapters registered) via AppConfig.adapters; defaults to the
   // generic reference adapters.
@@ -194,6 +199,7 @@ export class App {
     this.plan = config.subscriptionPlan ?? { perUnitCents: 5000, currency: 'BRL' };
     this.persistence = config.persistence;
     this.adapters = config.adapters ?? defaultAdapterRegistry();
+    this.authConfig = config.authConfig;
     this.config = config.config ?? new ConfigStore();
     this.roles = config.roles ?? new RoleRegistry();
     this.masterData = config.masterData ?? new MasterData();
@@ -208,6 +214,18 @@ export class App {
 
   // --- transport-agnostic entry point --------------------------------------
   dispatch(req: ApiRequest): ApiResponse {
+    // PUBLIC, pre-auth: the SPA fetches this to learn HOW to sign in (which is a
+    // chicken-and-egg before it has a token). It exposes only the auth mode + the
+    // GoTrue base URL + the PUBLIC anon key — never a secret.
+    if (req.method === 'GET' && req.path === '/auth/config') {
+      return {
+        status: 200,
+        body: this.authConfig
+          ? { mode: 'supabase', authUrl: this.authConfig.authUrl, anonKey: this.authConfig.anonKey }
+          : { mode: 'dev' },
+      };
+    }
+
     const ctx = this.auth.authenticate(req.bearer);
     if (!ctx) return { status: 401, body: { error: 'unauthenticated' } };
 
@@ -539,6 +557,7 @@ export class App {
         actor: ctx.actor,
         tenantId: ctx.tenantId,
         role: ctx.role,
+        ...(ctx.partyId ? { partyId: ctx.partyId } : {}),
         permissions: [...this.roles.permissionsFor(ctx.tenantId, ctx.role)],
       },
     }));

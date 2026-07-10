@@ -35,7 +35,9 @@ the `.ts` entrypoint) and the optional `pg` driver (used only for cold-start rea
 
 | Var | Required | Purpose |
 | --- | --- | --- |
-| `JWT_SECRET` | **yes** | HS256 secret the `JwtAuthenticator` verifies. Must match whatever mints your tokens (e.g. Supabase Auth / GoTrue). No secret → the process refuses to start. |
+| `JWT_SECRET` | **yes** | HS256 secret the `JwtAuthenticator` verifies. Must equal your Supabase project's **JWT secret** (the legacy symmetric key GoTrue signs with). No secret → the process refuses to start. |
+| `SUPABASE_URL` | for login | Project URL, e.g. `https://<ref>.supabase.co`. Enables the portal's real login screen (against `${SUPABASE_URL}/auth/v1`). |
+| `SUPABASE_ANON_KEY` | for login | The **public** anon/publishable key — the portal sends it as `apikey` to GoTrue. Not a secret. |
 | `SUPABASE_FUNCTIONS_URL` | for durability | e.g. `https://<ref>.supabase.co/functions/v1` (the write arm). |
 | `SUPABASE_SERVICE_ROLE_KEY` | for durability | Service-role JWT the persist-world function requires. **Secret.** |
 | `DATABASE_URL` | for rehydrate | Postgres connection string used for cold-start reads. **Secret.** |
@@ -69,6 +71,43 @@ docker run -p 8080:8080 \
 `fly.toml` is a worked example. **Run a single instance** — the App holds tenant
 state in memory and flushes to durable storage; horizontal scaling would fork that
 state. Scale *up* (bigger machine), not *out*, until a shared-cache design lands.
+
+## Login (Supabase Auth / GoTrue)
+
+The portal fetches `GET /auth/config` (public, pre-auth) to learn how to sign in:
+- with `SUPABASE_URL` + `SUPABASE_ANON_KEY` set → a real **email/password** screen that
+  authenticates against GoTrue's password grant, stores the access + refresh tokens,
+  and transparently refreshes on a 401;
+- without them → a dev "paste a token" gate.
+
+The App verifies the JWT with `JwtAuthenticator` (HS256 over `JWT_SECRET`) and reads
+three claims: `tenant_id`, `user_role`, and (for guests) `party_id`. GoTrue does not
+put these in a token by default — you inject them as **custom claims under
+`app_metadata`** (which GoTrue always includes in the JWT, and which the verifier
+reads). Two ways:
+
+**A. Set `app_metadata` on the user (simplest).** Via the Admin API (service role):
+
+```bash
+curl -X PUT "$SUPABASE_URL/auth/v1/admin/users/$USER_ID" \
+  -H "apikey: $SERVICE_ROLE_KEY" -H "authorization: Bearer $SERVICE_ROLE_KEY" \
+  -H "content-type: application/json" \
+  -d '{"app_metadata":{"tenant_id":"t-acme","user_role":"manager"}}'
+```
+
+For a guest/resident, add `"party_id":"<party>"` and use `"user_role":"guest"`.
+
+**B. A custom access-token hook** (Postgres function) that derives the claims per
+login from your own user↔tenant table — better when you manage the mapping yourself.
+See the Supabase "custom access token hook" docs; return the same three keys.
+
+Notes:
+- `user_role` must be one of the built-in role ids (`owner`/`manager`/`staff`/
+  `front_desk`/`accountant`/`agent`/`read_only`/`guest`) or a custom role you defined
+  for that tenant. A token with no `tenant_id` claim is rejected (deny-by-default).
+- This verifier does **HS256** (the legacy shared JWT secret). If your project uses
+  the newer asymmetric signing keys (RS256/ES256 + JWKS), keep the legacy JWT secret
+  enabled, or extend `JwtAuthenticator` with JWKS verification.
 
 ## Live acceptance (the one end-to-end that can't run in the build sandbox)
 

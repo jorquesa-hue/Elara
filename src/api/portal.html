@@ -174,8 +174,10 @@
 <script>
 "use strict";
 (function () {
-  var TOKEN_KEY = "usos.token", THEME_KEY = "usos.theme";
-  var state = { token: localStorage.getItem(TOKEN_KEY) || "", me: null, config: null, options: null, cat: {}, view: "dashboard", detailId: null };
+  var TOKEN_KEY = "usos.token", THEME_KEY = "usos.theme", REFRESH_KEY = "usos.refresh";
+  var state = { token: localStorage.getItem(TOKEN_KEY) || "", refresh: localStorage.getItem(REFRESH_KEY) || "", auth: null, me: null, config: null, options: null, cat: {}, view: "dashboard", detailId: null };
+  function setSession(access, refresh){ state.token = access || ""; state.refresh = refresh || ""; if (access) localStorage.setItem(TOKEN_KEY, access); else localStorage.removeItem(TOKEN_KEY); if (refresh) localStorage.setItem(REFRESH_KEY, refresh); else localStorage.removeItem(REFRESH_KEY); }
+  function logout(){ setSession("", ""); state.me = null; boot(); }
 
   function h(tag, attrs, children) {
     var el = document.createElement(tag);
@@ -241,13 +243,30 @@
     return h("button", { class: "icon-btn", title: "Theme", onclick: toggleTheme }, [svg(dark ? ICONS.sun : ICONS.moon)]);
   }
 
-  function api(path, opts) {
+  function rawApi(path, opts) {
     opts = opts || {};
     return fetch(path, {
       method: opts.method || "GET",
       headers: { "authorization": "Bearer " + state.token, "content-type": "application/json" },
       body: opts.body ? JSON.stringify(opts.body) : undefined
-    }).then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); });
+    }).then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }).catch(function(){ return { status: r.status, body: {} }; }); });
+  }
+  // Transparently refresh an expired Supabase session once on a 401, then retry.
+  function api(path, opts) {
+    return rawApi(path, opts).then(function (r) {
+      if (r.status !== 401 || !state.refresh || !(state.auth && state.auth.mode === "supabase")) return r;
+      return refreshSession().then(function (ok) { return ok ? rawApi(path, opts) : r; });
+    });
+  }
+  function refreshSession() {
+    return fetch(state.auth.authUrl + "/token?grant_type=refresh_token", {
+      method: "POST",
+      headers: { "apikey": state.auth.anonKey, "content-type": "application/json" },
+      body: JSON.stringify({ refresh_token: state.refresh })
+    }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+      if (j && j.access_token) { setSession(j.access_token, j.refresh_token || state.refresh); return true; }
+      setSession("", ""); return false;
+    }).catch(function(){ return false; });
   }
 
   function minorUnits(code) {
@@ -272,10 +291,13 @@
 
   // ---- bootstrapping ------------------------------------------------------
   function boot() {
-    if (!state.token) return renderTokenGate();
-    api("/me").then(function (r) {
-      if (r.status !== 200) { state.token = ""; localStorage.removeItem(TOKEN_KEY); return renderTokenGate("Invalid token."); }
-      state.me = r.body;
+    // Learn HOW to sign in (public, pre-auth) before deciding what gate to show.
+    var pre = state.auth ? Promise.resolve() : fetch("/auth/config").then(function(r){ return r.json(); }).then(function(c){ state.auth = c; }).catch(function(){ state.auth = { mode: "dev" }; });
+    pre.then(function () {
+      if (!state.token) return renderLoginGate();
+      api("/me").then(function (r) {
+        if (r.status !== 200) { setSession("", ""); return renderLoginGate("Session expired — sign in again."); }
+        state.me = r.body;
       return api("/config").then(function (c) {
         state.config = c.body.config; state.options = c.body.options;
         return api("/i18n/" + state.config.locale).then(function (i) {
@@ -284,24 +306,61 @@
           render();
         });
       });
+      });
     });
+  }
+
+  function gateShell(panel) {
+    var root = document.getElementById("root"); root.innerHTML = "";
+    root.appendChild(h("div", { class: "center" }, [
+      h("div", { class: "wizard" }, [
+        h("div", { class: "brand" }, [ mark(), h("div",{class:"wm"},["Unified Stay OS", h("small",{},["Operator portal"])]) ]),
+        panel
+      ])
+    ]));
+  }
+
+  // Mode-aware sign-in: a real email/password login against Supabase Auth (GoTrue)
+  // when the deployment advertises it; otherwise the dev "paste a token" gate.
+  function renderLoginGate(err) {
+    return (state.auth && state.auth.mode === "supabase") ? renderPasswordGate(err) : renderTokenGate(err);
+  }
+
+  function renderPasswordGate(err) {
+    var email = h("input", { placeholder: "you@company.com", type: "email", autocomplete: "username" });
+    var pass = h("input", { placeholder: "Password", type: "password", autocomplete: "current-password" });
+    var msg = h("p", { class: "pill bad", style: "padding:6px 10px; margin-bottom:12px; display:" + (err ? "block" : "none") }, [err || ""]);
+    function fail(m){ msg.textContent = m; msg.style.display = "block"; }
+    function go(){
+      if (!email.value || !pass.value) return fail("Enter your email and password.");
+      fetch(state.auth.authUrl + "/token?grant_type=password", {
+        method: "POST",
+        headers: { "apikey": state.auth.anonKey, "content-type": "application/json" },
+        body: JSON.stringify({ email: email.value.trim(), password: pass.value })
+      }).then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); }).then(function(res){
+        if (!res.ok || !res.j.access_token) return fail((res.j && (res.j.error_description || res.j.msg)) || "Sign-in failed.");
+        setSession(res.j.access_token, res.j.refresh_token); boot();
+      }).catch(function(){ fail("Could not reach the auth server."); });
+    }
+    pass.addEventListener("keydown", function(e){ if (e.key === "Enter") go(); });
+    gateShell(h("div", { class: "panel" }, [
+      h("p", { class: "sub", style:"margin-bottom:14px" }, ["Sign in to your operator account."]),
+      msg,
+      field("Email", email),
+      field("Password", pass),
+      h("button", { class: "btn", style:"margin-top:8px; width:100%", onclick: go }, ["Sign in"])
+    ]));
   }
 
   function renderTokenGate(err) {
     var input = h("input", { placeholder: "Bearer token", value: state.token });
     input.addEventListener("keydown", function(e){ if (e.key === "Enter") go(); });
-    function go(){ state.token = input.value.trim(); localStorage.setItem(TOKEN_KEY, state.token); boot(); }
-    var root = document.getElementById("root"); root.innerHTML = "";
-    root.appendChild(h("div", { class: "center" }, [
-      h("div", { class: "wizard" }, [
-        h("div", { class: "brand" }, [ mark(), h("div",{class:"wm"},["Unified Stay OS", h("small",{},["Operator portal"])]) ]),
-        h("div", { class: "panel" }, [
-          h("p", { class: "sub", style:"margin-bottom:14px" }, ["Sign in with your access token."]),
-          err ? h("p", { class: "pill bad", style: "padding:6px 10px; margin-bottom:12px" }, [err]) : null,
-          field("Token", input),
-          h("button", { class: "btn", style:"margin-top:8px; width:100%", onclick: go }, ["Continue"])
-        ])
-      ])
+    function go(){ setSession(input.value.trim(), ""); boot(); }
+    gateShell(h("div", { class: "panel" }, [
+      h("p", { class: "sub", style:"margin-bottom:14px" }, ["Developer sign-in: paste an access token."]),
+      err ? h("p", { class: "pill bad", style: "padding:6px 10px; margin-bottom:12px" }, [err]) : null,
+      field("Token", input),
+      h("button", { class: "btn", style:"margin-top:8px; width:100%", onclick: go }, ["Continue"])
     ]));
   }
 
@@ -382,7 +441,8 @@
         nav,
         h("div", { class: "side-foot" }, [
           h("div", { class: "chip" }, [ h("span",{class:"dot"}), state.me.role + " · " + state.config.currency + " · " + state.config.locale ]),
-          themeBtn()
+          themeBtn(),
+          h("button", { class: "btn ghost sm", title: "Sign out", onclick: logout }, ["Sign out"])
         ])
       ]),
       h("main", { id: "main" }, [])
