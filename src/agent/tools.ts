@@ -246,6 +246,248 @@ const TOOLS: ToolDef[] = [
     },
     toRequest: () => ({ method: 'GET', path: '/billing/subscription' }),
   },
+  // --- country environment ------------------------------------------------
+  {
+    spec: {
+      name: 'get_environment',
+      description:
+        'Return this tenant’s country environment: country, jurisdiction, currency/locale/timezone, the effective jurisdiction-scoped policy, and the (identical-for-every-country) master-data structure. Read-only. Use to understand which rules apply before acting.',
+      input_schema: schema({}, []),
+      strict: true,
+    },
+    toRequest: () => ({ method: 'GET', path: '/environment' }),
+  },
+  // --- dynamic pricing ----------------------------------------------------
+  {
+    spec: {
+      name: 'quote_stay',
+      description:
+        'Quote a nightly + total price for a stay from a pricing rule, with an explainable factor breakdown (occupancy, weekend, lead-time, season, length-of-stay). Read-only — this computes a price, it does not book. Supply the demand signal via occupancyPct.',
+      input_schema: schema(
+        {
+          ruleId: str('Pricing rule id to quote against.'),
+          checkIn: str('Check-in date, YYYY-MM-DD.'),
+          nights: int('Number of nights, positive integer.'),
+          occupancyPct: int('Current occupancy 0..100 — the demand signal (optional).'),
+        },
+        ['ruleId', 'checkIn', 'nights'],
+      ),
+      strict: true,
+    },
+    toRequest: (i) => ({ method: 'POST', path: '/pricing/quote', body: i }),
+  },
+  // --- people on an agreement + lease changes -----------------------------
+  {
+    spec: {
+      name: 'assign_party',
+      description:
+        'Assign a party to an agreement in a role (resident, financial_responsible, guarantor, cosigner, occupant, payee). The financial_responsible/payee is who gets billed — use this to model parents-pay-for-student.',
+      input_schema: schema(
+        {
+          agreementId: str('Agreement to assign to.'),
+          partyId: str('Party id (must exist in your tenant).'),
+          role: { type: 'string', enum: ['resident', 'financial_responsible', 'guarantor', 'cosigner', 'occupant', 'prospect', 'payee'], description: 'The party’s role on this agreement.' },
+        },
+        ['agreementId', 'partyId', 'role'],
+      ),
+      strict: true,
+    },
+    toRequest: (i) => {
+      const { agreementId, ...body } = i;
+      return { method: 'POST', path: `/agreements/${agreementId}/parties`, body };
+    },
+  },
+  {
+    spec: {
+      name: 'adjust_rent',
+      description:
+        'Apply a scheduled rent adjustment to an agreement (percent or fixed increase, respecting any cap). Routine and fully audited. Large or out-of-terms adjustments may escalate to a human.',
+      input_schema: schema(
+        {
+          id: str('Agreement id.'),
+          basis: { type: 'string', enum: ['percent', 'fixed'], description: 'Adjust by a percentage or a fixed cents amount.' },
+          value: int('Percentage points (basis=percent) or cents (basis=fixed).'),
+          reason: str('Why the rent is changing (e.g. annual index).'),
+        },
+        ['id', 'basis', 'value', 'reason'],
+      ),
+      strict: true,
+    },
+    toRequest: (i) => {
+      const { id, ...body } = i;
+      return { method: 'POST', path: `/agreements/${id}/adjust-rent`, body };
+    },
+  },
+  {
+    spec: {
+      name: 'transfer_unit',
+      description:
+        'Transfer an agreement to a different unit, preserving its id and ledger and swapping the calendar hold. Fails if the target unit is held for any overlapping night.',
+      input_schema: schema({ id: str('Agreement id.'), toUnitId: str('Destination unit id.'), reason: str('Why transferring.') }, ['id', 'toUnitId', 'reason']),
+      strict: true,
+    },
+    toRequest: (i) => {
+      const { id, ...body } = i;
+      return { method: 'POST', path: `/agreements/${id}/transfer`, body };
+    },
+  },
+  {
+    spec: {
+      name: 'record_move',
+      description:
+        'Record a move-in or move-out on an active agreement. Pair with an inspection (vistoria) around each move; a move-out damage estimate informs the deposit refund.',
+      input_schema: schema({ id: str('Agreement id.'), direction: { type: 'string', enum: ['move-in', 'move-out'], description: 'Which move to record.' } }, ['id', 'direction']),
+      strict: true,
+    },
+    toRequest: (i) => ({ method: 'POST', path: `/agreements/${i['id']}/${i['direction']}`, body: {} }),
+  },
+  // --- leasing pipeline (CRM) ---------------------------------------------
+  {
+    spec: {
+      name: 'create_lead',
+      description: 'Add a lead to the leasing pipeline (stage new). Optionally link a party and an estimated monthly/lease value that powers pipeline KPIs.',
+      input_schema: schema(
+        { id: str('Client-chosen lead id.'), name: str('Lead name.'), source: str('Where it came from (website, referral…). Optional.'), estValueCents: int('Estimated value in cents. Optional.'), partyId: str('Linked party id. Optional.') },
+        ['id', 'name'],
+      ),
+      strict: true,
+    },
+    toRequest: (i) => ({ method: 'POST', path: '/leads', body: i }),
+  },
+  {
+    spec: {
+      name: 'advance_lead',
+      description: 'Move a lead forward in the funnel: new → toured → applied → approved → signed. Forward-only. Reaching "signed" records the sales outcome; the binding lease still executes through the human-gated path.',
+      input_schema: schema({ id: str('Lead id.'), stage: { type: 'string', enum: ['toured', 'applied', 'approved', 'signed'], description: 'Target stage (must be forward of current).' } }, ['id', 'stage']),
+      strict: true,
+    },
+    toRequest: (i) => ({ method: 'POST', path: `/leads/${i['id']}/advance`, body: { stage: i['stage'] } }),
+  },
+  {
+    spec: {
+      name: 'lose_lead',
+      description: 'Drop a lead from the pipeline with a reason. Closed — it cannot be advanced afterward.',
+      input_schema: schema({ id: str('Lead id.'), reason: str('Why lost (budget, chose elsewhere…).') }, ['id', 'reason']),
+      strict: true,
+    },
+    toRequest: (i) => ({ method: 'POST', path: `/leads/${i['id']}/lose`, body: { reason: i['reason'] } }),
+  },
+  {
+    spec: {
+      name: 'get_pipeline',
+      description: 'Return the leasing funnel KPIs: counts by stage, open/won/lost, open pipeline value, won value, and conversion rate. Read-only.',
+      input_schema: schema({}, []),
+      strict: true,
+    },
+    toRequest: () => ({ method: 'GET', path: '/crm/summary' }),
+  },
+  // --- e-signature (does NOT execute the lease) ---------------------------
+  {
+    spec: {
+      name: 'prepare_signature',
+      description:
+        'Prepare a lease document for e-signature with a signer roster (resident, optional guarantor). This does NOT execute the lease — a fully signed envelope advances the linked lead, but binding lease execution stays a separate human-confirmed step. Call send_signature to dispatch it.',
+      input_schema: schema(
+        {
+          id: str('Client-chosen envelope id.'),
+          documentName: str('Document name, e.g. "Lease — Unit 101".'),
+          provider: str('E-sign provider, e.g. docusign, clicksign.'),
+          leadId: str('CRM lead this closes. Optional.'),
+          agreementId: str('Agreement this will bind. Optional.'),
+          signers: {
+            type: 'array',
+            description: 'One or more signers.',
+            items: schema({ name: str('Signer name.'), email: str('Signer email.'), role: str('resident, guarantor, cosigner…') }, ['name', 'email', 'role']),
+          },
+        },
+        ['id', 'documentName', 'provider', 'signers'],
+      ),
+      strict: true,
+    },
+    toRequest: (i) => ({ method: 'POST', path: '/signature-envelopes', body: i }),
+  },
+  {
+    spec: {
+      name: 'send_signature',
+      description: 'Send a prepared envelope out for signature via the provider (credentials live in the secret store; none pass through here). Audited.',
+      input_schema: schema({ id: str('Envelope id to send.') }, ['id']),
+      strict: true,
+    },
+    toRequest: (i) => ({ method: 'POST', path: `/signature-envelopes/${i['id']}/send`, body: {} }),
+  },
+  // --- maintenance / reservations / comms ---------------------------------
+  {
+    spec: {
+      name: 'raise_work_order',
+      description: 'Raise a maintenance work order on a space. Assign a vendor and progress it separately; a repair cost is billed through accounts payable.',
+      input_schema: schema(
+        { id: str('Client-chosen work order id.'), title: str('Short problem summary.'), spaceId: str('Space the issue is on. Optional.'), priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'], description: 'Priority. Optional.' }, description: str('Details. Optional.') },
+        ['id', 'title'],
+      ),
+      strict: true,
+    },
+    toRequest: (i) => ({ method: 'POST', path: '/work-orders', body: i }),
+  },
+  {
+    spec: {
+      name: 'reserve_space',
+      description: 'Reserve a bookable common area or amenity for a window. Takes a calendar hold so overlaps are rejected by the same no-double-booking guarantee as stays.',
+      input_schema: schema(
+        { id: str('Client-chosen reservation id.'), spaceId: str('Common/amenity space id.'), holderPartyId: str('Party reserving it.'), start: str('Start, ISO-8601.'), end: str('End, ISO-8601.'), priceCents: int('Price in cents. Optional.'), note: str('Note. Optional.') },
+        ['id', 'spaceId', 'holderPartyId', 'start', 'end'],
+      ),
+      strict: true,
+    },
+    toRequest: (i) => ({ method: 'POST', path: '/reservations', body: i }),
+  },
+  {
+    spec: {
+      name: 'open_thread',
+      description: 'Open a conversation thread (resident, finance, or internal), optionally scoped to an agreement or party. Then use send_message to reply.',
+      input_schema: schema(
+        { id: str('Client-chosen thread id.'), subject: str('Thread subject.'), kind: { type: 'string', enum: ['resident', 'finance', 'internal'], description: 'Thread kind.' }, agreementId: str('Scope to an agreement. Optional.'), partyId: str('Scope to a party. Optional.') },
+        ['id', 'subject', 'kind'],
+      ),
+      strict: true,
+    },
+    toRequest: (i) => ({ method: 'POST', path: '/threads', body: i }),
+  },
+  {
+    spec: {
+      name: 'send_message',
+      description: 'Append a message to a thread. An agent-authored message is recorded with authorType=agent and outbound direction — this is the AI communications surface, and it passes the policy envelope like any agent action.',
+      input_schema: schema({ threadId: str('Thread id.'), id: str('Client-chosen message id.'), body: str('Message text.') }, ['threadId', 'id', 'body']),
+      strict: true,
+    },
+    toRequest: (i) => {
+      const { threadId, ...body } = i;
+      return { method: 'POST', path: `/threads/${threadId}/messages`, body };
+    },
+  },
+  // --- accounts payable (issue only; paying large amounts escalates) ------
+  {
+    spec: {
+      name: 'record_bill',
+      description:
+        'Record a vendor bill (accounts payable) against a payee party. This posts the payable; PAYING it is a separate step that escalates for large amounts and is not available to an agent. A resident refund is modelled as a bill to the resident-payee.',
+      input_schema: schema(
+        {
+          id: str('Client-chosen bill id.'),
+          payeeId: str('Party being paid (a vendor or a resident being refunded).'),
+          dueAt: str('Due date, ISO-8601.'),
+          poId: str('Purchase order this fulfils. Optional.'),
+          lines: {
+            type: 'array',
+            description: 'Bill lines.',
+            items: schema({ description: str('Line description.'), account: str('Expense account, e.g. expenses:repairs.'), amountCents: int('Positive integer cents.') }, ['description', 'account', 'amountCents']),
+          },
+        },
+        ['id', 'payeeId', 'dueAt', 'lines'],
+      ),
+      strict: true,
+    },
+    toRequest: (i) => ({ method: 'POST', path: '/bills', body: i }),
+  },
 ];
 
 export class AgentToolCatalog {
