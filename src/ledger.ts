@@ -9,6 +9,11 @@ export interface JournalLine {
   creditCents: number;
   currency: string;
   agreementId?: string;
+  /** Tenant owner for entries with NO agreement (accounts payable). Lines tied
+   *  to an agreement are tenant-scoped through it; AP entries have no agreement,
+   *  so without this tag they would be invisible to every tenant-scoped read
+   *  (trial balance, reporting, persistence snapshot). */
+  tenantId?: string;
   memo?: string;
   postedAt: string; // ISO-8601
 }
@@ -18,6 +23,7 @@ export interface JournalEntryInput {
   postedAt: string;
   currency?: string;
   agreementId?: string;
+  tenantId?: string;
   memo?: string;
   lines: Array<{
     account: string;
@@ -66,6 +72,7 @@ export class Ledger {
         creditCents,
         currency,
         agreementId: input.agreementId,
+        tenantId: input.tenantId,
         memo: l.memo ?? input.memo,
         postedAt: input.postedAt,
       });

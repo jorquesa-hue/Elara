@@ -207,6 +207,8 @@ export class App {
   private readonly invoiceTenant = new Map<string, string>();
   private readonly depositTenant = new Map<string, string>();
   private readonly flushMarks = new Map<string, FlushMark>();
+  /** Per-tenant in-flight flush, so overlapping flushes serialize (see flushWorld). */
+  private readonly flushInFlight = new Map<string, Promise<void>>();
   private readonly routes: Route[] = [];
 
   constructor(config: AppConfig = {}) {
@@ -1194,13 +1196,24 @@ export class App {
         ctx,
         { toUnitId },
         () => {
-          a.transfer(toUnitId, at, opts);
-          // Move the calendar hold to the target space for the remaining period.
-          for (const h of this.calendar.activeHolds()) {
-            if (h.holderId === a.id) this.calendar.release(h.id);
-          }
+          // ATOMICITY: acquire the TARGET hold first, so a double-inventory
+          // conflict on the destination aborts the whole transfer before any
+          // state mutates (no transferred event, old hold intact). Only after
+          // both the hold and the event succeed are the superseded holds
+          // released — a failure at any step leaves the agreement untouched.
+          if (toUnitId === a.currentUnitId) throw new HttpError(400, 'agreement already occupies that unit/space');
           const { start, end } = a.period;
-          this.calendar.hold({ id: `${a.id}-hold-${a.history.length}`, unitId: toUnitId, holderId: a.id, start, end });
+          const newHoldId = `${a.id}-hold-${a.history.length + 1}`;
+          this.calendar.hold({ id: newHoldId, unitId: toUnitId, holderId: a.id, start, end });
+          try {
+            a.transfer(toUnitId, at, opts);
+          } catch (e) {
+            this.calendar.release(newHoldId); // undo the probe hold; nothing else changed
+            throw e;
+          }
+          for (const h of this.calendar.activeHolds()) {
+            if (h.holderId === a.id && h.id !== newHoldId) this.calendar.release(h.id);
+          }
           return a;
         },
         (ag) => ({ status: 200, body: this.agreementSummary(ag) }),
@@ -1231,6 +1244,11 @@ export class App {
         ctx,
         { payeeId },
         () => {
+          // ATOMICITY: validate the PO can absorb this billing BEFORE the bill
+          // posts its GL entry, so a refusal (over-billing, wrong status) can
+          // never leave a booked-and-payable bill behind a 409.
+          const totalCents = lines.reduce((s, l) => s + l.amountCents, 0);
+          if (poId) this.procurement.assertCanBill(poId, totalCents);
           const bill = this.payables.issue({ id, tenantId: ctx.tenantId, payeeId, entityId, issuedAt, dueAt, currency, lines, memo: this.optString(body, 'memo') });
           if (poId) this.procurement.recordBilling(poId, bill.totalCents, issuedAt);
           return bill;
@@ -2131,8 +2149,14 @@ export class App {
     this.add('POST', '/exceptions/:id/approve', 'exception.approve', (ctx, p, body) => {
       const item = this.exceptions.get(p['id']!); // throws -> 409 if unknown
       if ((item.ctx as { tenantId?: string }).tenantId !== ctx.tenantId) throw new HttpError(404, 'exception not found');
+      // A REHYDRATED escalation (parked before a restart) no longer carries its
+      // deferred operation — a closure cannot be persisted. Approving it records
+      // the human decision; `executed:false` tells the operator the underlying
+      // action must be RE-INITIATED (a regulated action re-escalates and the
+      // fresh escalation carries a live thunk to approve).
+      const executed = this.exceptions.hasThunk(p['id']!);
       const result = this.exceptions.approve(p['id']!, ctx.actor, this.now(), this.optString(body, 'note'));
-      return { status: 200, body: { status: 'approved', result: result ?? null } };
+      return { status: 200, body: { status: 'approved', executed, result: result ?? null } };
     });
 
     // Run the overdue-collections sweep. A scheduler (a Supabase pg_cron job or any
@@ -2186,7 +2210,11 @@ export class App {
     const ids = new Set([...this.agreements.values()].filter((e) => e.tenantId === tenantId).map((e) => e.agreement.id));
     const balances: Record<string, number> = {};
     for (const line of this.ledger.allLines) {
-      if (!line.agreementId || !ids.has(line.agreementId)) continue;
+      // A line is this tenant's through its agreement OR — for agreement-less
+      // accounts-payable entries — through its own tenant tag; omitting the
+      // latter silently understated cash/expenses while still netting to zero.
+      const mine = (line.agreementId != null && ids.has(line.agreementId)) || line.tenantId === tenantId;
+      if (!mine) continue;
       balances[line.account] = (balances[line.account] ?? 0) + line.debitCents - line.creditCents;
     }
     const net = Object.values(balances).reduce((s, v) => s + v, 0);
@@ -2284,9 +2312,11 @@ export class App {
         events: e.agreement.history.slice(since?.events[e.agreement.id] ?? 0),
       })),
       holds: this.calendar.allHolds().filter((h) => agreementIds.has(h.holderId)),
-      // Tenant-scoped journal lines are append-ordered; slice the tail past the mark.
+      // Tenant-scoped journal lines are append-ordered; slice the tail past the
+      // mark. A line belongs to the tenant through its agreement OR — for the
+      // agreement-less accounts-payable entries — through its own tenant tag.
       journalLines: this.ledger.allLines
-        .filter((l) => l.agreementId != null && agreementIds.has(l.agreementId))
+        .filter((l) => (l.agreementId != null && agreementIds.has(l.agreementId)) || l.tenantId === tenantId)
         .slice(since?.journalLines ?? 0),
       // Invoice rows always sent (upserted for status); their lines only for
       // invoices not yet flushed (invoice_line is append-only, no natural key).
@@ -2298,6 +2328,9 @@ export class App {
       // Tenant-scoped: the action log is a shared append-only stream, so filter
       // to THIS tenant before slicing the tail past the (per-tenant) mark.
       actionLog: this.runtime.actionLogFor(tenantId).slice(since?.actionLog ?? 0),
+      // Policy escalations (pending + resolved) — always sent (upserted for the
+      // status change) so a restart never silently drops a parked human decision.
+      exceptions: this.exceptions.all().filter((i) => (i.ctx as { tenantId?: string }).tenantId === tenantId),
       // --- master-data reshape v2 (all upserted, so always safe to resend) ----
       legalEntities: this.entities.listEntities(tenantId),
       parties: this.parties.listParties(tenantId),
@@ -2402,6 +2435,7 @@ export class App {
     this.integrations.hydrate((world.integrations ?? []) as never);
     this.connectorOutbox.hydrate((world.connectorCommands ?? []) as never);
     this.notifications.hydrate((world.notifications ?? []) as never);
+    this.exceptions.hydrate((world.exceptions ?? []) as never);
     this.runtime.hydrateLog(world.actionLog);
   }
 
@@ -2413,7 +2447,9 @@ export class App {
     for (const e of mine) events[e.agreement.id] = e.agreement.history.length;
     return {
       events,
-      journalLines: this.ledger.allLines.filter((l) => l.agreementId != null && agreementIds.has(l.agreementId)).length,
+      // MUST use the same predicate as snapshotWorld's journalLines filter,
+      // or the incremental slice would drift (AP lines count here too).
+      journalLines: this.ledger.allLines.filter((l) => (l.agreementId != null && agreementIds.has(l.agreementId)) || l.tenantId === tenantId).length,
       actionLog: this.runtime.actionLogFor(tenantId).length,
       invoiceLines: this.billing.allInvoices().filter((i) => i.tenantId === tenantId).map((i) => i.id),
       bills: this.payables.allBills().filter((b) => b.tenantId === tenantId).map((b) => b.id),
@@ -2460,6 +2496,20 @@ export class App {
    */
   async flushWorld(tenantId: string): Promise<Record<string, unknown>> {
     if (!this.persistence) throw new HttpError(501, 'no_persistence_backend');
+    // SERIALIZE per tenant: two overlapping flushes (a debounced write-triggered
+    // one racing the periodic safety flush) would both snapshot the same delta
+    // before either advances the mark, double-sending the append-only streams
+    // (journal_line/agreement_event/action_log have no natural key, so the
+    // duplicates would stick and double balances on the next boot). Each flush
+    // therefore queues behind the tenant's in-flight one and re-reads the mark
+    // only once it is its turn.
+    const prev = this.flushInFlight.get(tenantId) ?? Promise.resolve();
+    const run = prev.catch(() => undefined).then(() => this.flushWorldSerial(tenantId));
+    this.flushInFlight.set(tenantId, run.then(() => undefined, () => undefined));
+    return run;
+  }
+
+  private async flushWorldSerial(tenantId: string): Promise<Record<string, unknown>> {
     const mark = this.flushMarks.get(tenantId);
     const world = this.snapshotWorld(tenantId, mark);
     const nextMark = this.highWaterMark(tenantId);
@@ -2469,7 +2519,7 @@ export class App {
       actionLog: world.actionLog.length,
       invoices: world.invoices.length,
     };
-    const result = await this.persistence.persist(world);
+    const result = await this.persistence!.persist(world);
     this.flushMarks.set(tenantId, nextMark); // advance only after success
     return { ...result, delta, incremental: mark !== undefined };
   }

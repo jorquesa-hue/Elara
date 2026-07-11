@@ -354,6 +354,21 @@ export class Calendar {
 
   hold(h: { id: string; unitId: string; holderId: string; start: string; end: string }): CalendarHold {
     if (this.holds.has(h.id)) throw new AgreementError(`duplicate hold id: ${h.id}`);
+    // The overlap check below compares date strings lexicographically, which is
+    // only sound for ISO-8601. A malformed date ('07/15/2026', 'banana',
+    // '2026-02-30') would silently defeat the no-double-booking guarantee here
+    // (the DB EXCLUDE would still reject it at persist, but invariant 4 must not
+    // depend on reaching the DB), so reject anything that isn't a real ISO date.
+    for (const [label, v] of [['start', h.start], ['end', h.end]] as const) {
+      const shaped = /^\d{4}-\d{2}-\d{2}(T[0-9:.]+(Z|[+-]\d{2}:?\d{2})?)?$/.test(v) && !Number.isNaN(Date.parse(v));
+      // A date-only string must also round-trip: V8 quietly parses '2026-02-30'
+      // as March 2nd, but the DB daterange cast would reject it — same guarantee,
+      // both layers.
+      const canonical = v.length !== 10 || new Date(v).toISOString().slice(0, 10) === v;
+      if (!shaped || !canonical) {
+        throw new AgreementError(`hold ${h.id}: ${label} must be an ISO-8601 date, got '${v}'`);
+      }
+    }
     if (h.start >= h.end) throw new AgreementError(`hold ${h.id}: start must be before end`);
     for (const existing of this.holds.values()) {
       if (

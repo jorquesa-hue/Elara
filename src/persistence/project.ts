@@ -19,6 +19,7 @@ import type { Invoice } from '../billing.ts';
 import type { Payment } from '../payments.ts';
 import type { Deposit } from '../deposits.ts';
 import type { ActionLogRecord } from '../agent-runtime.ts';
+import type { ExceptionItem } from '../exception-queue.ts';
 
 export interface WorldData {
   tenants: Array<{
@@ -50,6 +51,10 @@ export interface WorldData {
   payments: readonly Payment[];
   deposits: readonly Deposit[];
   actionLog: readonly ActionLogRecord[];
+  /** Policy escalations (pending + resolved) — persisted so a restart never
+   *  silently drops a parked human decision. Rehydrated items carry no deferred
+   *  thunk; approval then records the decision without auto-executing. */
+  exceptions?: readonly ExceptionItem[];
   // --- master-data reshape v2 (all optional → backward compatible) ---------
   legalEntities?: Array<{ id: string; tenantId: string; role: string; name: string; taxId?: string }>;
   parties?: Array<{
@@ -267,12 +272,13 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       ),
     );
   }
-  // journal_line.id is identity; agreement_id FK is nullable.
+  // journal_line.id is identity; agreement_id FK is nullable. tenant_id carries
+  // the owner for agreement-less (accounts-payable) lines.
   for (const l of w.journalLines) {
     out.push(
       stmt(
-        'insert into journal_line (entry_id, account, debit_cents, credit_cents, currency, agreement_id, memo, posted_at) values ($1, $2, $3, $4, $5, $6, $7, $8)',
-        [l.entryId, l.account, l.debitCents, l.creditCents, l.currency, l.agreementId ?? null, l.memo ?? null, l.postedAt],
+        'insert into journal_line (entry_id, account, debit_cents, credit_cents, currency, agreement_id, tenant_id, memo, posted_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+        [l.entryId, l.account, l.debitCents, l.creditCents, l.currency, l.agreementId ?? null, l.tenantId ?? null, l.memo ?? null, l.postedAt],
       ),
     );
   }
@@ -466,6 +472,14 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       stmt(
         'insert into signature_envelope (id, tenant_id, document_name, provider, provider_ref, lead_id, agreement_id, signers, status, created_at, sent_at, completed_at, void_reason, decline_reason) values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12, $13, $14) on conflict (id) do update set provider_ref = excluded.provider_ref, signers = excluded.signers, status = excluded.status, sent_at = excluded.sent_at, completed_at = excluded.completed_at, void_reason = excluded.void_reason, decline_reason = excluded.decline_reason',
         [e.id, e.tenantId, e.documentName, e.provider, e.providerRef ?? null, e.leadId ?? null, e.agreementId ?? null, JSON.stringify(e.signers ?? []), e.status, e.createdAt, e.sentAt ?? null, e.completedAt ?? null, e.voidReason ?? null, e.declineReason ?? null],
+      ),
+    );
+  }
+  for (const x of w.exceptions ?? []) {
+    out.push(
+      stmt(
+        'insert into exception_item (id, action, ctx, reason, status, created_at, resolved_at, resolved_by, note) values ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9) on conflict (id) do update set status = excluded.status, resolved_at = excluded.resolved_at, resolved_by = excluded.resolved_by, note = excluded.note',
+        [x.id, x.action, JSON.stringify(x.ctx ?? {}), x.reason, x.status, x.createdAt, x.resolvedAt ?? null, x.resolvedBy ?? null, x.note ?? null],
       ),
     );
   }

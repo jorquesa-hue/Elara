@@ -88,10 +88,13 @@ export class Payables {
       memo: input.memo,
     };
 
+    // AP entries have no agreement, so the tenant tag is the ONLY thing that
+    // scopes them into tenant-level reads (trial balance, persistence snapshot).
     this.ledger.post({
       entryId: `bill-${input.id}`,
       postedAt: input.issuedAt,
       currency: bill.currency,
+      tenantId: bill.tenantId,
       memo: input.memo ?? `bill ${input.id}`,
       lines: [
         ...input.lines.map((l) => ({ account: l.account, debitCents: l.amountCents, memo: l.description })),
@@ -132,6 +135,7 @@ export class Payables {
       entryId: `appay-${input.id}`,
       postedAt: input.paidAt,
       currency: bill.currency,
+      tenantId: bill.tenantId,
       memo: `ap payment ${input.id} on bill ${input.billId}`,
       lines: [
         { account: ACCOUNTS.accountsPayable, debitCents: input.amountCents },

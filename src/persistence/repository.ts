@@ -109,13 +109,14 @@ export class Repositories {
     return rows.map((r) => String(r['id']));
   }
 
-  /** Tenant-scoped trial balance from journal_line joined to this tenant's agreements. */
+  /** Tenant-scoped trial balance: lines scoped through their agreement OR — for
+   *  agreement-less accounts-payable entries — their own tenant_id tag. */
   async loadTrialBalance(): Promise<TrialBalance> {
     const rows = await this.q.query({
       text: `select jl.account as account, sum(jl.debit_cents - jl.credit_cents) as net
              from journal_line jl
-             join agreement a on a.id = jl.agreement_id
-             where a.tenant_id = $1
+             left join agreement a on a.id = jl.agreement_id
+             where a.tenant_id = $1 or jl.tenant_id = $1
              group by jl.account`,
       values: [this.tenantId],
     });
@@ -169,7 +170,9 @@ export class Repositories {
       });
     }
     const holds = await this.activeHoldsAll();
-    const journalLines = (await one(`select jl.entry_id, jl.account, jl.debit_cents, jl.credit_cents, jl.currency, jl.agreement_id, jl.memo, jl.posted_at from journal_line jl join agreement a on a.id = jl.agreement_id where a.tenant_id = $1 order by jl.entry_id`)).map((r) => ({ entryId: String(r['entry_id']), account: String(r['account']), debitCents: Number(r['debit_cents']), creditCents: Number(r['credit_cents']), currency: String(r['currency']), agreementId: s(r['agreement_id']) ?? null, memo: s(r['memo']) ?? null, postedAt: toIso(r['posted_at']) }));
+    // LEFT join: accounts-payable lines have no agreement — they are scoped by
+    // their own tenant_id tag (an inner join silently dropped all AP history).
+    const journalLines = (await one(`select jl.entry_id, jl.account, jl.debit_cents, jl.credit_cents, jl.currency, jl.agreement_id, jl.tenant_id, jl.memo, jl.posted_at from journal_line jl left join agreement a on a.id = jl.agreement_id where a.tenant_id = $1 or jl.tenant_id = $1 order by jl.id`)).map((r) => ({ entryId: String(r['entry_id']), account: String(r['account']), debitCents: Number(r['debit_cents']), creditCents: Number(r['credit_cents']), currency: String(r['currency']), agreementId: s(r['agreement_id']) ?? null, tenantId: s(r['tenant_id']), memo: s(r['memo']) ?? null, postedAt: toIso(r['posted_at']) }));
 
     const invRows = await one('select id, agreement_id, tenant_id, issued_at, due_at, currency, total_cents, paid_cents, status, receiving_entity_id from invoice where tenant_id = $1');
     const invoices = [];
@@ -201,11 +204,14 @@ export class Repositories {
 
     const workOrders = (await one('select id, tenant_id, space_id, title, description, category, priority, status, requested_by_party_id, assigned_vendor_party_id, bill_id, opened_at, assigned_at, started_at, closed_at, resolution, cancel_reason from work_order where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, spaceId: s(r['space_id']), title: String(r['title']), description: s(r['description']), category: s(r['category']), priority: String(r['priority']), status: String(r['status']), requestedByPartyId: s(r['requested_by_party_id']), assignedVendorPartyId: s(r['assigned_vendor_party_id']), billId: s(r['bill_id']), openedAt: toIso(r['opened_at']), assignedAt: r['assigned_at'] == null ? undefined : toIso(r['assigned_at']), startedAt: r['started_at'] == null ? undefined : toIso(r['started_at']), closedAt: r['closed_at'] == null ? undefined : toIso(r['closed_at']), resolution: s(r['resolution']), cancelReason: s(r['cancel_reason']) }));
     const notifications = (await one('select id, tenant_id, channel, recipient, kind, data, status, created_at, sent_at, failed_reason, provider_ref from notification where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, channel: String(r['channel']), to: String(r['recipient']), kind: String(r['kind']), data: obj(r['data']), status: String(r['status']), createdAt: toIso(r['created_at']), sentAt: r['sent_at'] == null ? undefined : toIso(r['sent_at']), failedReason: s(r['failed_reason']), providerRef: s(r['provider_ref']) }));
+    // Escalations are tenant-scoped through their policy ctx (jsonb tenantId).
+    const exceptions = (await one("select id, action, ctx, reason, status, created_at, resolved_at, resolved_by, note from exception_item where ctx->>'tenantId' = $1")).map((r) => ({ id: String(r['id']), action: String(r['action']), ctx: obj(r['ctx']), reason: String(r['reason']), status: String(r['status']), createdAt: toIso(r['created_at']), resolvedAt: r['resolved_at'] == null ? undefined : toIso(r['resolved_at']), resolvedBy: s(r['resolved_by']), note: s(r['note']) }));
+
     // Tenant-scoped: the action log is a shared append-only stream, so it MUST
     // filter by tenant_id or a cold-start would rehydrate every tenant's audit.
     const actionLog = (await one('select seq, tenant_id, at, actor, action, effect, rule_id, outcome, reason, exception_id from action_log where tenant_id = $1 order by seq')).map((r) => ({ seq: Number(r['seq']), tenantId: tid, at: toIso(r['at']), actor: String(r['actor']), action: String(r['action']), effect: String(r['effect']), ruleId: s(r['rule_id']) ?? null, outcome: String(r['outcome']), reason: String(r['reason']), exceptionId: s(r['exception_id']) ?? null }));
 
-    return { tenants, units, guests, ratePlans, users, customRoles, legalEntities, parties, spaces, chargeTypes, agreements, holds, journalLines, invoices, payments, deposits, bills, apPayments, agreementParties, pricingRules, purchaseOrders, budgets, prospects, leads, integrations, connectorCommands, signatureEnvelopes, workOrders, notifications, actionLog } as unknown as WorldData;
+    return { tenants, units, guests, ratePlans, users, customRoles, legalEntities, parties, spaces, chargeTypes, agreements, holds, journalLines, invoices, payments, deposits, bills, apPayments, agreementParties, pricingRules, purchaseOrders, budgets, prospects, leads, integrations, connectorCommands, signatureEnvelopes, workOrders, notifications, exceptions, actionLog } as unknown as WorldData;
   }
 
   private async activeHoldsAll(): Promise<CalendarHold[]> {

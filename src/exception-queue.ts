@@ -50,6 +50,30 @@ export class ExceptionQueue {
     return [...this.items.values()].filter((i) => i.status === 'pending').map((i) => ({ ...i }));
   }
 
+  /** Every item, resolved or not — the persistence snapshot (items are never
+   *  deleted; resolution is a state change, so the whole queue is the record). */
+  all(): readonly ExceptionItem[] {
+    return [...this.items.values()].map((i) => ({ ...i }));
+  }
+
+  /** Whether an item still carries its deferred operation. A rehydrated item
+   *  never does (a closure cannot be persisted) — approving it records the
+   *  human decision without auto-executing; the operator re-runs the action. */
+  hasThunk(id: string): boolean {
+    return this.thunks.has(id);
+  }
+
+  /** Load stored items for cold-start rehydration. Deferred thunks are gone —
+   *  see hasThunk(). The id counter resumes past the highest loaded exc-N so
+   *  new escalations never collide with rehydrated ones. */
+  hydrate(items: readonly ExceptionItem[]): void {
+    for (const i of items) {
+      this.items.set(i.id, { ...i });
+      const n = /^exc-(\d+)$/.exec(i.id);
+      if (n) this.counter = Math.max(this.counter, Number(n[1]));
+    }
+  }
+
   get(id: string): ExceptionItem {
     const item = this.items.get(id);
     if (!item) throw new ExceptionQueueError(`unknown exception: ${id}`);

@@ -161,13 +161,21 @@ export class Procurement {
     return this.get(id);
   }
 
-  /** Record that AP billed `amountCents` against this PO. When fully billed the
-   *  PO auto-closes (its commitment is now an actual). */
-  recordBilling(id: string, amountCents: number, at: string): PurchaseOrder {
+  /** Pure pre-check: would recordBilling(id, amountCents) succeed right now?
+   *  Lets a caller validate BEFORE posting the bill's GL entry, so a bill+PO
+   *  request is atomic (never a booked bill whose PO accrual then fails). */
+  assertCanBill(id: string, amountCents: number): void {
     const po = this.mutable(id);
     if (po.status !== 'approved' && po.status !== 'received') throw new ProcurementError(`purchase order ${id} is ${po.status}; cannot bill against it`);
     if (amountCents <= 0) throw new ProcurementError('billed amount must be positive');
     if (po.billedCents + amountCents > po.totalCents) throw new ProcurementError(`billing would exceed purchase order ${id} total`);
+  }
+
+  /** Record that AP billed `amountCents` against this PO. When fully billed the
+   *  PO auto-closes (its commitment is now an actual). */
+  recordBilling(id: string, amountCents: number, at: string): PurchaseOrder {
+    this.assertCanBill(id, amountCents);
+    const po = this.mutable(id);
     po.billedCents += amountCents;
     if (po.billedCents === po.totalCents) { po.status = 'closed'; po.closedAt = at; }
     return this.get(id);

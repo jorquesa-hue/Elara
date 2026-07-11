@@ -33,6 +33,7 @@ interface JournalLine {
   creditCents: number;
   currency: string;
   agreementId?: string | null;
+  tenantId?: string | null;
   memo?: string | null;
   postedAt: string;
 }
@@ -117,6 +118,10 @@ export interface WorldData {
   payments: readonly Payment[];
   deposits: readonly Deposit[];
   actionLog: readonly ActionLogRecord[];
+  exceptions?: ReadonlyArray<{
+    id: string; action: string; ctx: Record<string, unknown>; reason: string;
+    status: string; createdAt: string; resolvedAt?: string; resolvedBy?: string; note?: string;
+  }>;
   legalEntities?: Array<{ id: string; tenantId: string; role: string; name: string; taxId?: string }>;
   parties?: Array<{
     id: string; tenantId: string; kind: string; displayName: string;
@@ -334,8 +339,8 @@ export function projectWorld(w: WorldData): SqlStatement[] {
   for (const l of w.journalLines) {
     out.push(
       stmt(
-        'insert into journal_line (entry_id, account, debit_cents, credit_cents, currency, agreement_id, memo, posted_at) values ($1, $2, $3, $4, $5, $6, $7, $8)',
-        [l.entryId, l.account, l.debitCents, l.creditCents, l.currency, l.agreementId ?? null, l.memo ?? null, l.postedAt],
+        'insert into journal_line (entry_id, account, debit_cents, credit_cents, currency, agreement_id, tenant_id, memo, posted_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+        [l.entryId, l.account, l.debitCents, l.creditCents, l.currency, l.agreementId ?? null, l.tenantId ?? null, l.memo ?? null, l.postedAt],
       ),
     );
   }
@@ -532,6 +537,14 @@ export function projectWorld(w: WorldData): SqlStatement[] {
     );
   }
   // action_log.seq is identity; insert in the runtime's recorded order.
+  for (const x of w.exceptions ?? []) {
+    out.push(
+      stmt(
+        'insert into exception_item (id, action, ctx, reason, status, created_at, resolved_at, resolved_by, note) values ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9) on conflict (id) do update set status = excluded.status, resolved_at = excluded.resolved_at, resolved_by = excluded.resolved_by, note = excluded.note',
+        [x.id, x.action, JSON.stringify(x.ctx ?? {}), x.reason, x.status, x.createdAt, x.resolvedAt ?? null, x.resolvedBy ?? null, x.note ?? null],
+      ),
+    );
+  }
   for (const r of [...w.actionLog].sort((x, y) => x.seq - y.seq)) {
     out.push(
       stmt(

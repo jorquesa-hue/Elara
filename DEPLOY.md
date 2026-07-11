@@ -120,6 +120,17 @@ Notes:
   the newer asymmetric signing keys (RS256/ES256 + JWKS), keep the legacy JWT secret
   enabled, or extend `JwtAuthenticator` with JWKS verification.
 
+## Escalations across restarts
+
+Parked policy escalations (the human-approval queue) are persisted
+(`exception_item`) and rehydrated on boot, so a restart never silently drops a
+pending decision. One nuance: a rehydrated escalation no longer carries its
+deferred operation (a closure cannot be persisted), so approving it returns
+`{status:"approved", executed:false}` — the decision is recorded and audited, but
+the operator must re-initiate the underlying action (it re-escalates with a live
+operation attached, and approving that one executes it, `executed:true`). Nothing
+is ever silently marked done.
+
 ## Privacy — data-subject rights (LGPD / GDPR)
 
 Two operator endpoints handle data-subject requests, both gated on a DPO

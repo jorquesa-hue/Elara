@@ -19,7 +19,11 @@ async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknow
     const buf = chunk as Buffer;
     total += buf.length;
     if (total > MAX_BODY_BYTES) {
-      req.destroy();
+      // Stop consuming, but do NOT destroy the socket here — the caller still
+      // has to WRITE the 413 (destroying first made clients see ECONNRESET
+      // instead of the documented response). req.pause() halts the flood; the
+      // response path closes the connection after the 413 is flushed.
+      req.pause();
       throw new PayloadTooLargeError('request body exceeds 1 MiB limit');
     }
     chunks.push(buf);
@@ -55,6 +59,7 @@ export function createHttpServer(app: App, hooks: HttpHooks = {}): Server {
       const bearer = req.headers['authorization'];
       const method = req.method ?? 'GET';
       let response;
+      let closeAfter = false;
       try {
         const body = method === 'GET' || method === 'HEAD' ? {} : await readJsonBody(req);
         const apiReq = { method, path, body, bearer };
@@ -64,19 +69,28 @@ export function createHttpServer(app: App, hooks: HttpHooks = {}): Server {
             ? await app.persist(apiReq)
             : app.dispatch(apiReq);
       } catch (e) {
-        response =
-          e instanceof PayloadTooLargeError
-            ? { status: 413, body: { error: e.message } }
-            : { status: 400, body: { error: e instanceof Error ? e.message : 'bad request' } };
+        if (e instanceof PayloadTooLargeError) {
+          // The client may still be streaming the oversized body; answer 413,
+          // then close the connection once the response has flushed (keep-alive
+          // can't be honored with an unconsumed request body).
+          response = { status: 413, body: { error: e.message }, headers: { connection: 'close' } };
+          closeAfter = true;
+        } else {
+          response = { status: 400, body: { error: e instanceof Error ? e.message : 'bad request' } };
+        }
       }
       // A string body is written verbatim (e.g. Prometheus text at /metrics); any
       // other body is JSON-encoded. Handler-supplied headers (Retry-After, a
       // non-JSON content-type) merge over the JSON default.
       const isString = typeof response.body === 'string';
-      const headers: Record<string, string> = { 'content-type': 'application/json', ...(response.headers ?? {}) };
+      const headers: Record<string, string> = { 'content-type': 'application/json', ...((response as { headers?: Record<string, string> }).headers ?? {}) };
       const payload = isString ? (response.body as string) : JSON.stringify(response.body);
       res.writeHead(response.status, headers);
-      res.end(payload);
+      res.end(payload, () => {
+        // Only after the response has flushed may an over-limit connection be
+        // torn down — destroying earlier loses the 413 (client sees a reset).
+        if (closeAfter) req.destroy();
+      });
       try { hooks.onResponse?.({ method, path, status: response.status, bearer }); } catch { /* hook must never break a response */ }
     })();
   });
