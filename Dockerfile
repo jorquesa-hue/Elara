@@ -4,11 +4,13 @@
 # DATABASE_URL is set). Writes go through the persist-world Edge Function.
 FROM node:22-slim
 
-ENV NODE_ENV=production
 WORKDIR /app
 
-# Install deps first for layer caching. Include optional deps so `pg` is available
-# for the read/boot path.
+# Install deps first for layer caching. tsx is a devDependency — there is no
+# compile step, the entrypoint runs directly under it — so devDependencies MUST
+# be installed. NODE_ENV=production makes `npm ci` silently strip devDependencies
+# regardless of --include=optional (that flag only affects optionalDependencies),
+# so NODE_ENV is set only AFTER install, for the running process's own behavior.
 COPY package.json package-lock.json ./
 RUN npm ci --include=optional
 
@@ -18,6 +20,7 @@ COPY src ./src
 
 # Runs src/api/main.ts under tsx (see the "start" script). main.ts reads its
 # configuration from the environment (JWT_SECRET, SUPABASE_*, DATABASE_URL, …).
+ENV NODE_ENV=production
 EXPOSE 8080
 ENV PORT=8080
 CMD ["npm", "start"]
