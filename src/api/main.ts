@@ -53,16 +53,36 @@ async function main(): Promise<void> {
   }
 
   // Read arm: Postgres for cold-start rehydration. Optional — without it we boot
-  // from empty (a brand-new deployment).
+  // from empty (a brand-new deployment). RESILIENT BY DESIGN: an unreachable or
+  // misconfigured DATABASE_URL must never crash-loop the whole service into a 502
+  // — the reader is only the RELOAD path (writes flush through the edge function
+  // regardless), so on failure we log the exact reason, surface it on GET /health
+  // as rehydration:"degraded: …", and serve anyway. Fix the URL, restart, and
+  // /health flips to rehydration:"ok".
   let reader: WorldReader | undefined;
   let tenantIds: string[] = [];
+  let rehydration = 'disabled (no DATABASE_URL)';
   const dbUrl = process.env.DATABASE_URL;
   if (dbUrl) {
-    const executor = new PgQueryExecutor(dbUrl);
-    reader = { loadWorld: (tenantId: string) => new Repositories(executor, tenantId).loadWorld() };
-    tenantIds = process.env.BOOT_TENANTS
-      ? process.env.BOOT_TENANTS.split(',').map((s) => s.trim()).filter(Boolean)
-      : (await executor.query({ text: 'select id from tenant order by id', values: [] })).map((r) => String(r['id']));
+    try {
+      const executor = new PgQueryExecutor(dbUrl);
+      tenantIds = process.env.BOOT_TENANTS
+        ? process.env.BOOT_TENANTS.split(',').map((s) => s.trim()).filter(Boolean)
+        : (await executor.query({ text: 'select id from tenant order by id', values: [] })).map((r) => String(r['id']));
+      reader = { loadWorld: (tenantId: string) => new Repositories(executor, tenantId).loadWorld() };
+      rehydration = tenantIds.length > 0 ? `pending (${tenantIds.length} tenant(s))` : 'ok (no tenants yet)';
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : String(e);
+      reader = undefined;
+      tenantIds = [];
+      rehydration = `degraded: ${reason}`;
+      console.error(
+        `BOOT DEGRADED: DATABASE_URL is set but unreachable (${reason}). ` +
+          'Serving WITHOUT cold-start rehydration — durable writes still flow through the edge function. ' +
+          'Hint: on Fly/serverless use the Supabase CONNECTION POOLER string (…pooler.supabase.com, user postgres.<ref>), ' +
+          'not the IPv6-only direct db.<ref>.supabase.co host, and URL-encode special characters in the password.',
+      );
+    }
   }
 
   // Auth config for the portal login screen. With SUPABASE_URL + SUPABASE_ANON_KEY
@@ -82,14 +102,18 @@ async function main(): Promise<void> {
     : undefined;
 
   const app = new App({ authenticator, persistence, adapters: defaultAdapterRegistry(), authConfig, observability, rateLimit });
+  app.health['durableWrites'] = persistence ? 'ok (edge backend)' : 'DISABLED (no SUPABASE_FUNCTIONS_URL/SERVICE_ROLE_KEY)';
+  app.health['rehydration'] = rehydration;
 
-  observability.logger.info('starting', { port, durable: !!persistence, bootTenants: tenantIds.length, rateLimited: !!rateLimit });
+  observability.logger.info('starting', { port, durable: !!persistence, bootTenants: tenantIds.length, rehydration, rateLimited: !!rateLimit });
 
   const server = new StayServer(app, {
     reader,
     tenantIds,
     flushDebounceMs: Number(process.env.FLUSH_DEBOUNCE_MS ?? 1500),
     periodicFlushMs: Number(process.env.PERIODIC_FLUSH_MS ?? 30_000),
+    // A rehydration failure must degrade (visible on /health), never crash-loop.
+    onBootError: 'serve',
   });
 
   await server.start(port);

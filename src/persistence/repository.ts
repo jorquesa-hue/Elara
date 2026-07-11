@@ -51,6 +51,9 @@ export class PgQueryExecutor implements QueryExecutor {
         const isLocal = /@(localhost|127\.0\.0\.1|\[::1\]|\[?::1\]?)[:/]/.test(this.connectionString);
         const c = new Client({
           connectionString: this.connectionString,
+          // Fail fast: a black-holed host must surface as an error in seconds
+          // (the boot path degrades gracefully on it), never hang the process.
+          connectionTimeoutMillis: 10_000,
           ...(isLocal ? {} : { ssl: { rejectUnauthorized: false } }),
         });
         await c.connect();

@@ -714,8 +714,12 @@ export class App {
     return out;
   }
 
+  /** Deployment-visible health detail merged into GET /health (e.g. the lifecycle
+   *  reports whether cold-start rehydration ran, degraded, or was disabled). */
+  readonly health: Record<string, unknown> = {};
+
   private registerRoutes(): void {
-    this.add('GET', '/health', null, () => ({ status: 200, body: { ok: true } }));
+    this.add('GET', '/health', null, () => ({ status: 200, body: { ok: true, ...this.health } }));
 
     // Process-wide operational metrics in Prometheus text format. Aggregate counts
     // (requests, latencies, policy decisions, rate-limits) — not tenant records —

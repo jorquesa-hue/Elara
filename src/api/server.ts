@@ -27,6 +27,12 @@ export interface StayServerOptions {
   flushDebounceMs?: number;
   /** Safety-net interval to flush any still-dirty tenant (ms). Default 30000. 0 disables. */
   periodicFlushMs?: number;
+  /** What to do when cold-start rehydration fails (DB unreachable, bad
+   *  credentials, mid-load error): 'fail' rejects start() — the historical
+   *  behavior — while 'serve' logs the error loudly, marks /health as degraded,
+   *  and starts anyway (durable WRITES still flow through the edge backend; only
+   *  the reload of pre-restart state is missing). Default 'fail'. */
+  onBootError?: 'fail' | 'serve';
   /** Structured log sink; defaults to console. */
   logger?: { info(msg: string, meta?: unknown): void; error(msg: string, meta?: unknown): void };
 }
@@ -42,7 +48,7 @@ export class StayServer {
 
   constructor(app: App, options: StayServerOptions = {}) {
     this.app = app;
-    this.opts = { flushDebounceMs: 1500, periodicFlushMs: 30_000, ...options };
+    this.opts = { flushDebounceMs: 1500, periodicFlushMs: 30_000, onBootError: 'fail', ...options };
     this.log = options.logger ?? console;
   }
 
@@ -50,8 +56,20 @@ export class StayServer {
   async start(port: number): Promise<Server> {
     if (this.opts.reader && (this.opts.tenantIds?.length ?? 0) > 0) {
       const t0 = this.opts.tenantIds!;
-      await this.app.boot(this.opts.reader, t0);
-      this.log.info(`booted: rehydrated ${t0.length} tenant(s)`);
+      try {
+        await this.app.boot(this.opts.reader, t0);
+        this.log.info(`booted: rehydrated ${t0.length} tenant(s)`);
+        this.app.health['rehydration'] = `ok (${t0.length} tenant(s))`;
+      } catch (e) {
+        if ((this.opts.onBootError ?? 'fail') === 'fail') throw e;
+        const reason = e instanceof Error ? e.message : String(e);
+        // Serve rather than crash-loop: the operator gets a working portal and a
+        // visible diagnosis instead of a 502. Durable writes still flush through
+        // the edge backend; only pre-restart state is missing until the reader
+        // (DATABASE_URL) is fixed and the process restarts.
+        this.log.error('BOOT DEGRADED: cold-start rehydration failed; serving without it', reason);
+        this.app.health['rehydration'] = `degraded: ${reason}`;
+      }
     }
 
     this.server = createHttpServer(this.app, {
