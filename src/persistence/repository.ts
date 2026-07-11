@@ -43,7 +43,16 @@ export class PgQueryExecutor implements QueryExecutor {
         // @ts-expect-error optional peer dependency, resolved at runtime
         const pg = await import('pg');
         const Client = pg.default?.Client ?? pg.Client;
-        const c = new Client({ connectionString: this.connectionString });
+        // Managed Postgres (Supabase et al.) requires TLS. Enable it for any
+        // non-local host; rejectUnauthorized:false trusts the provider's cert
+        // chain without bundling a CA (standard for Supabase pooler connections).
+        // NOTE: on a serverless/IPv6-limited host (Fly), use the CONNECTION POOLER
+        // string (IPv4), not the direct db.<ref>.supabase.co host (IPv6-only).
+        const isLocal = /@(localhost|127\.0\.0\.1|\[::1\]|\[?::1\]?)[:/]/.test(this.connectionString);
+        const c = new Client({
+          connectionString: this.connectionString,
+          ...(isLocal ? {} : { ssl: { rejectUnauthorized: false } }),
+        });
         await c.connect();
         return c;
       })();
