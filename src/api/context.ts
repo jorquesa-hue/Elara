@@ -3,7 +3,7 @@
 // deny-by-default RLS — no tenant claim, no access). Roles gate sensitive
 // operations: an 'agent' cannot approve its own escalations.
 
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, timingSafeEqual, createPublicKey, verify as cryptoVerify } from 'node:crypto';
 
 // A role id. Built-in ids are suggested for autocomplete; any string is valid so
 // tenants can reference their own custom roles (see src/rbac.ts).
@@ -83,35 +83,83 @@ function b64urlToBuffer(s: string): Buffer {
   return Buffer.from(s, 'base64url');
 }
 
+/** A public key from a JWKS (JSON Web Key Set), used to verify asymmetric JWTs. */
+export type Jwk = Record<string, unknown> & { kid?: string; kty?: string; alg?: string; use?: string };
+
 /**
- * Production authenticator: verifies an HS256-signed JWT with a shared secret
- * (the Supabase JWT secret / GoTrue signing key), then derives the AuthContext
+ * Production authenticator: verifies a signed JWT and derives the AuthContext
  * from its claims. It reads the SAME `tenant_id` claim the DB's RLS keys off, so
  * app-level and row-level tenant isolation agree. `node:crypto` is a platform
  * builtin — no npm dependency is added (invariant 7 stays intact).
  *
- * Deliberately minimal and strict: only HS256, signature + exp/nbf checked, and a
+ * Supports BOTH signing modes Supabase can be configured with:
+ *   • HS256 with a shared secret (the legacy JWT secret / GoTrue HMAC key), and
+ *   • RS256/ES256 with the project's asymmetric SIGNING KEYS, verified against the
+ *     public keys published at the JWKS endpoint (fetched at boot, injected here).
+ * A token is accepted if its alg + key material verify by either path — so a
+ * project on the new asymmetric keys, the legacy secret, or mid-migration all work.
+ *
+ * Deliberately strict: `alg: none` is refused, exp/nbf are checked, and a
  * tenant_id is REQUIRED (no tenant claim → no access, mirroring deny-by-default RLS).
  */
 export class JwtAuthenticator implements Authenticator {
-  private readonly secret: string;
+  private readonly secret?: string;
+  private jwks: Jwk[];
   private readonly now: () => number;
   private readonly claims: JwtClaimMap;
   private readonly leewaySec: number;
 
   constructor(opts: {
-    secret: string;
+    /** HS256 shared secret. Optional if `jwks` is supplied (asymmetric-only project). */
+    secret?: string;
+    /** Public keys for asymmetric (RS256/ES256) verification (from the JWKS endpoint). */
+    jwks?: Jwk[];
     /** Seconds since epoch; defaults to Date.now()/1000. Injectable for tests. */
     now?: () => number;
     claimMap?: Partial<JwtClaimMap>;
     /** Clock-skew tolerance for exp/nbf, in seconds (default 0). */
     leewaySec?: number;
   }) {
-    if (!opts.secret) throw new JwtError('JwtAuthenticator requires a signing secret');
+    if (!opts.secret && !(opts.jwks && opts.jwks.length > 0)) {
+      throw new JwtError('JwtAuthenticator requires a signing secret or a JWKS');
+    }
     this.secret = opts.secret;
+    this.jwks = opts.jwks ?? [];
     this.now = opts.now ?? (() => Math.floor(Date.now() / 1000));
     this.claims = { ...DEFAULT_CLAIM_MAP, ...(opts.claimMap ?? {}) };
     this.leewaySec = opts.leewaySec ?? 0;
+  }
+
+  /** Replace the asymmetric public keys (e.g. after a periodic JWKS refresh). */
+  setJwks(jwks: Jwk[]): void {
+    this.jwks = jwks ?? [];
+  }
+
+  /** Verify the `header.payload` signature for the token's declared algorithm.
+   *  HS256 uses the shared secret (constant-time HMAC); RS/ES families use the
+   *  matching JWKS public key. Any unknown alg (incl. `none`) fails closed. */
+  private verifySignature(alg: string, kid: string | undefined, signingInput: string, sig: Buffer): boolean {
+    if (alg === 'HS256') {
+      if (!this.secret) return false;
+      const expected = createHmac('sha256', this.secret).update(signingInput).digest();
+      return sig.length === expected.length && timingSafeEqual(sig, expected);
+    }
+    const asym = /^(RS|ES)(256|384|512)$/.exec(alg);
+    if (!asym) return false; // reject alg:none and everything unlisted
+    const wantKty = asym[1] === 'RS' ? 'RSA' : 'EC';
+    const jwk = this.jwks.find(
+      (k) => (kid ? k.kid === kid : true) && (k.kty === wantKty) && (k.use === undefined || k.use === 'sig'),
+    );
+    if (!jwk) return false;
+    try {
+      const key = createPublicKey({ key: jwk as never, format: 'jwk' });
+      const data = Buffer.from(signingInput);
+      if (asym[1] === 'RS') return cryptoVerify(`RSA-SHA${asym[2]}`, data, key, sig);
+      // JWT ECDSA signatures are raw r||s (IEEE P1363), not the DER node expects by default.
+      return cryptoVerify(`sha${asym[2]}`, data, { key, dsaEncoding: 'ieee-p1363' }, sig);
+    } catch {
+      return false;
+    }
   }
 
   authenticate(bearer: string | undefined): AuthContext | null {
@@ -121,26 +169,25 @@ export class JwtAuthenticator implements Authenticator {
     if (parts.length !== 3) return null;
     const [headB64, payloadB64, sigB64] = parts as [string, string, string];
 
-    // 1. Header must declare HS256 (we do not accept `alg: none` or others).
+    // 1. Parse the header. typ, when present, must be JWT.
     let header: Record<string, unknown>;
     try {
       header = JSON.parse(b64urlToBuffer(headB64).toString('utf8'));
     } catch {
       return null;
     }
-    if (header['alg'] !== 'HS256' || (header['typ'] !== undefined && header['typ'] !== 'JWT')) {
-      return null;
-    }
+    if (header['typ'] !== undefined && header['typ'] !== 'JWT') return null;
+    const alg = typeof header['alg'] === 'string' ? header['alg'] : '';
+    const kid = typeof header['kid'] === 'string' ? header['kid'] : undefined;
 
-    // 2. Verify the signature over `header.payload` in constant time.
-    const expected = createHmac('sha256', this.secret).update(`${headB64}.${payloadB64}`).digest();
+    // 2. Verify the signature over `header.payload` for the declared algorithm.
     let provided: Buffer;
     try {
       provided = b64urlToBuffer(sigB64);
     } catch {
       return null;
     }
-    if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) return null;
+    if (!this.verifySignature(alg, kid, `${headB64}.${payloadB64}`, provided)) return null;
 
     // 3. Decode + validate temporal claims.
     let payload: Record<string, unknown>;

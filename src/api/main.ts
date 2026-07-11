@@ -35,12 +35,46 @@ function required(name: string): string {
   return v;
 }
 
+/** Fetch the project's JWKS (asymmetric public keys) so the authenticator can
+ *  verify RS256/ES256 tokens. Best-effort: on any failure we log and return [] —
+ *  HS256 (the legacy shared secret) still works, so auth degrades, never breaks. */
+async function fetchJwks(): Promise<import('./context.ts').Jwk[]> {
+  const base = process.env.SUPABASE_URL?.replace(/\/+$/, '');
+  if (!base) return [];
+  const url = `${base}/auth/v1/.well-known/jwks.json`;
+  try {
+    const res = await fetch(url, { headers: process.env.SUPABASE_ANON_KEY ? { apikey: process.env.SUPABASE_ANON_KEY } : {} });
+    if (!res.ok) {
+      console.error(`JWKS fetch ${url} → HTTP ${res.status}; asymmetric tokens will be rejected until this succeeds`);
+      return [];
+    }
+    const body = (await res.json()) as { keys?: unknown };
+    const keys = Array.isArray(body.keys) ? (body.keys as import('./context.ts').Jwk[]) : [];
+    console.info(`JWKS loaded: ${keys.length} signing key(s) from ${url}`);
+    return keys;
+  } catch (e) {
+    console.error(`JWKS fetch failed (${e instanceof Error ? e.message : e}); asymmetric tokens rejected until reachable`);
+    return [];
+  }
+}
+
 async function main(): Promise<void> {
   const port = Number(process.env.PORT ?? 8080);
 
-  // Auth — a real JWT verifier over the platform's signing secret (the SAME claim
-  // the DB RLS keys off). No secret → refuse to start (never silently insecure).
-  const authenticator = new JwtAuthenticator({ secret: required('JWT_SECRET') });
+  // Auth — a real JWT verifier over the platform's signing key(s). Supports BOTH
+  // the legacy HS256 shared secret AND the project's asymmetric SIGNING KEYS
+  // (RS256/ES256), so a Supabase project on either — or mid-migration — works. We
+  // fetch the JWKS (public keys) from the auth endpoint at boot and refresh it
+  // periodically so key rotation never locks users out. No JWT_SECRET → refuse to
+  // start (never silently insecure).
+  const authenticator = new JwtAuthenticator({ secret: required('JWT_SECRET'), jwks: await fetchJwks() });
+  {
+    const refreshMs = Number(process.env.JWKS_REFRESH_MS ?? 6 * 60 * 60_000); // 6h default
+    if (refreshMs > 0) {
+      const t = setInterval(() => void fetchJwks().then((keys) => { if (keys.length) authenticator.setJwks(keys); }), refreshMs);
+      t.unref?.();
+    }
+  }
 
   // Write arm: the persist-world Edge Function (service-role). Optional — without it
   // the process runs in-memory only (fine for a smoke test, not for durability).
