@@ -61,6 +61,9 @@ import { StaticTokenAuthenticator, type Authenticator, type AuthContext } from '
 import { defaultObservability, silentSink, type Observability } from '../observability.ts';
 import { RateLimiter } from '../ratelimit.ts';
 import { buildSubjectAccessReport, redactPartyRecord, redactRecipient, type ErasureReceipt } from '../compliance.ts';
+import { recommendAccess } from '../access-advisor.ts';
+import { buildReport, computeInsights, REPORT_CATALOG, type ReportingInput } from '../reporting.ts';
+import { buildDemoWorld, DEMO_MARKER_UNIT_ID } from '../demo-data.ts';
 
 export interface ApiRequest {
   method: string;
@@ -2182,6 +2185,44 @@ export class App {
       body: meterSubscription(this.masterData.units.list(ctx.tenantId).length, this.plan),
     }));
 
+    // --- self-service reporting + automated insights ----------------------
+    // The report CATALOG (what can be pulled), each report over a window, and the
+    // insight feed (prioritized, explainable findings). Broadly readable (reports.read).
+    this.add('GET', '/reports/catalog', 'reports.read', () => ({ status: 200, body: { reports: REPORT_CATALOG } }));
+
+    this.add('GET', '/reports/insights', 'reports.read', (ctx, _p, body) => {
+      const w = this.reportWindow(this.optString(body, 'from'), this.optString(body, 'to'));
+      return { status: 200, body: { window: w, insights: computeInsights(this.reportingInput(ctx.tenantId, w.from, w.to)) } };
+    });
+
+    this.add('GET', '/reports/:key', 'reports.read', (ctx, p, body) => {
+      const w = this.reportWindow(this.optString(body, 'from'), this.optString(body, 'to'));
+      const report = buildReport(p['key']!, this.reportingInput(ctx.tenantId, w.from, w.to));
+      if (!report) throw new HttpError(404, `unknown report '${p['key']}'`);
+      // Every report ships with the insight feed so a dashboard shows both at once.
+      return { status: 200, body: { report, insights: computeInsights(this.reportingInput(ctx.tenantId, w.from, w.to)) } };
+    });
+
+    // --- access advisor (AI role/permission recommendation) ---------------
+    // Turn a plain-language description of what a person does into a least-privilege
+    // access recommendation (capabilities → permissions, closest built-in role or a
+    // proposed custom role, rationale + risk flags). Advisory only — role.read.
+    this.add('POST', '/access/advise', 'role.read', (_ctx, _p, body) => {
+      const description = this.requireString(body, 'description');
+      return { status: 200, body: recommendAccess(description, this.optString(body, 'roleId')) };
+    });
+
+    // --- sample data (demo seeder) ----------------------------------------
+    // Load a realistic mixed-portfolio sample into an empty tenant so every
+    // surface is populated at once. Idempotent (the `demo-` marker unit guards
+    // re-seeding) and gated by masterdata.manage — the same permission that
+    // governs bulk master-data import. All records book through the normal
+    // kernel path, so seeded data honors the money/inventory invariants.
+    this.add('POST', '/demo/seed', 'masterdata.manage', (ctx, _p, body) => {
+      const at = this.optString(body, 'at') ?? this.now();
+      return { status: 201, body: this.seedDemoData(ctx.tenantId, at) };
+    });
+
     // A reporting-friendly rollup: agreements by kind/status, ledger, master-data
     // counts, subscription — a single call for dashboards and exports.
     this.add('GET', '/reporting/summary', 'ledger.read', (ctx) => {
@@ -2208,6 +2249,122 @@ export class App {
 
   private tenantHasUnits(tenantId: string): boolean {
     return this.masterData.units.list(tenantId).length > 0;
+  }
+
+  /** Gather a tenant's data into the reporting engine's input for a window. */
+  private reportingInput(tenantId: string, from: string, to: string): ReportingInput {
+    const entries = [...this.agreements.values()].filter((e) => e.tenantId === tenantId);
+    const agIds = new Set(entries.map((e) => e.agreement.id));
+    const invoices = this.billing.allInvoices().filter((i) => i.tenantId === tenantId);
+    const invIds = new Set(invoices.map((i) => i.id));
+    const bills = this.payables.allBills().filter((b) => b.tenantId === tenantId);
+    const billIds = new Set(bills.map((b) => b.id));
+    return {
+      now: this.now(),
+      from,
+      to,
+      currency: this.config.get(tenantId).currency,
+      units: this.masterData.units.list(tenantId).map((u) => ({ id: u.id, label: u.label, active: u.active !== false })),
+      agreements: entries.map((e) => ({ id: e.agreement.id, kind: e.agreement.kind, status: e.agreement.status, unitId: e.agreement.currentUnitId, start: e.agreement.period.start, end: e.agreement.period.end, rateCents: e.agreement.rateCents })),
+      invoices: invoices.map((i) => ({ id: i.id, agreementId: i.agreementId, issuedAt: i.issuedAt, dueAt: i.dueAt, totalCents: i.totalCents, paidCents: i.paidCents, status: i.status })),
+      payments: this.payments.all().filter((p) => invIds.has(p.invoiceId)).map((p) => ({ id: p.id, invoiceId: p.invoiceId, amountCents: p.amountCents, receivedAt: p.receivedAt, status: p.status })),
+      deposits: this.deposits.all().filter((d) => agIds.has(d.agreementId)).map((d) => ({ id: d.id, agreementId: d.agreementId, amountCents: d.amountCents, status: d.status, heldAt: d.heldAt, refundedCents: d.refundedCents })),
+      bills: bills.map((b) => ({ id: b.id, payeeId: b.payeeId, totalCents: b.totalCents, paidCents: b.paidCents, status: b.status, issuedAt: b.issuedAt, dueAt: b.dueAt })),
+      apPayments: this.payables.allPayments().filter((p) => billIds.has(p.billId)).map((p) => ({ id: p.id, billId: p.billId, amountCents: p.amountCents, paidAt: p.paidAt, status: p.status })),
+      leads: this.crm.list(tenantId).map((l) => ({ id: l.id, stage: l.stage, estValueCents: l.estValueCents, createdAt: l.createdAt, updatedAt: l.updatedAt })),
+      workOrders: this.maintenance.all().filter((w) => w.tenantId === tenantId).map((w) => ({ id: w.id, status: w.status, priority: w.priority, openedAt: w.openedAt })),
+      holds: this.calendar.allHolds().filter((h) => agIds.has(h.holderId)).map((h) => ({ unitId: h.unitId, start: h.start, end: h.end, status: h.status })),
+      ledgerBalanced: this.trialBalance(tenantId).balanced,
+    };
+  }
+
+  /** Default reporting window: [today-30d, tomorrow) unless from/to are given. */
+  private reportWindow(from?: string, to?: string): { from: string; to: string } {
+    const nowMs = Date.parse(this.now());
+    const day = 86_400_000;
+    const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
+    return { from: from ?? iso(nowMs - 30 * day), to: to ?? iso(nowMs + day) };
+  }
+
+  /**
+   * Seed a tenant with the Ilhabela mixed-portfolio sample. Idempotent: if the
+   * marker unit is already present it returns {seeded:false} and touches nothing.
+   * Records book through the normal kernel stores (Agreement.create, Billing,
+   * Payables, Deposits, …) so seeded data honors every invariant — this is the
+   * same discipline as the onboarding importer, governed by masterdata.manage.
+   */
+  private seedDemoData(tenantId: string, at: string): {
+    seeded: boolean;
+    counts?: Record<string, number>;
+  } {
+    if (this.masterData.units.get(tenantId, DEMO_MARKER_UNIT_ID)) return { seeded: false };
+    const w = buildDemoWorld(tenantId, at);
+    const currency = this.config.get(tenantId).currency;
+    const unitId = (code: string) => `demo-unit-${code}`;
+    const guestId = (code: string) => `demo-guest-${code}`;
+    let payments = 0;
+    let billPayments = 0;
+
+    for (const u of w.units) this.masterData.units.add({ id: unitId(u.code), tenantId, code: u.code, label: u.label, active: u.active });
+    for (const g of w.guests) this.masterData.guests.add({ id: guestId(g.code), tenantId, code: g.code, fullName: g.fullName, email: g.email });
+    for (const p of w.parties) this.parties.addParty({ id: p.id, tenantId, kind: p.kind, displayName: p.displayName, legalName: p.legalName, taxId: p.taxId, email: p.email, phone: p.phone, attributes: p.attributes });
+    for (const pr of w.pricingRules) this.revenue.setRule({ id: pr.id, tenantId, name: pr.name, baseCents: pr.baseCents, minCents: pr.minCents, maxCents: pr.maxCents, weekendFactorBps: pr.weekendFactorBps, occupancyTiers: pr.occupancyTiers, losDiscounts: pr.losDiscounts });
+
+    for (const a of w.agreements) {
+      const ag = Agreement.create({ id: a.id, tenantId, guestId: guestId(a.guestCode), unitId: unitId(a.unitCode), kind: a.kind, start: a.start, end: a.end, rateCents: a.rateCents, currency, at });
+      this.calendar.hold({ id: `${a.id}-hold`, unitId: unitId(a.unitCode), holderId: a.id, start: a.start, end: a.end }); // invariant 4
+      this.agreements.set(a.id, { agreement: ag, tenantId });
+      if (a.activate) ag.activate(a.start);
+      if (a.moveIn) ag.moveIn(a.start);
+      // Party role links (resident / financial_responsible / guarantor).
+      if (a.residentPartyId) this.parties.assign({ agreementId: a.id, partyId: a.residentPartyId, role: 'resident', from: a.start });
+      if (a.payerPartyId) this.parties.assign({ agreementId: a.id, partyId: a.payerPartyId, role: 'financial_responsible', from: a.start });
+      if (a.guarantorPartyId) this.parties.assign({ agreementId: a.id, partyId: a.guarantorPartyId, role: 'guarantor', from: a.start });
+    }
+
+    for (const inv of w.invoices) {
+      const billToPartyId = this.parties.billTo(inv.agreementId) ?? undefined;
+      this.billing.issue({ id: inv.id, agreementId: inv.agreementId, tenantId, issuedAt: inv.issuedAt, dueAt: inv.dueAt, currency, lines: inv.lines, billToPartyId });
+      this.invoiceTenant.set(inv.id, tenantId);
+      if (inv.payCents && inv.payCents > 0) {
+        this.payments.record({ id: `pay-${inv.id}`, invoiceId: inv.id, amountCents: inv.payCents, method: inv.payMethod ?? 'pix', receivedAt: inv.paidAt ?? inv.issuedAt });
+        payments++;
+      }
+    }
+
+    for (const dep of w.deposits) { this.deposits.hold({ id: dep.id, agreementId: dep.agreementId, amountCents: dep.amountCents, currency, heldAt: dep.heldAt }); this.depositTenant.set(dep.id, tenantId); }
+
+    for (const b of w.bills) {
+      this.payables.issue({ id: b.id, tenantId, payeeId: b.payeeId, issuedAt: b.issuedAt, dueAt: b.dueAt, currency, lines: b.lines, memo: b.memo });
+      if (b.payCents && b.payCents > 0) { this.payables.pay({ id: `appay-${b.id}`, billId: b.id, amountCents: b.payCents, method: b.payMethod ?? 'pix', paidAt: b.paidAt ?? b.issuedAt }); billPayments++; }
+    }
+
+    for (const wo of w.workOrders) {
+      this.maintenance.open({ id: wo.id, tenantId, title: wo.title, description: wo.description, category: wo.category, priority: wo.priority, requestedByPartyId: wo.requestedByPartyId, openedAt: wo.openedAt });
+      if (wo.assignVendorPartyId) this.maintenance.assign(wo.id, wo.assignVendorPartyId, wo.startedAt ?? wo.openedAt);
+      if (wo.startedAt) this.maintenance.start(wo.id, wo.startedAt);
+      if (wo.completedAt) this.maintenance.complete(wo.id, wo.completedAt, { resolution: wo.resolution });
+    }
+
+    for (const l of w.leads) {
+      this.crm.createLead({ id: l.id, tenantId, name: l.name, source: l.source, estValueCents: l.estValueCents, createdAt: l.createdAt });
+      // 'lost' leaves the pipeline via lose(); the rest advance forward.
+      for (const stage of l.advanceTo ?? []) {
+        if (stage === 'lost') this.crm.lose(l.id, 'not converted', l.createdAt);
+        else this.crm.advance(l.id, stage, l.createdAt);
+      }
+    }
+
+    return {
+      seeded: true,
+      counts: {
+        units: w.units.length, guests: w.guests.length, parties: w.parties.length,
+        pricingRules: w.pricingRules.length, agreements: w.agreements.length,
+        invoices: w.invoices.length, payments, deposits: w.deposits.length,
+        bills: w.bills.length, billPayments, workOrders: w.workOrders.length,
+        leads: w.leads.length,
+      },
+    };
   }
 
   private trialBalance(tenantId: string) {

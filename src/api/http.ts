@@ -49,19 +49,25 @@ export interface HttpHooks {
 export function createHttpServer(app: App, hooks: HttpHooks = {}): Server {
   return createServer((req: IncomingMessage, res: ServerResponse) => {
     void (async () => {
-      const path = (req.url ?? '/').split('?')[0]!;
+      const rawUrl = req.url ?? '/';
+      const qIdx = rawUrl.indexOf('?');
+      const path = qIdx === -1 ? rawUrl : rawUrl.slice(0, qIdx);
       // Serve the operator portal SPA at the root; everything else is the API.
       if (req.method === 'GET' && (path === '/' || path === '/index.html' || path === '/portal')) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         res.end(portalHtml());
         return;
       }
+      // Query-string params (e.g. ?from=&to=) are surfaced to handlers as the body,
+      // so a GET can carry filters without a request body.
+      const query: Record<string, string> = {};
+      if (qIdx !== -1) new URLSearchParams(rawUrl.slice(qIdx + 1)).forEach((v, k) => { query[k] = v; });
       const bearer = req.headers['authorization'];
       const method = req.method ?? 'GET';
       let response;
       let closeAfter = false;
       try {
-        const body = method === 'GET' || method === 'HEAD' ? {} : await readJsonBody(req);
+        const body = method === 'GET' || method === 'HEAD' ? query : { ...query, ...(await readJsonBody(req)) };
         const apiReq = { method, path, body, bearer };
         // /persist does durable I/O — the one async entry point on the App.
         response =

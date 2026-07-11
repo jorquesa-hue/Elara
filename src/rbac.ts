@@ -98,6 +98,10 @@ export const PERMISSIONS = [
   // Both held by owner/service/manager, NOT in OPS (front-desk/agent can't erase).
   'privacy.export',
   'privacy.manage',
+  // Self-service reporting + automated insights. Aggregate operational/financial
+  // views over the tenant's own data — broadly readable (in OPS + READS, so
+  // read_only and front-of-house can pull reports).
+  'reports.read',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -130,7 +134,7 @@ const OPS: Permission[] = [
   'crm.read', 'crm.manage',
   'esign.read', 'esign.manage',
   'ledger.read', 'exception.read', 'subscription.read',
-  'masterdata.read', 'config.read',
+  'masterdata.read', 'config.read', 'reports.read',
 ];
 
 export const BUILTIN_ROLES: readonly RoleDef[] = [

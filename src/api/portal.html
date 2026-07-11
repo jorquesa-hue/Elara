@@ -217,6 +217,8 @@
     importer: '<path d="M12 3v11"/><path d="M8 10l4 4 4-4"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/>',
     crm: '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
     esign: '<path d="M4 18c3-6 5-9 7-9s0 6 2 6 3-3 5-3"/><path d="M3 21h18"/>',
+    reports: '<path d="M4 3v18h16"/><rect x="7" y="12" width="3" height="6" rx="1"/><rect x="12" y="8" width="3" height="10" rx="1"/><rect x="17" y="4" width="3" height="14" rx="1"/>',
+    advisor: '<path d="M12 3l1.9 4.3L18 9l-4.1 1.7L12 15l-1.9-4.3L6 9l4.1-1.7z"/><path d="M18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>',
     moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z"/>'
   };
@@ -426,6 +428,7 @@
     if (can("comms.read")) items.splice(items.length - 1, 0, ["inbox", "Inbox", ICONS.inbox]);
     if (can("reconciliation.read")) items.splice(items.length - 1, 0, ["reconcile", "Reconcile", ICONS.reconcile]);
     if (can("integration.read")) items.splice(items.length - 1, 0, ["integrations", "Integrations", ICONS.integrations]);
+    if (can("reports.read")) items.splice(1, 0, ["reports", "Reports", ICONS.reports]);
     if (can("revenue.read")) items.splice(1, 0, ["pricing", "Pricing", ICONS.pricing]);
     if (can("crm.read")) items.splice(1, 0, ["crm", "Pipeline", ICONS.crm]);
     if (can("esign.read")) items.splice(2, 0, ["esign", "E-sign", ICONS.esign]);
@@ -448,7 +451,7 @@
       h("main", { id: "main" }, [])
     ]));
     var main = document.getElementById("main");
-    ({ dashboard: viewDashboard, agreements: viewAgreements, pricing: viewPricing, crm: viewCrm, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
+    ({ dashboard: viewDashboard, agreements: viewAgreements, pricing: viewPricing, crm: viewCrm, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
   }
 
   // ---- views --------------------------------------------------------------
@@ -467,6 +470,23 @@
       var byStatus = s.agreements.byStatus; var line = Object.keys(byStatus).map(function (k){ return byStatus[k]+" "+t("status."+k); }).join(" · ");
       main.appendChild(h("h2", {}, [t("dash.portfolio")]));
       main.appendChild(h("div", { class: "panel" }, [ h("div", { class:"muted" }, [ line || t("dash.noAgreements") ]) ]));
+      // First-run helper: an empty portfolio can load a realistic mixed-portfolio
+      // sample so every screen has something to show. Only offered to operators.
+      if (s.agreements.total === 0 && s.masterDataCounts.units === 0 && can("masterdata.manage")) {
+        var seedBtn = h("button", { class: "btn", onclick: function () {
+          seedBtn.disabled = true; seedBtn.textContent = "Loading sample data…";
+          api("/demo/seed", { method: "POST", body: {} }).then(function (r) {
+            if (r.status === 201 && r.body.seeded) { toast("Sample portfolio loaded", "ok"); render(); }
+            else if (r.status === 201) { toast("Sample data already present", ""); render(); }
+            else { seedBtn.disabled = false; seedBtn.textContent = "Load sample data"; toast((r.body && r.body.error) || t("msg.denied"), "err"); }
+          });
+        } }, ["Load sample data"]);
+        main.appendChild(h("div", { class: "panel", style: "border:1px dashed var(--border); margin-top:12px" }, [
+          h("strong", {}, ["Start with sample data"]),
+          h("div", { class: "muted", style: "margin:6px 0 12px; font-size:13px" }, ["Load a realistic mixed portfolio (nightly beach apartments, monthly rentals, long leases, guests, invoices, deposits, vendor bills, work orders and a sales pipeline) so you can explore every screen. You can clear it by starting a fresh tenant."]),
+          seedBtn
+        ]));
+      }
     });
     if (can("revenue.read")) {
       main.appendChild(h("h2", {}, ["Revenue"]));
@@ -1294,6 +1314,7 @@
   function viewPeople(main) {
     main.appendChild(h("h1", {}, [t("nav.people")]));
     main.appendChild(h("p",{class:"sub"},[t("people.subtitle")]));
+    if (can("role.read")) main.appendChild(accessAdvisor());
     main.appendChild(h("h2",{},[t("people.roles")]));
     var rolesWrap = h("div",{},[]); main.appendChild(rolesWrap);
     api("/roles").then(function(r){
@@ -1366,6 +1387,150 @@
         });
       }},[t("action.save")])])
     ]));
+  }
+
+  // ---- access advisor -----------------------------------------------------
+  // Describe what a person does; get a least-privilege recommendation (matched
+  // capabilities, exact permissions, closest built-in or a proposed custom role,
+  // rationale + risk flags). The "AI" is a transparent, deterministic model.
+  function accessAdvisor() {
+    var desc = h("textarea", { rows:"2", placeholder:"e.g. Front-desk receptionist who checks guests in and takes payments, but cannot issue refunds", style:"width:100%;resize:vertical;font:inherit;padding:9px 11px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2);color:var(--text)" });
+    var out = h("div", {}, []);
+    var go = h("button", { class:"btn sm", onclick:function(){
+      if (!desc.value.trim()) return toast("Describe the person's role first","err");
+      go.disabled = true; go.textContent = "Thinking…";
+      api("/access/advise", { method:"POST", body:{ description: desc.value } }).then(function(r){
+        go.disabled = false; go.textContent = "Suggest access";
+        if (r.status !== 200) return toast((r.body&&r.body.error)||t("msg.denied"),"err");
+        renderAdvice(out, r.body);
+      });
+    } }, ["Suggest access"]);
+    return h("div", { class:"panel", style:"border:1px solid var(--accent-soft)" }, [
+      h("div", { class:"role-head" }, [ svg(ICONS.advisor), h("strong",{},["Access advisor"]), h("span",{class:"muted",style:"font-size:12.5px"},["Describe the job — get a least-privilege recommendation"]) ]),
+      h("div", { style:"margin:10px 0" }, [desc]),
+      go, out
+    ]);
+  }
+  function renderAdvice(out, rec) {
+    out.innerHTML = "";
+    var confCls = rec.confidence === "high" ? "ok" : (rec.confidence === "low" ? "bad" : "");
+    var box = h("div", { style:"margin-top:14px" }, []);
+    // Suggested / proposed role headline.
+    if (rec.suggestedRole) {
+      box.appendChild(h("div", { class:"panel", style:"background:var(--accent-soft);margin:0 0 12px" }, [
+        h("div",{},[ h("strong",{},["Suggested role: "+rec.suggestedRole.name]), h("span",{class:"pill "+confCls,style:"margin-left:8px"},[rec.confidence+" confidence"]) ]),
+        rec.suggestedRole.description ? h("div",{class:"muted",style:"font-size:13px;margin-top:4px"},[rec.suggestedRole.description]) : null,
+        rec.suggestedRole.extraPermissions.length ? h("div",{class:"muted",style:"font-size:12.5px;margin-top:6px"},["Also grants "+rec.suggestedRole.extraPermissions.length+" adjacent permission(s)."]) : h("div",{class:"muted",style:"font-size:12.5px;margin-top:6px"},["Matches the described needs exactly."])
+      ]));
+    } else if (rec.proposedRole) {
+      var pr = rec.proposedRole;
+      var applyBtn = can("role.manage") ? h("button",{class:"btn sm",style:"margin-top:8px",onclick:function(){ prefillCustomRole(pr); }},["Create this custom role →"]) : null;
+      box.appendChild(h("div", { class:"panel", style:"background:var(--accent-soft);margin:0 0 12px" }, [
+        h("div",{},[ h("strong",{},["Proposed custom role: "+pr.name]), h("span",{class:"pill "+confCls,style:"margin-left:8px"},[rec.confidence+" confidence"]) ]),
+        h("div",{class:"muted",style:"font-size:12.5px;margin-top:6px"},["No built-in fit cleanly; a custom role with exactly "+pr.permissions.length+" permissions is proposed."]),
+        applyBtn
+      ]));
+    }
+    // Matched capabilities.
+    if (rec.capabilities.length) {
+      box.appendChild(h("div",{style:"margin:0 0 8px"},[ h("label",{},["Responsibilities matched"]),
+        h("div",{class:"perms"}, rec.capabilities.map(function(c){ return h("span",{class:"perm",title:c.note,style:c.sensitive?"border-color:#e0894a;color:#e0894a":""},[c.label+(c.sensitive?" ⚠":"")]); })) ]));
+    }
+    // Permissions.
+    box.appendChild(h("div",{style:"margin:0 0 8px"},[ h("label",{},["Permissions ("+rec.permissions.length+")"]),
+      h("div",{class:"perms"}, rec.permissions.map(function(p){ return h("span",{class:"perm"},[p]); })) ]));
+    // Rationale.
+    if (rec.rationale.length) box.appendChild(h("ul",{class:"muted",style:"font-size:13px;margin:6px 0 0;padding-left:18px"}, rec.rationale.map(function(x){ return h("li",{},[x]); })));
+    // Risks.
+    if (rec.risks.length) box.appendChild(h("div",{class:"panel",style:"border-color:#e0894a;margin-top:12px"},[
+      h("strong",{style:"color:#e0894a"},["⚠ Review before granting"]),
+      h("ul",{style:"font-size:13px;margin:6px 0 0;padding-left:18px"}, rec.risks.map(function(x){ return h("li",{},[x]); })) ]));
+    out.appendChild(box);
+  }
+  function prefillCustomRole(pr) {
+    // Scroll to and fill the custom-role form's inputs, ticking the exact perms.
+    var main = document.getElementById("main");
+    var idInput = main.querySelector('.panel input[placeholder="housekeeping_lead"]');
+    var nameInput = main.querySelector('.panel input[placeholder="Housekeeping Lead"]');
+    if (!idInput || !nameInput) return toast("Open the New role form below","");
+    idInput.value = pr.id; nameInput.value = pr.name;
+    var boxes = main.querySelectorAll('.checks input[type="checkbox"]');
+    Array.prototype.forEach.call(boxes, function(b){ b.checked = pr.permissions.indexOf(b.value) >= 0; });
+    idInput.scrollIntoView({ behavior:"smooth", block:"center" });
+    toast("Custom-role form pre-filled — review and create","ok");
+  }
+
+  // ---- reports & insights -------------------------------------------------
+  function viewReports(main) {
+    main.appendChild(h("h1", {}, ["Reports & insights"]));
+    main.appendChild(h("p", { class:"sub" }, ["Self-service analytics over your own data, with automated findings that tell you what needs attention and what to do about it."]));
+    if (!state.reportKey) state.reportKey = "occupancy";
+    // Insight feed first — the "what needs attention" answer.
+    main.appendChild(h("h2", {}, ["What needs attention"]));
+    var insWrap = h("div", {}, [h("div",{class:"muted"},["Analyzing…"])]); main.appendChild(insWrap);
+    api("/reports/insights").then(function(r){
+      insWrap.innerHTML = "";
+      if (r.status !== 200) return insWrap.appendChild(h("p",{class:"muted"},[(r.body&&r.body.error)||t("msg.denied")]));
+      (r.body.insights||[]).forEach(function(i){ insWrap.appendChild(insightCard(i)); });
+    });
+    // Report picker + rendered report.
+    main.appendChild(h("h2", {}, ["Reports"]));
+    var picker = h("div", { class:"row", style:"flex-wrap:wrap;gap:6px;margin-bottom:12px" }, []);
+    main.appendChild(picker);
+    var repWrap = h("div", {}, []); main.appendChild(repWrap);
+    api("/reports/catalog").then(function(r){
+      (r.body.reports||[]).forEach(function(spec){
+        picker.appendChild(h("button", { class:"btn ghost sm"+(state.reportKey===spec.key?" active":""), title:spec.description, onclick:function(){ state.reportKey = spec.key; viewReports(clear(main)); } }, [spec.title]));
+      });
+    });
+    renderReport(repWrap, state.reportKey);
+  }
+  function insightCard(i) {
+    var color = i.severity==="critical" ? "#e05a5a" : (i.severity==="warning" ? "#e0894a" : (i.severity==="positive" ? "#3aa76d" : "var(--accent)"));
+    var label = i.severity.charAt(0).toUpperCase()+i.severity.slice(1);
+    return h("div", { class:"panel", style:"border-left:3px solid "+color+";margin:0 0 10px" }, [
+      h("div", { style:"display:flex;align-items:center;gap:9px" }, [
+        h("span", { style:"font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:"+color }, [label]),
+        h("strong", {}, [i.title]),
+        i.metric ? h("span",{class:"muted",style:"margin-left:auto;font-variant-numeric:tabular-nums"},[fmtMetric(i.metric)]) : null
+      ]),
+      h("div", { class:"muted", style:"font-size:13px;margin-top:5px" }, [i.detail]),
+      i.action ? h("div", { style:"font-size:12.5px;margin-top:7px;color:"+color }, ["→ "+i.action]) : null
+    ]);
+  }
+  function fmtMetric(m) {
+    if (m.kind === "money") return fmt(m.value);
+    if (m.kind === "percent") return m.value + "%";
+    return String(m.value);
+  }
+  function renderReport(wrap, key) {
+    wrap.innerHTML = "";
+    wrap.appendChild(h("div",{class:"muted"},["Loading…"]));
+    api("/reports/"+key).then(function(r){
+      wrap.innerHTML = "";
+      if (r.status !== 200) return wrap.appendChild(h("p",{class:"muted"},[(r.body&&r.body.error)||t("msg.denied")]));
+      var rep = r.body.report;
+      var kpiWrap = h("div", { class:"cards" }, []);
+      (rep.kpis||[]).forEach(function(k){ card(kpiWrap, k.label, fmtKpi(k) + (typeof k.delta === "number" ? (" ("+(k.delta>=0?"+":"")+k.delta+"%)") : "")); });
+      wrap.appendChild(kpiWrap);
+      if (rep.subtitle) wrap.appendChild(h("p",{class:"muted",style:"font-size:13px;margin:2px 0 10px"},[rep.subtitle]));
+      var heads = (rep.columns||[]).map(function(c){ return th(c.label); });
+      var rows = (rep.rows||[]).map(function(row){
+        return h("tr", {}, (rep.columns||[]).map(function(c){
+          var v = row[c.key];
+          if (c.kind === "money") return h("td",{style:"font-variant-numeric:tabular-nums"},[fmt(Number(v)||0)]);
+          if (c.kind === "percent") return h("td",{},[ (v==null?0:v) + "%" ]);
+          if (c.kind === "number") return h("td",{style:"font-variant-numeric:tabular-nums"},[String(v==null?0:v)]);
+          return h("td",{},[ v==null?"—":String(v) ]);
+        }));
+      });
+      wrap.appendChild(tableEl(heads, rows, (rep.columns||[]).length||1, "No data for this window."));
+    });
+  }
+  function fmtKpi(k) {
+    if (k.kind === "money") return fmt(k.value);
+    if (k.kind === "percent") return k.value + "%";
+    return String(k.value);
   }
 
   // ---- helpers ------------------------------------------------------------
