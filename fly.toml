@@ -11,7 +11,7 @@
 # to durable storage; horizontal scaling would fork that state. Scale up (bigger
 # machine), not out, until a shared-cache design lands.
 
-app = "unified-stay-os"
+app = "elara-tvumsw"
 primary_region = "gru"  # São Paulo — near a BR-first deployment
 
 [build]
