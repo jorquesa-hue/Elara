@@ -1,6 +1,5 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
-    { "source": "/:path*", "destination": "https://elara-tvumsw.fly.dev/:path*" }
+    { "source": "/(.*)", "destination": "https://elara-tvumsw.fly.dev/$1" }
   ]
 }
