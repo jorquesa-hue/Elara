@@ -429,7 +429,7 @@
     if (can("reconciliation.read")) items.splice(items.length - 1, 0, ["reconcile", "Reconcile", ICONS.reconcile]);
     if (can("integration.read")) items.splice(items.length - 1, 0, ["integrations", "Integrations", ICONS.integrations]);
     if (can("reports.read")) items.splice(1, 0, ["reports", "Reports", ICONS.reports]);
-    if (can("revenue.read")) items.splice(1, 0, ["pricing", "Pricing", ICONS.pricing]);
+    if (can("revenue.read")) items.splice(1, 0, ["pricing", "Revenue", ICONS.pricing]);
     if (can("crm.read")) items.splice(1, 0, ["crm", "Pipeline", ICONS.crm]);
     if (can("esign.read")) items.splice(2, 0, ["esign", "E-sign", ICONS.esign]);
     if (can("roommate.read")) items.splice(items.length - 1, 0, ["roommates", "Roommates", ICONS.roommates]);
@@ -1004,56 +1004,117 @@
   }
 
   function viewPricing(main){
-    main.appendChild(h("h1",{},["Pricing"]));
-    main.appendChild(h("p",{class:"sub"},["Dynamic pricing rules turn a base rate into a nightly quote through explainable factors — occupancy, weekend, lead-time, length-of-stay, season."]));
+    main.appendChild(h("h1",{},["Revenue management"]));
+    main.appendChild(h("p",{class:"sub"},["Dynamic pricing turns a base rate into a nightly quote through explainable factors — occupancy, weekend, lead-time, length-of-stay and season — with recommendations that tell you which lever to pull."]));
+    // KPI header — occupancy / ADR / RevPAR / revenue.
+    var kpiWrap=h("div",{class:"cards"},[]); main.appendChild(kpiWrap);
+    // Smart recommendations feed.
+    var recHead=h("h2",{},["Recommendations"]); main.appendChild(recHead);
+    var recWrap=h("div",{},[h("div",{class:"muted"},["Analyzing…"])]); main.appendChild(recWrap);
+    api("/revenue/insights").then(function(r){
+      kpiWrap.innerHTML=""; recWrap.innerHTML="";
+      if(r.status!==200){ recWrap.appendChild(h("p",{class:"muted"},[(r.body&&r.body.error)||t("msg.denied")])); return; }
+      var k=r.body.kpis||{};
+      card(kpiWrap,"Occupancy",(k.occupancyPct==null?0:k.occupancyPct)+"%");
+      card(kpiWrap,"ADR",fmt(k.adrCents||0));
+      card(kpiWrap,"RevPAR",fmt(k.revparCents||0));
+      card(kpiWrap,"Revenue",fmt(k.revenueCents||0));
+      (r.body.insights||[]).forEach(function(i){ recWrap.appendChild(insightCard(i)); });
+    });
+    // Rule editor + list.
+    main.appendChild(h("h2",{},["Pricing rules"]));
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
     var wrap=h("div",{},[]); main.appendChild(wrap);
-    main.appendChild(h("h2",{},["Quote a stay"]));
+    main.appendChild(h("h2",{},["Quote simulator"]));
     var quoteSlot=h("div",{},[]); main.appendChild(quoteSlot);
-    if(can("revenue.manage")) formSlot.appendChild(pricingForm(wrap, quoteSlot));
+    if(can("revenue.manage")) formSlot.appendChild(pricingForm(main));
     refreshPricing(wrap, quoteSlot);
   }
-  function pricingForm(wrap, quoteSlot){
-    var name=h("input",{placeholder:"Studio"}); var base=h("input",{value:"20000",type:"number"});
-    var minC=h("input",{value:"15000",type:"number"}); var maxC=h("input",{value:"60000",type:"number"});
-    var weekend=h("input",{value:"12000",type:"number"});
+  // A rate multiplier entered as a percent (+25 → 1.25x = 12500 bps).
+  function upliftBps(pctStr){ return 10000 + Math.round(Number(pctStr||0)*100); }
+  function pctFromBps(bps){ return Math.round((bps-10000)/100*10)/10; }
+  function pricingForm(main){
+    var name=h("input",{placeholder:"Beachfront apartments"});
+    var base=h("input",{value:"45000",type:"number"}); var minC=h("input",{value:"32000",type:"number"}); var maxC=h("input",{value:"120000",type:"number"});
+    var weekend=h("input",{value:"25",type:"number"});
+    var occ1p=h("input",{value:"60",type:"number"}); var occ1u=h("input",{value:"10",type:"number"});
+    var occ2p=h("input",{value:"85",type:"number"}); var occ2u=h("input",{value:"30",type:"number"});
+    var los1n=h("input",{value:"7",type:"number"}); var los1d=h("input",{value:"10",type:"number"});
+    var los2n=h("input",{value:"28",type:"number"}); var los2d=h("input",{value:"20",type:"number"});
+    var seasonS=h("input",{type:"date"}); var seasonE=h("input",{type:"date"}); var seasonU=h("input",{value:"40",type:"number"});
+    function sub(label){ return h("div",{class:"muted",style:"grid-column:1/-1;font-size:12px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;margin-top:4px"},[label]); }
     return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
       if(!name.value) return toast("Enter a name","err");
-      api("/pricing-rules",{method:"POST",body:{
-        id:"pr-"+Date.now(), name:name.value, baseCents:Number(base.value),
-        minCents:Number(minC.value), maxCents:Number(maxC.value), weekendFactorBps:Number(weekend.value),
-        occupancyTiers:[{minOccupancyPct:50,factorBps:11000},{minOccupancyPct:80,factorBps:13000}],
-        losDiscounts:[{minNights:7,discountBps:1000},{minNights:28,discountBps:2000}]
-      }}).then(function(r){ if(r.status===201){ toast(t("msg.saved"),"ok"); refreshPricing(wrap, quoteSlot); } else toast(r.body.error||"err","err"); });
-    }},[ field("Name",name), field("Base (cents)",base), field("Floor",minC), field("Ceiling",maxC), field("Weekend bps",weekend), h("div",{},[h("button",{class:"btn",type:"submit"},["Create rule"])]) ]);
+      var body={ id:"pr-"+Date.now(), name:name.value, baseCents:Number(base.value) };
+      if(minC.value) body.minCents=Number(minC.value);
+      if(maxC.value) body.maxCents=Number(maxC.value);
+      if(Number(weekend.value)) body.weekendFactorBps=upliftBps(weekend.value);
+      var occ=[]; if(occ1p.value&&occ1u.value) occ.push({minOccupancyPct:Number(occ1p.value),factorBps:upliftBps(occ1u.value)});
+      if(occ2p.value&&occ2u.value) occ.push({minOccupancyPct:Number(occ2p.value),factorBps:upliftBps(occ2u.value)});
+      if(occ.length) body.occupancyTiers=occ;
+      var los=[]; if(los1n.value&&los1d.value) los.push({minNights:Number(los1n.value),discountBps:Math.round(Number(los1d.value)*100)});
+      if(los2n.value&&los2d.value) los.push({minNights:Number(los2n.value),discountBps:Math.round(Number(los2d.value)*100)});
+      if(los.length) body.losDiscounts=los;
+      if(seasonS.value&&seasonE.value) body.seasons=[{start:seasonS.value,end:seasonE.value,factorBps:upliftBps(seasonU.value)}];
+      api("/pricing-rules",{method:"POST",body:body}).then(function(r){ if(r.status===201){ toast(t("msg.saved"),"ok"); viewPricing(clear(main)); } else toast((r.body&&r.body.error)||"err","err"); });
+    }},[
+      sub("Base & guardrails"),
+      field("Name",name), field("Base rate (cents)",base), field("Floor (cents)",minC), field("Ceiling (cents)",maxC),
+      sub("Demand & calendar factors"),
+      field("Weekend uplift %",weekend),
+      field("Occupancy tier 1 — at %",occ1p), field("… uplift %",occ1u),
+      field("Occupancy tier 2 — at %",occ2p), field("… uplift %",occ2u),
+      sub("Length-of-stay discounts"),
+      field("Nights ≥",los1n), field("… discount %",los1d),
+      field("Nights ≥",los2n), field("… discount %",los2d),
+      sub("Season window (optional)"),
+      field("From",seasonS), field("To",seasonE), field("Season uplift %",seasonU),
+      h("div",{style:"grid-column:1/-1"},[h("button",{class:"btn",type:"submit"},["Create pricing rule"])])
+    ]);
   }
   function refreshPricing(wrap, quoteSlot){
     api("/pricing-rules").then(function(r){
       wrap.innerHTML="";
       var rules=((r.body||{}).rules||[]);
       var rows=rules.map(function(pr){
-        return h("tr",{},[ h("td",{},[pr.name]), h("td",{},[fmt(pr.baseCents)]), h("td",{class:"muted"},[pr.minCents!=null?fmt(pr.minCents):"—"]), h("td",{class:"muted"},[pr.maxCents!=null?fmt(pr.maxCents):"—"]), h("td",{class:"mono muted"},[String((pr.occupancyTiers||[]).length)+" occ · "+String((pr.losDiscounts||[]).length)+" los"]) ]);
+        var levers=[];
+        if(pr.weekendFactorBps) levers.push("weekend +"+pctFromBps(pr.weekendFactorBps)+"%");
+        if((pr.occupancyTiers||[]).length) levers.push((pr.occupancyTiers.length)+" occ tier"+(pr.occupancyTiers.length>1?"s":""));
+        if((pr.losDiscounts||[]).length) levers.push((pr.losDiscounts.length)+" LOS");
+        if((pr.seasons||[]).length) levers.push((pr.seasons.length)+" season");
+        return h("tr",{},[ h("td",{},[pr.name]), h("td",{},[fmt(pr.baseCents)]), h("td",{class:"muted"},[pr.minCents!=null?fmt(pr.minCents):"—"]), h("td",{class:"muted"},[pr.maxCents!=null?fmt(pr.maxCents):"—"]), h("td",{class:"mono muted"},[levers.join(" · ")||"static"]) ]);
       });
-      wrap.appendChild(tableEl([th("Rule"),th("Base"),th("Floor"),th("Ceiling"),th("Tiers")], rows, 5, "No pricing rules yet."));
+      wrap.appendChild(tableEl([th("Rule"),th("Base"),th("Floor"),th("Ceiling"),th("Active levers")], rows, 5, "No pricing rules yet — create one above to price dynamically."));
       if(quoteSlot){ quoteSlot.innerHTML=""; quoteSlot.appendChild(quoteForm(rules)); }
     });
   }
   function quoteForm(rules){
     if(!rules.length) return h("div",{class:"panel muted"},["Create a pricing rule to run a quote."]);
     var rule=selectFrom(rules.map(function(p){return [p.id,p.name];}), rules[0].id);
-    var checkIn=h("input",{value:"2026-12-25",type:"date"}); var nights=h("input",{value:"3",type:"number"});
-    var occ=h("input",{value:"85",type:"number"});
+    var checkIn=h("input",{value:"2026-12-25",type:"date"}); var nights=h("input",{value:"5",type:"number"});
+    var occ=h("input",{value:"85",type:"number"}); var asOf=h("input",{type:"date"});
     var out=h("div",{class:"stack"},[]);
     var form=h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
-      api("/pricing/quote",{method:"POST",body:{ruleId:rule.value, checkIn:checkIn.value, nights:Number(nights.value), occupancyPct:Number(occ.value)}}).then(function(r){
+      var body={ruleId:rule.value, checkIn:checkIn.value, nights:Number(nights.value), occupancyPct:Number(occ.value)};
+      if(asOf.value) body.asOf=asOf.value;
+      api("/pricing/quote",{method:"POST",body:body}).then(function(r){
         out.innerHTML="";
-        if(r.status!==200) return out.appendChild(h("div",{class:"muted"},[r.body.error||"err"]));
+        if(r.status!==200) return out.appendChild(h("div",{class:"muted"},[(r.body&&r.body.error)||"err"]));
         var q=r.body;
-        out.appendChild(h("div",{class:"row"},[ h("strong",{},[fmt(q.nightlyCents)+" / night"]), h("span",{class:"muted"},["· total "+fmt(q.totalCents)]) ]));
-        out.appendChild(h("div",{class:"perms"}, (q.factors||[]).map(function(f){ return h("span",{class:"perm"},[f.name+" ("+(f.factorBps/100)+"%)"]); })));
-        if(!(q.factors||[]).length) out.appendChild(h("div",{class:"muted"},["base rate — no factors applied"]));
+        // Headline nightly + total.
+        out.appendChild(h("div",{class:"row",style:"align-items:baseline;gap:10px"},[ h("strong",{style:"font-size:22px"},[fmt(q.nightlyCents)]), h("span",{class:"muted"},["/ night · "+Number(nights.value)+" nights = "]), h("strong",{},[fmt(q.totalCents)]) ]));
+        // Factor waterfall: base → each factor (running value) → nightly.
+        var running=q.baseCents;
+        var steps=[ h("tr",{},[ h("td",{},["Base rate"]), h("td",{class:"muted"},["—"]), h("td",{style:"text-align:right"},[fmt(q.baseCents)]) ]) ];
+        (q.factors||[]).forEach(function(f){
+          running=Math.round(running*f.factorBps/10000);
+          var delta=f.factorBps===10000?"clamp":((f.factorBps>=10000?"+":"")+pctFromBps(f.factorBps)+"%");
+          steps.push(h("tr",{},[ h("td",{},[f.name]), h("td",{class:"muted",style:"color:"+(f.factorBps>10000?"#3aa76d":(f.factorBps<10000?"#e0894a":"var(--muted)"))},[delta]), h("td",{style:"text-align:right"},[fmt(running)]) ]));
+        });
+        out.appendChild(tableEl([th("Factor"),th("Effect"),h("th",{style:"text-align:right"},["Running rate"])], steps, 3, ""));
+        if(!(q.factors||[]).length) out.appendChild(h("div",{class:"muted"},["Base rate — no factors applied for these inputs."]));
       });
-    }},[ field("Rule",rule), field("Check-in",checkIn), field("Nights",nights), field("Occupancy %",occ), h("div",{},[h("button",{class:"btn",type:"submit"},["Quote"])]) ]);
+    }},[ field("Rule",rule), field("Check-in",checkIn), field("Nights",nights), field("Occupancy % (demand signal)",occ), field("Quoting as-of (lead time)",asOf), h("div",{},[h("button",{class:"btn",type:"submit"},["Quote stay"])]) ]);
     return h("div",{},[form, h("div",{class:"panel"},[out])]);
   }
 
@@ -1486,7 +1547,7 @@
     renderReport(repWrap, state.reportKey);
   }
   function insightCard(i) {
-    var color = i.severity==="critical" ? "#e05a5a" : (i.severity==="warning" ? "#e0894a" : (i.severity==="positive" ? "#3aa76d" : "var(--accent)"));
+    var color = i.severity==="critical" ? "#e05a5a" : (i.severity==="warning" ? "#e0894a" : (i.severity==="positive" ? "#3aa76d" : (i.severity==="opportunity" ? "#c98a1e" : "var(--accent)")));
     var label = i.severity.charAt(0).toUpperCase()+i.severity.slice(1);
     return h("div", { class:"panel", style:"border-left:3px solid "+color+";margin:0 0 10px" }, [
       h("div", { style:"display:flex;align-items:center;gap:9px" }, [

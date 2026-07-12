@@ -36,7 +36,7 @@ import { Integrations, ConnectorOutbox, type IntegrationKind, type IntegrationSt
 import { fullContract, isKnownAction, isKnownEvent } from '../integration-contract.ts';
 import { Notifications, NOTIFICATION_KINDS, isKnownNotificationKind, type NotificationChannel } from '../notifications.ts';
 import { defaultAdapterRegistry, AdapterError, type AdapterRegistry } from '../adapter-registry.ts';
-import { RevenueManagement, revenueKpis, type PricingRule, type QuoteContext, type OccupancyTier, type LeadTimeTier, type LosDiscount, type SeasonWindow } from '../revenue.ts';
+import { RevenueManagement, revenueKpis, computeRevenueInsights, type PricingRule, type QuoteContext, type OccupancyTier, type LeadTimeTier, type LosDiscount, type SeasonWindow } from '../revenue.ts';
 import { Procurement, computeBudgetStatus, type PurchaseOrderLine, type Budget } from '../procurement.ts';
 import { RoommateMatcher, type RoommatePreferences, type Chronotype } from '../roommate.ts';
 import { parseCsv, suggestMapping, planImport, type ImportTarget, type ColumnMapping } from '../onboarding.ts';
@@ -1854,6 +1854,22 @@ export class App {
 
     // Headline KPIs — occupancy / ADR / RevPAR — folded from tenant state.
     this.add('GET', '/revenue/summary', 'revenue.read', (ctx) => ({ status: 200, body: this.revenueSummary(ctx.tenantId) }));
+
+    // Revenue-management recommendations: prioritized, explainable opportunities
+    // and risks over the demand signals + configured pricing rules.
+    this.add('GET', '/revenue/insights', 'revenue.read', (ctx) => {
+      const s = this.revenueSummary(ctx.tenantId);
+      return {
+        status: 200,
+        body: {
+          kpis: { occupancyPct: s.occupancyPct, adrCents: s.adrCents, revparCents: s.revparCents, revenueCents: s.revenueCents },
+          insights: computeRevenueInsights({
+            occupancyPct: s.occupancyPct, adrCents: s.adrCents, revparCents: s.revparCents,
+            revenueCents: s.revenueCents, unitCount: s.unitCount, rules: this.revenue.listRules(ctx.tenantId),
+          }),
+        },
+      };
+    });
 
     // --- purchase orders & budgets (#2) -----------------------------------
     // A PO is an encumbrance, not a journal entry: raising/approving one commits

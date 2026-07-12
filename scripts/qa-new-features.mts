@@ -53,6 +53,16 @@ await page.click('button:has-text("Cash flow")');
 await page.waitForTimeout(500);
 await shot('05-reports-cashflow');
 
+// Revenue management: KPIs + recommendations + rule editor + quote simulator.
+await page.click('nav button:has-text("Revenue")');
+await page.waitForSelector('text=Recommendations');
+await page.waitForTimeout(600);
+await shot('05a-revenue-cockpit');
+// Run a quote to render the factor waterfall.
+const quoteBtn = page.locator('button:has-text("Quote stay")').first();
+if (await quoteBtn.count()) { await quoteBtn.click(); await page.waitForTimeout(500); }
+await shot('05b-revenue-quote');
+
 // People → access advisor.
 await page.click('nav button:has-text("Users & Roles")');
 await page.waitForSelector('text=Access advisor');

@@ -125,6 +125,69 @@ export function revenueKpis(input: { availableRoomNights: number; soldRoomNights
   };
 }
 
+// --- revenue-management intelligence ---------------------------------------
+// A pure, deterministic recommender over the tenant's demand signals + pricing
+// rules — the revenue-manager's advisor. It never moves money or changes a rule;
+// it surfaces prioritized, explainable opportunities and risks ("occupancy is
+// strong — raise the ceiling", "no rate floor — a dip could price below cost"),
+// each stating the metric it fired on and the lever to pull. Same discipline as
+// the reporting insight feed: the arithmetic is transparent, an LLM can narrate.
+
+export type RevenueInsightSeverity = 'critical' | 'warning' | 'opportunity' | 'info' | 'positive';
+export interface RevenueInsight {
+  severity: RevenueInsightSeverity;
+  title: string;
+  detail: string;
+  metric?: { value: number; kind: 'money' | 'number' | 'percent' };
+  action?: string;
+}
+export interface RevenueSignals {
+  occupancyPct: number; // 0..100
+  adrCents: number;
+  revparCents: number;
+  revenueCents: number;
+  unitCount: number;
+  rules: PricingRule[];
+}
+
+/** Scan demand signals + pricing rules and surface prioritized revenue findings.
+ *  Deterministic given the same input; ordered critical → positive. */
+export function computeRevenueInsights(sig: RevenueSignals): RevenueInsight[] {
+  const out: RevenueInsight[] = [];
+  const order: Record<RevenueInsightSeverity, number> = { critical: 0, warning: 1, opportunity: 2, info: 3, positive: 4 };
+  const rules = sig.rules ?? [];
+
+  // No dynamic pricing at all — the single biggest revenue gap.
+  if (rules.length === 0) {
+    out.push({ severity: 'warning', title: 'No dynamic pricing rule yet', detail: 'You are pricing statically, so your rates never respond to demand, weekends, lead time, or length of stay — the classic way revenue is left on the table.', action: 'Create a pricing rule below to start pricing dynamically.' });
+  } else {
+    // Configuration gaps on the primary (first) rule — each is a lever not pulled.
+    const r = rules[0]!;
+    if (!(r.occupancyTiers?.length)) out.push({ severity: 'opportunity', title: 'Rate does not respond to occupancy', detail: `“${r.name}” has no occupancy tiers, so a full week and a dead week are priced the same. Occupancy-based tiers are the core of dynamic pricing.`, action: 'Add occupancy tiers (e.g. +10% at 60%, +30% at 85%).' });
+    if (!r.weekendFactorBps) out.push({ severity: 'info', title: 'No weekend uplift set', detail: 'Friday/Saturday check-ins usually command a premium; without an uplift you are pricing peak nights like mid-week.', action: 'Set a weekend uplift (e.g. +25%).' });
+    if (r.minCents === undefined) out.push({ severity: 'warning', title: 'No rate floor', detail: 'With no floor, a soft-demand discount can drive the nightly rate below your break-even.', action: 'Set a floor at or above your cost per night.' });
+    if (r.maxCents === undefined) out.push({ severity: 'info', title: 'No rate ceiling', detail: 'With no ceiling, a high-demand multiplier can overshoot what the market will pay and deter bookings.', action: 'Set a ceiling near your best historical ADR.' });
+    if (!(r.losDiscounts?.length)) out.push({ severity: 'info', title: 'No length-of-stay discount', detail: 'Longer stays cut per-night turnover and cleaning cost; a weekly/monthly discount fills gap nights and wins direct bookings.', action: 'Add a length-of-stay discount (e.g. −10% at 7 nights).' });
+    // ADR pressed against the ceiling → the ceiling may be capping revenue.
+    const cappedRule = rules.find((x) => x.maxCents !== undefined && sig.adrCents > 0 && sig.adrCents >= x.maxCents);
+    if (cappedRule) out.push({ severity: 'opportunity', title: 'ADR is at your rate ceiling', detail: `Your realized ADR has reached the ceiling on “${cappedRule.name}”, so peak-date demand can no longer lift the rate.`, metric: { value: sig.adrCents, kind: 'money' }, action: 'Raise the ceiling to test higher peak pricing.' });
+  }
+
+  // Demand response from occupancy.
+  if (sig.unitCount > 0) {
+    if (sig.occupancyPct >= 80) out.push({ severity: 'opportunity', title: `Occupancy is strong at ${sig.occupancyPct}%`, detail: 'Demand is outrunning supply — there is likely room to raise rates without hurting fill.', metric: { value: sig.occupancyPct, kind: 'percent' }, action: 'Increase the occupancy-tier uplift or the ceiling.' });
+    else if (sig.occupancyPct < 40) out.push({ severity: 'warning', title: `Occupancy is soft at ${sig.occupancyPct}%`, detail: 'Empty nights never come back. Stimulate demand before the dates pass.', metric: { value: sig.occupancyPct, kind: 'percent' }, action: 'Lower the floor, deepen the length-of-stay discount, or run a promotion.' });
+  }
+
+  // A healthy, well-configured setup deserves a positive note.
+  if (out.every((i) => i.severity !== 'critical' && i.severity !== 'warning') && sig.unitCount > 0 && sig.revparCents > 0) {
+    out.push({ severity: 'positive', title: 'Revenue setup looks healthy', detail: `Occupancy ${sig.occupancyPct}% at an ADR of ${sig.adrCents} cents gives a RevPAR of ${sig.revparCents} cents.`, metric: { value: sig.revparCents, kind: 'money' } });
+  }
+  if (out.length === 0) out.push({ severity: 'info', title: 'Not enough data yet', detail: 'Add units, bookings and a pricing rule to unlock revenue recommendations.' });
+
+  return out.sort((a, b) => order[a.severity] - order[b.severity]);
+}
+
 export class RevenueManagement {
   private rules = new Map<string, PricingRule>();
 
