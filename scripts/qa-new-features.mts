@@ -98,6 +98,37 @@ await page.click('button:has-text("Suggest access")');
 await page.waitForTimeout(600);
 await shot('07-access-advisor-custom');
 
+// Properties: add a unit.
+await page.click('nav button:has-text("Properties")');
+await page.waitForSelector('text=bookable inventory');
+await page.fill('input[placeholder="ILH-201"]', 'ILH-999');
+await page.fill('input[placeholder="Praia do Curral — Apto 201"]', 'Casa Nova — Test');
+await page.click('button:has-text("Add property")');
+await page.waitForTimeout(500);
+await shot('08-properties');
+
+// Website: the operator's booking-site link + published units.
+await page.click('nav button:has-text("Website")');
+await page.waitForSelector('text=public booking link');
+await page.waitForTimeout(600);
+await shot('09-website-panel');
+
+// The PUBLIC booking microsite (as a guest — new page, no auth).
+const pub = await (await browser.newContext({ viewport: { width: 1200, height: 950 } })).newPage();
+const pubErrors: string[] = [];
+pub.on('console', (m) => { if (m.type() === 'error') pubErrors.push(m.text()); });
+pub.on('pageerror', (e) => pubErrors.push('PAGEERROR: ' + e.message));
+await pub.goto(base + '/site/jq');
+await pub.waitForSelector('text=Find your stay');
+await pub.waitForTimeout(700);
+await pub.screenshot({ path: './qa-shots/10-public-site.png', fullPage: true });
+console.log('shot: 10-public-site');
+await pub.click('button:has-text("Check availability")');
+await pub.waitForTimeout(900);
+await pub.screenshot({ path: './qa-shots/11-public-availability.png', fullPage: true });
+console.log('shot: 11-public-availability');
+if (pubErrors.length) errors.push(...pubErrors.map((e) => 'PUBLIC: ' + e));
+
 console.log(errors.length ? `\nCONSOLE ERRORS (${errors.length}):\n` + errors.join('\n') : '\nNO CONSOLE ERRORS');
 await browser.close();
 server.close();

@@ -64,6 +64,7 @@ import { buildSubjectAccessReport, redactPartyRecord, redactRecipient, type Eras
 import { recommendAccess } from '../access-advisor.ts';
 import { buildReport, computeInsights, REPORT_CATALOG, type ReportingInput } from '../reporting.ts';
 import { buildCustomReport, dataSources, type CustomReportSpec } from '../report-builder.ts';
+import { siteListing, checkAvailability, isValidDate, type BookingSiteInput } from '../booking-site.ts';
 import { buildDemoWorld, DEMO_MARKER_UNIT_ID } from '../demo-data.ts';
 
 export interface ApiRequest {
@@ -298,6 +299,20 @@ export class App {
         pattern: '/auth/config',
         tenant: '-',
       };
+    }
+
+    // PUBLIC, pre-auth: the guest-facing booking website. It exposes ONLY
+    // marketing data (unit labels, prices, availability) for a tenant that has
+    // published inventory — never residents, ledgers or any PII. A booking
+    // request lands as a CRM lead in the operator's pipeline (no payment here).
+    if (req.path.startsWith('/site/')) {
+      const seg = req.path.split('/').filter(Boolean); // ['site', tenant, action?]
+      const tenant = seg[1];
+      const action = seg[2];
+      if (tenant) {
+        const res = this.bookingSiteRoute(req.method, tenant, action, req.body ?? {});
+        if (res) return { response: res, pattern: `/site/:tenant${action ? '/' + action : ''}`, tenant };
+      }
     }
 
     const ctx = this.auth.authenticate(req.bearer);
@@ -865,6 +880,17 @@ export class App {
         active: body['active'] !== false,
       }),
     }));
+
+    // Update a property/unit — rename or activate/deactivate. Deactivating keeps
+    // history (reports still reference it) but drops it from the bookable set.
+    this.add('PUT', '/units/:id', 'masterdata.manage', (ctx, p, body) => {
+      if (!this.masterData.units.get(ctx.tenantId, p['id']!)) throw new HttpError(404, 'unit not found');
+      const patch: { label?: string; active?: boolean } = {};
+      const label = this.optString(body, 'label');
+      if (label !== undefined) patch.label = label;
+      if (typeof body['active'] === 'boolean') patch.active = body['active'] as boolean;
+      return { status: 200, body: this.masterData.units.update(ctx.tenantId, p['id']!, patch) };
+    });
 
     this.add('POST', '/guests', 'masterdata.manage', (ctx, _p, body) => ({
       status: 201,
@@ -2330,6 +2356,75 @@ export class App {
       holds: this.calendar.allHolds().filter((h) => agIds.has(h.holderId)).map((h) => ({ unitId: h.unitId, start: h.start, end: h.end, status: h.status })),
       ledgerBalanced: this.trialBalance(tenantId).balanced,
     };
+  }
+
+  private inquirySeq = 0;
+
+  /** Gather a tenant's PUBLIC (marketing-only) booking-site slice: bookable units,
+   *  their calendar holds, past agreement rates (for a per-unit base), the primary
+   *  pricing rule. Returns null if the tenant has no bookable inventory. */
+  private bookingSiteInput(tenantId: string): BookingSiteInput | null {
+    const units = this.masterData.units.list(tenantId);
+    if (units.length === 0) return null;
+    const entries = [...this.agreements.values()].filter((e) => e.tenantId === tenantId);
+    const agIds = new Set(entries.map((e) => e.agreement.id));
+    const cfg = this.config.get(tenantId);
+    return {
+      tenantId,
+      displayName: cfg.displayName,
+      currency: cfg.currency,
+      units: units.map((u) => ({ id: u.id, label: u.label, active: u.active !== false })),
+      holds: this.calendar.allHolds().filter((h) => agIds.has(h.holderId)).map((h) => ({ unitId: h.unitId, start: h.start, end: h.end, status: h.status })),
+      agreements: entries.map((e) => ({ unitId: e.agreement.currentUnitId, rateCents: e.agreement.rateCents, start: e.agreement.period.start })),
+      rule: this.revenue.listRules(tenantId)[0],
+    };
+  }
+
+  /** The public booking-website surface (pre-auth). Returns null for an unknown
+   *  route so the caller falls through to the normal authenticated router. */
+  private bookingSiteRoute(method: string, tenant: string, action: string | undefined, body: Record<string, unknown>): ApiResponse | null {
+    const inp = this.bookingSiteInput(tenant);
+    // config (listing) — GET /site/:tenant/config
+    if (method === 'GET' && action === 'config') {
+      if (!inp) return { status: 404, body: { error: 'no published inventory for this site' } };
+      return { status: 200, body: siteListing(inp) };
+    }
+    // availability — POST /site/:tenant/availability {from,to}
+    if (method === 'POST' && action === 'availability') {
+      if (!inp) return { status: 404, body: { error: 'no published inventory for this site' } };
+      const from = this.optString(body, 'from');
+      const to = this.optString(body, 'to');
+      if (!from || !to) return { status: 400, body: { error: 'from and to dates are required' } };
+      try {
+        return { status: 200, body: { from, to, units: checkAvailability(inp, from, to) } };
+      } catch (e) {
+        return { status: 400, body: { error: e instanceof Error ? e.message : 'bad request' } };
+      }
+    }
+    // booking request — POST /site/:tenant/inquire {unitId,from,to,name,email,message?}
+    if (method === 'POST' && action === 'inquire') {
+      if (!inp) return { status: 404, body: { error: 'no published inventory for this site' } };
+      const unitId = this.optString(body, 'unitId');
+      const from = this.optString(body, 'from');
+      const to = this.optString(body, 'to');
+      const name = (this.optString(body, 'name') ?? '').trim();
+      const email = (this.optString(body, 'email') ?? '').trim();
+      if (!name || !email) return { status: 400, body: { error: 'name and email are required' } };
+      if (!unitId || !from || !to || !isValidDate(from) || !isValidDate(to)) return { status: 400, body: { error: 'a unit and valid dates are required' } };
+      const unit = this.masterData.units.get(tenant, unitId);
+      if (!unit) return { status: 404, body: { error: 'unit not found' } };
+      // Price the request so the lead carries an estimated value.
+      let estValueCents = 0;
+      try { estValueCents = checkAvailability(inp, from, to).find((u) => u.unitId === unitId)?.totalCents ?? 0; } catch { /* leave 0 */ }
+      const at = this.now();
+      const id = `web-inq-${at.replace(/[^0-9]/g, '')}-${this.inquirySeq++}`;
+      this.crm.createLead({
+        id, tenantId: tenant, name: `Website: ${name} — ${unit.label} (${from}→${to})`,
+        source: 'website', estValueCents, createdAt: at,
+      });
+      return { status: 201, body: { ok: true, reference: id, message: 'Thanks — your request was received. The host will be in touch shortly.' } };
+    }
+    return null; // unknown /site route → fall through
   }
 
   /** Default reporting window: [today-30d, tomorrow) unless from/to are given. */

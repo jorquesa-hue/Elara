@@ -4,6 +4,7 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { App } from './app.ts';
 import { portalHtml } from './portal.ts';
+import { bookingSiteHtml } from './booking-site.ts';
 
 // Reject oversized bodies before buffering them fully — an unbounded POST is a
 // trivial memory-exhaustion DoS. 1 MiB is generous for this JSON API (the
@@ -56,6 +57,20 @@ export function createHttpServer(app: App, hooks: HttpHooks = {}): Server {
       if (req.method === 'GET' && (path === '/' || path === '/index.html' || path === '/portal')) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         res.end(portalHtml());
+        return;
+      }
+      // Browsers auto-request /favicon.ico; answer 204 so it never hits the auth
+      // gate (a harmless but noisy 401) on the portal or the public booking site.
+      if (req.method === 'GET' && path === '/favicon.ico') {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+      // The public guest-facing booking microsite at /site/<tenant> (exactly two
+      // segments — deeper paths like /site/<tenant>/availability are JSON API).
+      if (req.method === 'GET' && /^\/site\/[^/]+\/?$/.test(path)) {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.end(bookingSiteHtml());
         return;
       }
       // Query-string params (e.g. ?from=&to=) are surfaced to handlers as the body,
