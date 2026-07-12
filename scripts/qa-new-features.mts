@@ -46,9 +46,18 @@ await page.click('nav button:has-text("Reports")');
 await page.waitForSelector('text=What needs attention');
 await page.waitForTimeout(600);
 await shot('03-reports-insights');
-// Catalog tab: report with a chart.
+// Catalog tab: the PMS staples.
 await page.click('button:has-text("Report catalog")');
 await page.waitForTimeout(500);
+await page.click('button:has-text("Rent roll")');
+await page.waitForTimeout(500);
+await shot('04a-rent-roll');
+await page.click('button:has-text("Delinquency")');
+await page.waitForTimeout(500);
+await shot('04b-delinquency');
+await page.click('button:has-text("Lease expirations")');
+await page.waitForTimeout(500);
+await shot('04c-lease-expirations');
 await page.click('button:has-text("Portfolio mix")');
 await page.waitForTimeout(500);
 await shot('04-reports-catalog-chart');

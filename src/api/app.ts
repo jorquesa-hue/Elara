@@ -2299,20 +2299,34 @@ export class App {
     const invIds = new Set(invoices.map((i) => i.id));
     const bills = this.payables.allBills().filter((b) => b.tenantId === tenantId);
     const billIds = new Set(bills.map((b) => b.id));
+    // Resolve the human behind each agreement: the resident party link wins,
+    // then the payer, then the master-data guest — so the rent roll and the
+    // delinquency report name people, not ids.
+    const residentFor = (agreementId: string, guestId: string): string | undefined => {
+      const link = this.parties.partiesFor(agreementId, 'resident')[0] ?? this.parties.partiesFor(agreementId, 'financial_responsible')[0];
+      if (link) {
+        const p = this.parties.getParty(tenantId, link.partyId);
+        if (p) return p.displayName;
+      }
+      return this.masterData.guests.get(tenantId, guestId)?.fullName;
+    };
     return {
       now: this.now(),
       from,
       to,
       currency: this.config.get(tenantId).currency,
       units: this.masterData.units.list(tenantId).map((u) => ({ id: u.id, label: u.label, active: u.active !== false })),
-      agreements: entries.map((e) => ({ id: e.agreement.id, kind: e.agreement.kind, status: e.agreement.status, unitId: e.agreement.currentUnitId, start: e.agreement.period.start, end: e.agreement.period.end, rateCents: e.agreement.rateCents })),
+      agreements: entries.map((e) => {
+        const rn = residentFor(e.agreement.id, e.agreement.guestId);
+        return { id: e.agreement.id, kind: e.agreement.kind, status: e.agreement.status, unitId: e.agreement.currentUnitId, start: e.agreement.period.start, end: e.agreement.period.end, rateCents: e.agreement.rateCents, ...(rn ? { residentName: rn } : {}) };
+      }),
       invoices: invoices.map((i) => ({ id: i.id, agreementId: i.agreementId, issuedAt: i.issuedAt, dueAt: i.dueAt, totalCents: i.totalCents, paidCents: i.paidCents, status: i.status })),
       payments: this.payments.all().filter((p) => invIds.has(p.invoiceId)).map((p) => ({ id: p.id, invoiceId: p.invoiceId, amountCents: p.amountCents, receivedAt: p.receivedAt, status: p.status })),
       deposits: this.deposits.all().filter((d) => agIds.has(d.agreementId)).map((d) => ({ id: d.id, agreementId: d.agreementId, amountCents: d.amountCents, status: d.status, heldAt: d.heldAt, refundedCents: d.refundedCents })),
       bills: bills.map((b) => ({ id: b.id, payeeId: b.payeeId, totalCents: b.totalCents, paidCents: b.paidCents, status: b.status, issuedAt: b.issuedAt, dueAt: b.dueAt })),
       apPayments: this.payables.allPayments().filter((p) => billIds.has(p.billId)).map((p) => ({ id: p.id, billId: p.billId, amountCents: p.amountCents, paidAt: p.paidAt, status: p.status })),
       leads: this.crm.list(tenantId).map((l) => ({ id: l.id, stage: l.stage, estValueCents: l.estValueCents, createdAt: l.createdAt, updatedAt: l.updatedAt })),
-      workOrders: this.maintenance.all().filter((w) => w.tenantId === tenantId).map((w) => ({ id: w.id, status: w.status, priority: w.priority, openedAt: w.openedAt })),
+      workOrders: this.maintenance.all().filter((w) => w.tenantId === tenantId).map((w) => ({ id: w.id, status: w.status, priority: w.priority, openedAt: w.openedAt, title: w.title })),
       holds: this.calendar.allHolds().filter((h) => agIds.has(h.holderId)).map((h) => ({ unitId: h.unitId, start: h.start, end: h.end, status: h.status })),
       ledgerBalanced: this.trialBalance(tenantId).balanced,
     };

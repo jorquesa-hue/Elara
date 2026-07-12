@@ -15,14 +15,15 @@ export interface ReportingInput {
   to: string; // window end, ISO date (exclusive)
   currency: string;
   units: ReadonlyArray<{ id: string; label: string; active: boolean }>;
-  agreements: ReadonlyArray<{ id: string; kind: string; status: string; unitId: string; start: string; end: string; rateCents: number }>;
+  /** residentName: resolved by the App (party role link, else master-data guest). */
+  agreements: ReadonlyArray<{ id: string; kind: string; status: string; unitId: string; start: string; end: string; rateCents: number; residentName?: string }>;
   invoices: ReadonlyArray<{ id: string; agreementId: string; issuedAt: string; dueAt: string; totalCents: number; paidCents: number; status: string }>;
   payments: ReadonlyArray<{ id: string; invoiceId: string; amountCents: number; receivedAt: string; status: string }>;
   deposits: ReadonlyArray<{ id: string; agreementId: string; amountCents: number; status: string; heldAt: string; refundedCents?: number | null }>;
   bills: ReadonlyArray<{ id: string; payeeId: string; totalCents: number; paidCents: number; status: string; issuedAt: string; dueAt: string }>;
   apPayments: ReadonlyArray<{ id: string; billId: string; amountCents: number; paidAt: string; status: string }>;
   leads: ReadonlyArray<{ id: string; stage: string; estValueCents: number; createdAt: string; updatedAt: string }>;
-  workOrders: ReadonlyArray<{ id: string; status: string; priority: string; openedAt: string }>;
+  workOrders: ReadonlyArray<{ id: string; status: string; priority: string; openedAt: string; title?: string }>;
   holds: ReadonlyArray<{ unitId: string; start: string; end: string; status: string }>;
   ledgerBalanced: boolean;
 }
@@ -52,12 +53,19 @@ export interface Insight {
 
 export interface ReportSpec { key: string; title: string; description: string }
 export const REPORT_CATALOG: readonly ReportSpec[] = [
+  // The property-management staples (the RealPage/Entrata-class operational set).
+  { key: 'rent_roll', title: 'Rent roll', description: 'Every unit with its resident, lease dates, scheduled rent, deposit held and outstanding balance — plus occupancy and scheduled-rent totals.' },
+  { key: 'delinquency', title: 'Delinquency (aged)', description: 'Aged receivables by resident: current, 1–30, 31–60, 61–90 and 90+ day buckets per account.' },
+  { key: 'lease_expirations', title: 'Lease expirations', description: 'Active leases bucketed by expiration month — the renewal-exposure schedule.' },
+  { key: 'box_score', title: 'Box score', description: 'Leasing activity for the window: move-ins, move-outs, funnel counts and occupancy.' },
+  { key: 'vacancy', title: 'Vacancy & availability', description: 'Vacant units with days vacant, last occupancy and rent at risk.' },
   { key: 'occupancy', title: 'Occupancy', description: 'Sold vs available room-nights per unit for the window.' },
   { key: 'revenue', title: 'Revenue & ADR', description: 'Cash collected, ADR and RevPAR, by month.' },
   { key: 'ar_aging', title: 'Receivables aging', description: 'Outstanding invoices bucketed by days overdue.' },
   { key: 'collections', title: 'Collections', description: 'Every past-due invoice with days overdue and outstanding balance.' },
   { key: 'deposits', title: 'Security deposits', description: 'Held vs refunded, and current exposure.' },
   { key: 'payables', title: 'Accounts payable', description: 'Vendor bills outstanding, aged by due date.' },
+  { key: 'wo_aging', title: 'Work-order aging', description: 'Open work orders by age and priority.' },
   { key: 'pipeline', title: 'Sales pipeline', description: 'Leads by stage, pipeline value and conversion.' },
   { key: 'portfolio', title: 'Portfolio mix', description: 'Agreements by kind and status; unit occupancy mix.' },
   { key: 'cashflow', title: 'Cash flow', description: 'Money in (payments) vs money out (vendor payouts) for the window.' },
@@ -253,8 +261,237 @@ function cashflow(inp: ReportingInput): Report {
   };
 }
 
+// --- property-management staples (the RealPage/Entrata-class set) -----------
+
+/** The agreement currently occupying each unit: active AND its period contains
+ *  today. When two qualify (shouldn't happen — the calendar prevents overlap),
+ *  the later start wins. */
+function currentAgreementByUnit(inp: ReportingInput): Map<string, ReportingInput['agreements'][number]> {
+  const today = inp.now.slice(0, 10);
+  const map = new Map<string, ReportingInput['agreements'][number]>();
+  for (const a of inp.agreements) {
+    if (a.status !== 'active') continue;
+    if (a.start.slice(0, 10) <= today && today < a.end.slice(0, 10)) {
+      const prev = map.get(a.unitId);
+      if (!prev || a.start > prev.start) map.set(a.unitId, a);
+    }
+  }
+  return map;
+}
+function sumByAgreement<T extends { agreementId: string }>(rows: readonly T[], amount: (r: T) => number): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const r of rows) m.set(r.agreementId, (m.get(r.agreementId) ?? 0) + amount(r));
+  return m;
+}
+
+function rentRoll(inp: ReportingInput): Report {
+  const occ = currentAgreementByUnit(inp);
+  const balance = sumByAgreement(inp.invoices.filter((i) => OPEN_INV.has(i.status)), outstanding);
+  const heldDeposits = sumByAgreement(inp.deposits.filter((d) => d.status === 'held'), (d) => d.amountCents);
+  const rows = inp.units
+    .map((u) => {
+      const a = occ.get(u.id);
+      return {
+        unit: u.label,
+        status: a ? 'occupied' : u.active ? 'vacant' : 'offline',
+        resident: a ? (a.residentName ?? '—') : '',
+        kind: a?.kind ?? '',
+        leaseStart: a ? a.start.slice(0, 10) : '',
+        leaseEnd: a ? a.end.slice(0, 10) : '',
+        rent: a?.rateCents ?? 0,
+        deposit: a ? (heldDeposits.get(a.id) ?? 0) : 0,
+        balance: a ? (balance.get(a.id) ?? 0) : 0,
+      };
+    })
+    .sort((x, y) => x.unit.localeCompare(y.unit));
+  const occupied = rows.filter((r) => r.status === 'occupied');
+  const rentable = inp.units.filter((u) => u.active).length;
+  return {
+    key: 'rent_roll', title: 'Rent roll', window: { from: inp.from, to: inp.to },
+    subtitle: 'Rate is per the agreement term (nightly stays show the nightly rate).',
+    columns: [
+      { key: 'unit', label: 'Unit', kind: 'text' }, { key: 'status', label: 'Status', kind: 'text' },
+      { key: 'resident', label: 'Resident', kind: 'text' }, { key: 'kind', label: 'Type', kind: 'text' },
+      { key: 'leaseStart', label: 'Start', kind: 'date' }, { key: 'leaseEnd', label: 'End', kind: 'date' },
+      { key: 'rent', label: 'Rate', kind: 'money' }, { key: 'deposit', label: 'Deposit held', kind: 'money' },
+      { key: 'balance', label: 'Balance', kind: 'money' },
+    ],
+    rows,
+    kpis: [
+      { label: 'Occupancy', value: pct(occupied.length, rentable), kind: 'percent' },
+      { label: 'Occupied / rentable', value: occupied.length, kind: 'number' },
+      { label: 'Scheduled rent', value: sum(occupied.map((r) => r.rent)), kind: 'money' },
+      { label: 'Outstanding balances', value: sum(rows.map((r) => r.balance)), kind: 'money' },
+      { label: 'Deposits held', value: sum(rows.map((r) => r.deposit)), kind: 'money' },
+    ],
+  };
+}
+
+function delinquency(inp: ReportingInput): Report {
+  const ag = new Map(inp.agreements.map((a) => [a.id, a]));
+  const unitLabel = new Map(inp.units.map((u) => [u.id, u.label]));
+  const acc = new Map<string, { current: number; d1_30: number; d31_60: number; d61_90: number; d90: number; total: number }>();
+  for (const i of inp.invoices) {
+    if (!OPEN_INV.has(i.status)) continue;
+    const due = outstanding(i);
+    if (due <= 0) continue;
+    const past = ms(i.dueAt) < ms(inp.now) ? daysBetween(i.dueAt, inp.now) : -1;
+    const b = acc.get(i.agreementId) ?? { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90: 0, total: 0 };
+    if (past < 0) b.current += due;
+    else if (past <= 30) b.d1_30 += due;
+    else if (past <= 60) b.d31_60 += due;
+    else if (past <= 90) b.d61_90 += due;
+    else b.d90 += due;
+    b.total += due;
+    acc.set(i.agreementId, b);
+  }
+  const rows = [...acc.entries()]
+    .map(([agId, b]) => {
+      const a = ag.get(agId);
+      return { resident: a?.residentName ?? agId, unit: a ? (unitLabel.get(a.unitId) ?? a.unitId) : '—', ...b };
+    })
+    .sort((x, y) => y.total - x.total);
+  const pastDue = sum(rows.map((r) => r.total - r.current));
+  return {
+    key: 'delinquency', title: 'Delinquency (aged receivables)', window: { from: inp.from, to: inp.to },
+    subtitle: '“Current” is billed but not yet due; everything else is past due by bucket.',
+    columns: [
+      { key: 'resident', label: 'Resident', kind: 'text' }, { key: 'unit', label: 'Unit', kind: 'text' },
+      { key: 'current', label: 'Current', kind: 'money' }, { key: 'd1_30', label: '1–30', kind: 'money' },
+      { key: 'd31_60', label: '31–60', kind: 'money' }, { key: 'd61_90', label: '61–90', kind: 'money' },
+      { key: 'd90', label: '90+', kind: 'money' }, { key: 'total', label: 'Total', kind: 'money' },
+    ],
+    rows,
+    kpis: [
+      { label: 'Past due', value: pastDue, kind: 'money' },
+      { label: 'Accounts with balance', value: rows.length, kind: 'number' },
+      { label: '90+ days', value: sum(rows.map((r) => r.d90)), kind: 'money' },
+      { label: 'Total receivable', value: sum(rows.map((r) => r.total)), kind: 'money' },
+    ],
+  };
+}
+
+function leaseExpirations(inp: ReportingInput): Report {
+  const today = inp.now.slice(0, 10);
+  const active = inp.agreements.filter((a) => a.status === 'active');
+  const buckets = new Map<string, { count: number; rent: number }>();
+  for (const a of active) {
+    const end = a.end.slice(0, 10);
+    const key = end <= today ? 'holdover (past end)' : monthKey(end);
+    const b = buckets.get(key) ?? { count: 0, rent: 0 };
+    b.count += 1; b.rent += a.rateCents;
+    buckets.set(key, b);
+  }
+  const rows = [...buckets.entries()]
+    .map(([month, b]) => ({ month, count: b.count, rentAtRisk: b.rent }))
+    .sort((x, y) => x.month.localeCompare(y.month));
+  const withinDays = (d: number) => active.filter((a) => { const end = a.end.slice(0, 10); return end > today && daysBetween(today, end) <= d; });
+  return {
+    key: 'lease_expirations', title: 'Lease expirations', window: { from: inp.from, to: inp.to },
+    columns: [
+      { key: 'month', label: 'Expiration month', kind: 'text' },
+      { key: 'count', label: 'Agreements', kind: 'number' },
+      { key: 'rentAtRisk', label: 'Rent at risk', kind: 'money' },
+    ],
+    rows,
+    kpis: [
+      { label: 'Expiring ≤30d', value: withinDays(30).length, kind: 'number' },
+      { label: 'Expiring ≤60d', value: withinDays(60).length, kind: 'number' },
+      { label: 'Expiring ≤90d', value: withinDays(90).length, kind: 'number' },
+      { label: 'Rent at risk ≤90d', value: sum(withinDays(90).map((a) => a.rateCents)), kind: 'money' },
+    ],
+  };
+}
+
+function boxScore(inp: ReportingInput): Report {
+  const win = (d: string) => inWindow(d, inp.from, inp.to);
+  const moveIns = inp.agreements.filter((a) => win(a.start));
+  const moveOuts = inp.agreements.filter((a) => win(a.end));
+  const newLeads = inp.leads.filter((l) => win(l.createdAt));
+  const signed = inp.leads.filter((l) => l.stage === 'signed' && win(l.updatedAt));
+  const lost = inp.leads.filter((l) => l.stage === 'lost' && win(l.updatedAt));
+  const occ = currentAgreementByUnit(inp);
+  const rentable = inp.units.filter((u) => u.active).length;
+  const rows = [
+    { metric: 'Move-ins (agreement starts)', value: moveIns.length },
+    { metric: 'Move-outs (agreement ends)', value: moveOuts.length },
+    { metric: 'Net change', value: moveIns.length - moveOuts.length },
+    { metric: 'New leads', value: newLeads.length },
+    { metric: 'Leases signed', value: signed.length },
+    { metric: 'Leads lost', value: lost.length },
+    { metric: 'Units occupied today', value: occ.size },
+    { metric: 'Rentable units', value: rentable },
+  ];
+  return {
+    key: 'box_score', title: 'Box score (leasing activity)', window: { from: inp.from, to: inp.to },
+    columns: [{ key: 'metric', label: 'Metric', kind: 'text' }, { key: 'value', label: 'Value', kind: 'number' }],
+    rows,
+    kpis: [
+      { label: 'Occupancy', value: pct(occ.size, rentable), kind: 'percent' },
+      { label: 'Move-ins', value: moveIns.length, kind: 'number' },
+      { label: 'Move-outs', value: moveOuts.length, kind: 'number' },
+      { label: 'Signed', value: signed.length, kind: 'number' },
+    ],
+  };
+}
+
+function vacancy(inp: ReportingInput): Report {
+  const occ = currentAgreementByUnit(inp);
+  const today = inp.now.slice(0, 10);
+  const rows = inp.units
+    .filter((u) => u.active && !occ.has(u.id))
+    .map((u) => {
+      const past = inp.agreements.filter((a) => a.unitId === u.id && a.end.slice(0, 10) <= today);
+      const lastEnd = past.length ? past.map((a) => a.end.slice(0, 10)).sort().pop()! : null;
+      const anyAg = inp.agreements.filter((a) => a.unitId === u.id).sort((x, y) => y.start.localeCompare(x.start))[0];
+      return {
+        unit: u.label,
+        lastOccupied: lastEnd ?? 'never occupied',
+        daysVacant: lastEnd ? daysBetween(lastEnd, today) : ('—' as unknown as number),
+        rentAtRisk: anyAg?.rateCents ?? 0,
+      };
+    })
+    .sort((x, y) => (Number(y.daysVacant) || 1e9) - (Number(x.daysVacant) || 1e9));
+  const rentable = inp.units.filter((u) => u.active).length;
+  return {
+    key: 'vacancy', title: 'Vacancy & availability', window: { from: inp.from, to: inp.to },
+    subtitle: 'Rent at risk uses the unit’s most recent agreement rate.',
+    columns: [
+      { key: 'unit', label: 'Unit', kind: 'text' }, { key: 'lastOccupied', label: 'Last occupied until', kind: 'date' },
+      { key: 'daysVacant', label: 'Days vacant', kind: 'number' }, { key: 'rentAtRisk', label: 'Rent at risk', kind: 'money' },
+    ],
+    rows,
+    kpis: [
+      { label: 'Vacant units', value: rows.length, kind: 'number' },
+      { label: 'Vacancy', value: pct(rows.length, rentable), kind: 'percent' },
+      { label: 'Rent at risk', value: sum(rows.map((r) => r.rentAtRisk)), kind: 'money' },
+    ],
+  };
+}
+
+function woAging(inp: ReportingInput): Report {
+  const open = inp.workOrders.filter((w) => !['completed', 'cancelled'].includes(w.status));
+  const rows = open
+    .map((w) => ({ workOrder: w.title ?? w.id, priority: w.priority, status: w.status, daysOpen: daysBetween(w.openedAt, inp.now) }))
+    .sort((x, y) => y.daysOpen - x.daysOpen);
+  return {
+    key: 'wo_aging', title: 'Work-order aging', window: { from: inp.from, to: inp.to },
+    columns: [
+      { key: 'workOrder', label: 'Work order', kind: 'text' }, { key: 'priority', label: 'Priority', kind: 'text' },
+      { key: 'status', label: 'Status', kind: 'text' }, { key: 'daysOpen', label: 'Days open', kind: 'number' },
+    ],
+    rows,
+    kpis: [
+      { label: 'Open', value: rows.length, kind: 'number' },
+      { label: 'High/urgent', value: open.filter((w) => w.priority === 'high' || w.priority === 'urgent').length, kind: 'number' },
+      { label: 'Oldest (days)', value: rows.length ? rows[0]!.daysOpen : 0, kind: 'number' },
+    ],
+  };
+}
+
 const BUILDERS: Record<string, (inp: ReportingInput) => Report> = {
   occupancy, revenue, ar_aging: arAging, collections, deposits: depositsReport, payables, pipeline, portfolio, cashflow,
+  rent_roll: rentRoll, delinquency, lease_expirations: leaseExpirations, box_score: boxScore, vacancy, wo_aging: woAging,
 };
 
 export function buildReport(key: string, inp: ReportingInput): Report | null {

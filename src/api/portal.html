@@ -1523,7 +1523,7 @@
 
   // ---- reports & insights -------------------------------------------------
   var CHART_PALETTE = ["#6d8bff","#8b6cff","#3aa76d","#e0894a","#e05a5a","#22a5b8","#c98a1e","#b565d8","#4f9d69","#d98a8a"];
-  var CATALOG_CHART = { occupancy:"bar", revenue:"line", ar_aging:"bar", collections:"table", deposits:"bar", payables:"bar", pipeline:"bar", portfolio:"donut", cashflow:"bar" };
+  var CATALOG_CHART = { occupancy:"bar", revenue:"line", ar_aging:"bar", collections:"table", deposits:"bar", payables:"bar", pipeline:"bar", portfolio:"donut", cashflow:"bar", rent_roll:"table", delinquency:"bar", lease_expirations:"bar", box_score:"table", vacancy:"table", wo_aging:"bar" };
 
   function viewReports(main) {
     main.appendChild(h("h1", {}, ["Reports & analytics"]));
@@ -1625,7 +1625,9 @@
   }
   function seriesFromReport(rep){
     var textCol=(rep.columns||[]).filter(function(c){return c.kind==="text"||c.kind==="date";})[0];
-    var numCol=(rep.columns||[]).filter(function(c){return c.kind==="money"||c.kind==="number"||c.kind==="percent";})[0];
+    var numCols=(rep.columns||[]).filter(function(c){return c.kind==="money"||c.kind==="number"||c.kind==="percent";});
+    // Prefer a 'total' column (e.g. delinquency) so the chart shows the headline figure.
+    var numCol=numCols.filter(function(c){return c.key==="total";})[0]||numCols[0];
     if(!textCol||!numCol) return null;
     var rows=(rep.rows||[]).slice(0,12);
     return { labels: rows.map(function(r){return String(r[textCol.key]);}), values: rows.map(function(r){return Number(r[numCol.key])||0;}), valueKind: numCol.kind };
