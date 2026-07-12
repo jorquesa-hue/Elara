@@ -63,6 +63,7 @@ import { RateLimiter } from '../ratelimit.ts';
 import { buildSubjectAccessReport, redactPartyRecord, redactRecipient, type ErasureReceipt } from '../compliance.ts';
 import { recommendAccess } from '../access-advisor.ts';
 import { buildReport, computeInsights, REPORT_CATALOG, type ReportingInput } from '../reporting.ts';
+import { buildCustomReport, dataSources, type CustomReportSpec } from '../report-builder.ts';
 import { buildDemoWorld, DEMO_MARKER_UNIT_ID } from '../demo-data.ts';
 
 export interface ApiRequest {
@@ -2209,6 +2210,29 @@ export class App {
     this.add('GET', '/reports/insights', 'reports.read', (ctx, _p, body) => {
       const w = this.reportWindow(this.optString(body, 'from'), this.optString(body, 'to'));
       return { status: 200, body: { window: w, insights: computeInsights(this.reportingInput(ctx.tenantId, w.from, w.to)) } };
+    });
+
+    // Self-service report BUILDER: the catalog of pickable sources/dimensions/
+    // measures/filters, and a POST that runs a user-composed spec into a grouped,
+    // chart-ready report. (Registered before /reports/:key so 'sources' / 'build'
+    // aren't swallowed by the :key param.)
+    this.add('GET', '/reports/build/sources', 'reports.read', () => ({ status: 200, body: { sources: dataSources() } }));
+
+    this.add('POST', '/reports/build', 'reports.read', (ctx, _p, body) => {
+      const w = this.reportWindow(this.optString(body, 'from'), this.optString(body, 'to'));
+      const spec: CustomReportSpec = {
+        source: this.requireString(body, 'source'),
+        dimension: this.requireString(body, 'dimension'),
+        measure: this.optString(body, 'measure'),
+        aggregate: this.optString(body, 'aggregate') as CustomReportSpec['aggregate'],
+        chart: this.optString(body, 'chart') as CustomReportSpec['chart'],
+        filterKey: this.optString(body, 'filterKey'),
+        filterValue: this.optString(body, 'filterValue'),
+        limit: typeof body['limit'] === 'number' ? (body['limit'] as number) : undefined,
+      };
+      const report = buildCustomReport(spec, this.reportingInput(ctx.tenantId, w.from, w.to));
+      if (!report) throw new HttpError(400, 'invalid report spec (unknown source, dimension, or measure)');
+      return { status: 200, body: { report } };
     });
 
     this.add('GET', '/reports/:key', 'reports.read', (ctx, p, body) => {

@@ -1522,29 +1522,43 @@
   }
 
   // ---- reports & insights -------------------------------------------------
+  var CHART_PALETTE = ["#6d8bff","#8b6cff","#3aa76d","#e0894a","#e05a5a","#22a5b8","#c98a1e","#b565d8","#4f9d69","#d98a8a"];
+  var CATALOG_CHART = { occupancy:"bar", revenue:"line", ar_aging:"bar", collections:"table", deposits:"bar", payables:"bar", pipeline:"bar", portfolio:"donut", cashflow:"bar" };
+
   function viewReports(main) {
-    main.appendChild(h("h1", {}, ["Reports & insights"]));
-    main.appendChild(h("p", { class:"sub" }, ["Self-service analytics over your own data, with automated findings that tell you what needs attention and what to do about it."]));
+    main.appendChild(h("h1", {}, ["Reports & analytics"]));
+    main.appendChild(h("p", { class:"sub" }, ["Automated insights, a report catalog with charts, and a build-your-own report studio — save any chart to your dashboard."]));
+    if (!state.reportsTab) state.reportsTab = "insights";
     if (!state.reportKey) state.reportKey = "occupancy";
-    // Insight feed first — the "what needs attention" answer.
-    main.appendChild(h("h2", {}, ["What needs attention"]));
-    var insWrap = h("div", {}, [h("div",{class:"muted"},["Analyzing…"])]); main.appendChild(insWrap);
+    var tabs = [["insights","What needs attention"],["catalog","Report catalog"],["build","Build a report"],["dashboard","My dashboard"]];
+    var tabBar = h("div", { class:"row", style:"flex-wrap:wrap;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:12px" },
+      tabs.map(function(tb){ return h("button",{ class:"btn "+(state.reportsTab===tb[0]?"":"ghost")+" sm", onclick:function(){ state.reportsTab=tb[0]; viewReports(clear(main)); } },[tb[1]]); }));
+    main.appendChild(tabBar);
+    var body = h("div",{},[]); main.appendChild(body);
+    if (state.reportsTab==="insights") renderInsightsTab(body);
+    else if (state.reportsTab==="catalog") renderCatalogTab(body);
+    else if (state.reportsTab==="build") renderBuilderTab(body);
+    else renderDashboardTab(body);
+  }
+
+  function renderInsightsTab(body){
+    var insWrap = h("div", {}, [h("div",{class:"muted"},["Analyzing…"])]); body.appendChild(insWrap);
     api("/reports/insights").then(function(r){
       insWrap.innerHTML = "";
       if (r.status !== 200) return insWrap.appendChild(h("p",{class:"muted"},[(r.body&&r.body.error)||t("msg.denied")]));
       (r.body.insights||[]).forEach(function(i){ insWrap.appendChild(insightCard(i)); });
     });
-    // Report picker + rendered report.
-    main.appendChild(h("h2", {}, ["Reports"]));
-    var picker = h("div", { class:"row", style:"flex-wrap:wrap;gap:6px;margin-bottom:12px" }, []);
-    main.appendChild(picker);
-    var repWrap = h("div", {}, []); main.appendChild(repWrap);
+  }
+  function renderCatalogTab(body){
+    var picker = h("div", { class:"row", style:"flex-wrap:wrap;gap:6px;margin-bottom:14px" }, []);
+    body.appendChild(picker);
+    var repWrap = h("div", {}, []); body.appendChild(repWrap);
     api("/reports/catalog").then(function(r){
       (r.body.reports||[]).forEach(function(spec){
-        picker.appendChild(h("button", { class:"btn ghost sm"+(state.reportKey===spec.key?" active":""), title:spec.description, onclick:function(){ state.reportKey = spec.key; viewReports(clear(main)); } }, [spec.title]));
+        picker.appendChild(h("button", { class:"btn ghost sm"+(state.reportKey===spec.key?" active":""), title:spec.description, onclick:function(){ state.reportKey = spec.key; renderCatalogReport(repWrap, spec.key); Array.prototype.forEach.call(picker.children,function(b){b.classList.remove("active");}); } }, [spec.title]));
       });
     });
-    renderReport(repWrap, state.reportKey);
+    renderCatalogReport(repWrap, state.reportKey);
   }
   function insightCard(i) {
     var color = i.severity==="critical" ? "#e05a5a" : (i.severity==="warning" ? "#e0894a" : (i.severity==="positive" ? "#3aa76d" : (i.severity==="opportunity" ? "#c98a1e" : "var(--accent)")));
@@ -1559,12 +1573,64 @@
       i.action ? h("div", { style:"font-size:12.5px;margin-top:7px;color:"+color }, ["→ "+i.action]) : null
     ]);
   }
-  function fmtMetric(m) {
-    if (m.kind === "money") return fmt(m.value);
-    if (m.kind === "percent") return m.value + "%";
-    return String(m.value);
+  function fmtMetric(m) { return m.kind==="money"?fmt(m.value):(m.kind==="percent"?m.value+"%":String(m.value)); }
+  function fmtKpi(k) { return k.kind==="money"?fmt(k.value):(k.kind==="percent"?k.value+"%":String(k.value)); }
+  function fmtVal(v, kind){ return kind==="money"?fmt(Number(v)||0):(kind==="percent"?(v==null?0:v)+"%":String(v==null?0:v)); }
+
+  // ---- charts (inline, zero-dependency) -----------------------------------
+  function chartEl(series, type){
+    if(!series || !series.values || !series.values.length) return h("div",{class:"panel muted",style:"padding:18px;text-align:center"},["No data to chart for this selection."]);
+    if(type==="line") return lineChart(series);
+    if(type==="donut") return donutChart(series);
+    if(type==="table") return null; // table rendered separately
+    return barChart(series);
   }
-  function renderReport(wrap, key) {
+  function barChart(series){
+    var max = Math.max.apply(null, series.values.concat([0])) || 1;
+    var rows = series.labels.map(function(lab,i){
+      var v = series.values[i]; var pctw = Math.max(1.5, (v/max)*100);
+      return h("div",{style:"display:grid;grid-template-columns:minmax(80px,150px) 1fr auto;align-items:center;gap:10px;margin:6px 0"},[
+        h("div",{class:"muted",style:"font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"},[lab]),
+        h("div",{style:"background:var(--surface-2);border-radius:6px;height:18px;overflow:hidden"},[ h("div",{style:"height:100%;width:"+pctw+"%;background:"+CHART_PALETTE[i%CHART_PALETTE.length]+";border-radius:6px;min-width:3px"},[]) ]),
+        h("div",{style:"font-variant-numeric:tabular-nums;font-size:12.5px;min-width:60px;text-align:right"},[fmtVal(v,series.valueKind)])
+      ]);
+    });
+    return h("div",{class:"panel"}, rows);
+  }
+  function lineChart(series){
+    var W=600,H=210,pad=34, vals=series.values, n=vals.length;
+    var max=Math.max.apply(null,vals.concat([0])), min=Math.min.apply(null,vals.concat([0])); if(max===min) max=min+1;
+    var X=function(i){ return pad + (n<=1?(W-2*pad)/2:i*(W-2*pad)/(n-1)); };
+    var Y=function(v){ return H-pad-((v-min)/(max-min))*(H-2*pad); };
+    var pts=vals.map(function(v,i){return X(i)+","+Y(v);}).join(" ");
+    var dots=vals.map(function(v,i){return '<circle cx="'+X(i)+'" cy="'+Y(v)+'" r="3.5" fill="#6d8bff"/>';}).join("");
+    var base='<line x1="'+pad+'" y1="'+(H-pad)+'" x2="'+(W-pad)+'" y2="'+(H-pad)+'" stroke="var(--border)"/>';
+    var svgStr='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto">'+base+'<polyline points="'+pts+'" fill="none" stroke="#6d8bff" stroke-width="2.5"/>'+dots+'</svg>';
+    var labs=h("div",{style:"display:flex;justify-content:space-between;margin-top:2px"}, series.labels.map(function(l){return h("span",{class:"muted",style:"font-size:11px"},[l]);}));
+    return h("div",{class:"panel"},[ h("div",{html:svgStr}), labs ]);
+  }
+  function donutChart(series){
+    var total=series.values.reduce(function(a,b){return a+b;},0)||1, cx=95,cy=95,r=78,rin=48, ang=-Math.PI/2, paths="";
+    series.values.forEach(function(v,i){
+      var a2=ang+(v/total)*2*Math.PI, large=(a2-ang)>Math.PI?1:0;
+      var x1=cx+r*Math.cos(ang),y1=cy+r*Math.sin(ang),x2=cx+r*Math.cos(a2),y2=cy+r*Math.sin(a2);
+      if(v>0) paths+='<path d="M '+cx+' '+cy+' L '+x1+' '+y1+' A '+r+' '+r+' 0 '+large+' 1 '+x2+' '+y2+' Z" fill="'+CHART_PALETTE[i%CHART_PALETTE.length]+'"/>';
+      ang=a2;
+    });
+    var svgStr='<svg viewBox="0 0 190 190" style="width:190px;height:190px;flex:none"><g>'+paths+'</g><circle cx="'+cx+'" cy="'+cy+'" r="'+rin+'" fill="var(--surface)"/></svg>';
+    var legend=h("div",{style:"display:flex;flex-direction:column;gap:6px"}, series.labels.map(function(l,i){
+      return h("div",{style:"display:flex;align-items:center;gap:8px;font-size:12.5px"},[ h("span",{style:"width:12px;height:12px;border-radius:3px;background:"+CHART_PALETTE[i%CHART_PALETTE.length]+";flex:none"},[]), h("span",{class:"muted",style:"flex:1"},[l]), h("span",{style:"font-variant-numeric:tabular-nums"},[fmtVal(series.values[i],series.valueKind)]) ]);
+    }));
+    return h("div",{class:"panel",style:"display:flex;gap:22px;align-items:center;flex-wrap:wrap"},[ h("div",{html:svgStr}), h("div",{style:"flex:1;min-width:180px"},[legend]) ]);
+  }
+  function seriesFromReport(rep){
+    var textCol=(rep.columns||[]).filter(function(c){return c.kind==="text"||c.kind==="date";})[0];
+    var numCol=(rep.columns||[]).filter(function(c){return c.kind==="money"||c.kind==="number"||c.kind==="percent";})[0];
+    if(!textCol||!numCol) return null;
+    var rows=(rep.rows||[]).slice(0,12);
+    return { labels: rows.map(function(r){return String(r[textCol.key]);}), values: rows.map(function(r){return Number(r[numCol.key])||0;}), valueKind: numCol.kind };
+  }
+  function renderCatalogReport(wrap, key) {
     wrap.innerHTML = "";
     wrap.appendChild(h("div",{class:"muted"},["Loading…"]));
     api("/reports/"+key).then(function(r){
@@ -1575,6 +1641,9 @@
       (rep.kpis||[]).forEach(function(k){ card(kpiWrap, k.label, fmtKpi(k) + (typeof k.delta === "number" ? (" ("+(k.delta>=0?"+":"")+k.delta+"%)") : "")); });
       wrap.appendChild(kpiWrap);
       if (rep.subtitle) wrap.appendChild(h("p",{class:"muted",style:"font-size:13px;margin:2px 0 10px"},[rep.subtitle]));
+      var ctype = CATALOG_CHART[key] || "bar";
+      var series = seriesFromReport(rep);
+      if (ctype!=="table" && series){ var c=chartEl(series, ctype); if(c) wrap.appendChild(c); }
       var heads = (rep.columns||[]).map(function(c){ return th(c.label); });
       var rows = (rep.rows||[]).map(function(row){
         return h("tr", {}, (rep.columns||[]).map(function(c){
@@ -1588,10 +1657,91 @@
       wrap.appendChild(tableEl(heads, rows, (rep.columns||[]).length||1, "No data for this window."));
     });
   }
-  function fmtKpi(k) {
-    if (k.kind === "money") return fmt(k.value);
-    if (k.kind === "percent") return k.value + "%";
-    return String(k.value);
+
+  // ---- report builder -----------------------------------------------------
+  function renderBuilderTab(body){
+    var controls = h("div",{class:"panel"},[h("div",{class:"muted"},["Loading data sources…"])]);
+    var out = h("div",{style:"margin-top:16px"},[]);
+    body.appendChild(controls); body.appendChild(out);
+    api("/reports/build/sources").then(function(r){
+      if(r.status!==200){ controls.innerHTML=""; controls.appendChild(h("p",{class:"muted"},[(r.body&&r.body.error)||t("msg.denied")])); return; }
+      buildBuilder(controls, out, r.body.sources||[]);
+    });
+  }
+  function opt(pairs, cur){ return pairs.map(function(p){ return h("option",{value:p[0], selected:p[0]===cur?"selected":null},[p[1]]); }); }
+  function buildBuilder(controls, out, sources){
+    var srcSel=h("select",{},[]); var dimSel=h("select",{},[]); var measSel=h("select",{},[]);
+    var aggSel=h("select",{},opt([["sum","Sum"],["avg","Average"]],"sum"));
+    var chartSel=h("select",{},opt([["bar","Bar"],["line","Line"],["donut","Donut"],["table","Table"]],"bar"));
+    var filtSel=h("select",{},[]); var title=h("input",{placeholder:"My report title"});
+    function curSource(){ return sources.filter(function(s){return s.key===srcSel.value;})[0]||sources[0]; }
+    function refillDims(){
+      var s=curSource(); dimSel.innerHTML=""; opt(s.dimensions.map(function(d){return [d.key,d.label];}), s.dimensions[0]&&s.dimensions[0].key).forEach(function(o){dimSel.appendChild(o);});
+      measSel.innerHTML=""; opt(s.measures.map(function(m){return [m.key,m.label];}), "count").forEach(function(o){measSel.appendChild(o);});
+      filtSel.innerHTML=""; var fopts=[["","(no filter)"]]; (s.filters||[]).forEach(function(f){ f.options.forEach(function(o){ fopts.push([f.key+"|"+o, f.label+": "+o]); }); });
+      opt(fopts,"").forEach(function(o){filtSel.appendChild(o);});
+    }
+    opt(sources.map(function(s){return [s.key,s.label];}), sources[0]&&sources[0].key).forEach(function(o){srcSel.appendChild(o);});
+    refillDims();
+    function run(){
+      var meas=measSel.value; var f=(filtSel.value||"").split("|");
+      var spec={ source:srcSel.value, dimension:dimSel.value, measure:meas, aggregate:aggSel.value, chart:chartSel.value };
+      if(f.length===2){ spec.filterKey=f[0]; spec.filterValue=f[1]; }
+      state._lastSpec=spec;
+      api("/reports/build",{method:"POST",body:spec}).then(function(r){
+        out.innerHTML="";
+        if(r.status!==200) return out.appendChild(h("p",{class:"muted"},[(r.body&&r.body.error)||"err"]));
+        renderBuiltReport(out, r.body.report, spec, title);
+      });
+    }
+    srcSel.addEventListener("change",function(){ refillDims(); run(); });
+    [dimSel,measSel,aggSel,chartSel,filtSel].forEach(function(el){ el.addEventListener("change", run); });
+    controls.innerHTML="";
+    controls.appendChild(h("div",{class:"grid"},[
+      field("Data source",srcSel), field("Group by",dimSel), field("Measure",measSel),
+      field("Aggregate",aggSel), field("Chart",chartSel), field("Filter",filtSel)
+    ]));
+    controls.appendChild(h("div",{style:"display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-top:4px"},[
+      field("Save as",title),
+      h("button",{class:"btn sm",onclick:function(){ if(!state._lastSpec) return toast("Run a report first","err"); saveWidget(title.value||"Untitled report", state._lastSpec); toast("Saved to My dashboard","ok"); }},["＋ Save to dashboard"])
+    ]));
+    run();
+  }
+  function renderBuiltReport(out, rep, spec, titleInput){
+    if(titleInput && !titleInput.value) titleInput.value = rep.title;
+    var kpiWrap=h("div",{class:"cards"},[]); (rep.kpis||[]).forEach(function(k){ card(kpiWrap,k.label,fmtKpi(k)); }); out.appendChild(kpiWrap);
+    out.appendChild(h("h3",{style:"margin:8px 0 10px"},[rep.title]));
+    if(spec.chart!=="table"){ var c=chartEl(rep.series, spec.chart); if(c) out.appendChild(c); }
+    var heads=(rep.columns||[]).map(function(c){return th(c.label);});
+    var rows=(rep.rows||[]).map(function(row){ return h("tr",{},(rep.columns||[]).map(function(c){
+      if(c.kind==="money") return h("td",{style:"font-variant-numeric:tabular-nums"},[fmt(Number(row[c.key])||0)]);
+      if(c.kind==="number") return h("td",{style:"font-variant-numeric:tabular-nums"},[String(row[c.key]==null?0:row[c.key])]);
+      return h("td",{},[String(row[c.key]==null?"—":row[c.key])]);
+    })); });
+    out.appendChild(tableEl(heads, rows, (rep.columns||[]).length||1, "No data."));
+  }
+
+  // ---- saved dashboard (per tenant, in this browser) ----------------------
+  function dashKey(){ return "usos.dash."+((state.me&&state.me.tenantId)||(state.config&&state.config.tenantId)||"default"); }
+  function loadWidgets(){ try{ return JSON.parse(localStorage.getItem(dashKey())||"[]"); }catch(e){ return []; } }
+  function saveWidget(title, spec){ var w=loadWidgets(); w.push({ id:"w-"+Date.now(), title:title, spec:spec }); localStorage.setItem(dashKey(), JSON.stringify(w)); }
+  function removeWidget(id){ localStorage.setItem(dashKey(), JSON.stringify(loadWidgets().filter(function(w){return w.id!==id;}))); }
+  function renderDashboardTab(body){
+    var widgets=loadWidgets();
+    if(!widgets.length){ body.appendChild(h("div",{class:"panel muted",style:"text-align:center;padding:26px"},["No saved reports yet. Go to ‘Build a report’, compose a chart, and click ‘Save to dashboard’."])); return; }
+    var grid=h("div",{style:"display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px"},[]);
+    body.appendChild(grid);
+    widgets.forEach(function(w){
+      var cardEl=h("div",{class:"panel"},[ h("div",{class:"row",style:"justify-content:space-between;align-items:center;margin-bottom:8px"},[ h("strong",{},[w.title]), h("button",{class:"btn ghost sm",title:"Remove",onclick:function(){ removeWidget(w.id); viewReports(clear(document.getElementById("main"))); }},["✕"]) ]), h("div",{class:"muted"},["Loading…"]) ]);
+      grid.appendChild(cardEl);
+      api("/reports/build",{method:"POST",body:w.spec}).then(function(r){
+        while(cardEl.children.length>1) cardEl.removeChild(cardEl.lastChild);
+        if(r.status!==200){ cardEl.appendChild(h("p",{class:"muted"},["Could not load."])); return; }
+        var rep=r.body.report;
+        if(w.spec.chart!=="table"){ var c=chartEl(rep.series, w.spec.chart); if(c) cardEl.appendChild(c); }
+        else { var heads=(rep.columns||[]).map(function(c){return th(c.label);}); var rows=(rep.rows||[]).slice(0,8).map(function(row){ return h("tr",{},(rep.columns||[]).map(function(c){ return h("td",{},[c.kind==="money"?fmt(Number(row[c.key])||0):String(row[c.key])]); })); }); cardEl.appendChild(tableEl(heads,rows,(rep.columns||[]).length||1,"No data.")); }
+      });
+    });
   }
 
   // ---- helpers ------------------------------------------------------------

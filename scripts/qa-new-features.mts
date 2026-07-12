@@ -41,17 +41,28 @@ await page.click('button:has-text("Load sample data")');
 await page.waitForTimeout(800);
 await shot('02-dashboard-seeded');
 
-// Reports view.
+// Reports & analytics workbench.
 await page.click('nav button:has-text("Reports")');
 await page.waitForSelector('text=What needs attention');
 await page.waitForTimeout(600);
 await shot('03-reports-insights');
-await page.click('button:has-text("Receivables aging")');
+// Catalog tab: report with a chart.
+await page.click('button:has-text("Report catalog")');
 await page.waitForTimeout(500);
-await shot('04-reports-aging');
-await page.click('button:has-text("Cash flow")');
+await page.click('button:has-text("Portfolio mix")');
 await page.waitForTimeout(500);
-await shot('05-reports-cashflow');
+await shot('04-reports-catalog-chart');
+// Build tab: compose a custom report + chart.
+await page.click('button:has-text("Build a report")');
+await page.waitForSelector('text=Data source');
+await page.waitForTimeout(700);
+await shot('05-reports-builder');
+// Save it to the dashboard, then view the dashboard.
+const saveBtn = page.locator('button:has-text("Save to dashboard")').first();
+if (await saveBtn.count()) { await saveBtn.click(); await page.waitForTimeout(400); }
+await page.click('button:has-text("My dashboard")');
+await page.waitForTimeout(700);
+await shot('05c-reports-dashboard');
 
 // Revenue management: KPIs + recommendations + rule editor + quote simulator.
 await page.click('nav button:has-text("Revenue")');
