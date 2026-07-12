@@ -1,0 +1,39 @@
+# Continuous deployment to Fly.io. Builds the Dockerfile and deploys the single
+# stateful instance (see fly.toml). App SECRETS (JWT_SECRET, DATABASE_URL,
+# SUPABASE_*) live on Fly itself via `fly secrets set` and are NOT needed here —
+# this workflow only needs a Fly deploy token.
+#
+# ONE-TIME SETUP (on your machine):
+#   1. fly tokens create deploy -a unified-stay-os     # actually your app name
+#   2. GitHub → repo → Settings → Secrets and variables → Actions → New secret
+#        name:  FLY_API_TOKEN
+#        value: <the token from step 1>
+#
+# After that: every push to the branch deploys automatically, and the deploy can
+# also be triggered on demand (Actions tab → Deploy to Fly → Run workflow, or by
+# an agent via the GitHub API).
+name: Deploy to Fly
+
+on:
+  push:
+    branches: [claude/pms-creation-resume-q9kzxs, main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch: {}
+
+# One deploy at a time; a newer push supersedes an in-flight run.
+concurrency:
+  group: fly-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
