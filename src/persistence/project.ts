@@ -84,7 +84,7 @@ export interface WorldData {
     agreementId: string; partyId: string; role: string; sharePct?: number; from?: string; to?: string;
   }>;
   bills?: Array<{
-    id: string; tenantId: string; payeeId: string; entityId?: string;
+    id: string; tenantId: string; payeeId: string; entityId?: string; propertyId?: string;
     issuedAt: string; dueAt: string; currency: string; totalCents: number;
     paidCents: number; status: string; memo?: string;
     lines: ReadonlyArray<{ description: string; account: string; amountCents: number }>;
@@ -354,8 +354,8 @@ export function projectWorld(w: WorldData): SqlStatement[] {
   for (const b of w.bills ?? []) {
     out.push(
       stmt(
-        'insert into bill (id, tenant_id, payee_id, entity_id, issued_at, due_at, currency, total_cents, paid_cents, status, memo) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) on conflict (id) do update set paid_cents = excluded.paid_cents, status = excluded.status, memo = excluded.memo',
-        [b.id, b.tenantId, b.payeeId, b.entityId ?? null, b.issuedAt, b.dueAt, b.currency, b.totalCents, b.paidCents, b.status, b.memo ?? null],
+        'insert into bill (id, tenant_id, payee_id, entity_id, property_id, issued_at, due_at, currency, total_cents, paid_cents, status, memo) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) on conflict (id) do update set paid_cents = excluded.paid_cents, status = excluded.status, memo = excluded.memo',
+        [b.id, b.tenantId, b.payeeId, b.entityId ?? null, b.propertyId ?? null, b.issuedAt, b.dueAt, b.currency, b.totalCents, b.paidCents, b.status, b.memo ?? null],
       ),
     );
     for (const line of b.lines) {

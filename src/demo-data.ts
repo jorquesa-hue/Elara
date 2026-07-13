@@ -39,6 +39,7 @@ export interface DemoInvoice {
 export interface DemoDeposit { id: string; agreementId: string; amountCents: number; heldAt: string }
 export interface DemoBill {
   id: string; payeeId: string; issuedAt: string; dueAt: string; memo?: string;
+  propertyCode?: string; // the community the expense belongs to (owner statements)
   lines: DemoInvoiceLine[];
   payCents?: number; payMethod?: 'pix' | 'transfer' | 'card' | 'cash'; paidAt?: string;
 }
@@ -209,9 +210,9 @@ export function buildDemoWorld(tenantId: string, at: string): DemoWorld {
 
   // --- vendor bills (AP): paid + open + overdue ---------------------------
   const bills: DemoBill[] = [
-    { id: 'demo-bill-1', payeeId: 'demo-party-vendor', issuedAt: t(-15), dueAt: d(-2), memo: 'Reparo hidráulico — Casa Feiticeira', lines: [{ description: 'Mão de obra + material', account: 'expense:maintenance', amountCents: 120_000 }], payCents: 120_000, payMethod: 'pix', paidAt: t(-5) },
-    { id: 'demo-bill-2', payeeId: 'demo-party-vendor', issuedAt: t(-9), dueAt: d(6), memo: 'Manutenção piscina (mensal)', lines: [{ description: 'Tratamento e limpeza', account: 'expense:maintenance', amountCents: 45_000 }] },
-    { id: 'demo-bill-3', payeeId: 'demo-party-vendor', issuedAt: t(-35), dueAt: d(-14), memo: 'Pintura Apto 103 (reforma)', lines: [{ description: 'Serviço de pintura', account: 'expense:maintenance', amountCents: 260_000 }] },
+    { id: 'demo-bill-1', payeeId: 'demo-party-vendor', propertyCode: 'CURRAL', issuedAt: t(-15), dueAt: d(-2), memo: 'Reparo hidráulico — Casa Feiticeira', lines: [{ description: 'Mão de obra + material', account: 'expense:maintenance', amountCents: 120_000 }], payCents: 120_000, payMethod: 'pix', paidAt: t(-5) },
+    { id: 'demo-bill-2', payeeId: 'demo-party-vendor', propertyCode: 'CURRAL', issuedAt: t(-9), dueAt: d(6), memo: 'Manutenção piscina (mensal)', lines: [{ description: 'Tratamento e limpeza', account: 'expense:maintenance', amountCents: 45_000 }] },
+    { id: 'demo-bill-3', payeeId: 'demo-party-vendor', propertyCode: 'VILA', issuedAt: t(-35), dueAt: d(-14), memo: 'Jardinagem e áreas comuns — Vila & Perequê', lines: [{ description: 'Serviço de paisagismo', account: 'expense:maintenance', amountCents: 260_000 }] },
   ];
 
   // --- work orders --------------------------------------------------------

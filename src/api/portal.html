@@ -879,17 +879,21 @@
     main.appendChild(h("p",{class:"sub"},["Vendor bills and resident refunds — money out. Payouts over policy limit escalate for approval."]));
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
     var wrap=h("div",{},[]); main.appendChild(wrap);
-    if (can("bill.issue")) api("/parties").then(function(r){ formSlot.appendChild(billForm(((r.body||{}).parties)||[])); });
+    if (can("bill.issue")) Promise.all([api("/parties"),api("/properties")]).then(function(rs){ formSlot.appendChild(billForm(((rs[0].body||{}).parties)||[], ((rs[1].body||{}).properties)||[])); });
     refreshBills(wrap);
   }
-  function billForm(parties){
+  function billForm(parties, properties){
     if(!parties.length) return h("div",{class:"panel muted"},["Add a party first — open an agreement and use the People section to create one (it becomes an available payee)."]);
     var payee=selectFrom(parties.map(function(p){return [p.id, p.displayName];}), parties[0].id);
     var acct=selectFrom([["expenses:supplier","expenses:supplier"],["liabilities:deposits_held","liabilities:deposits_held (refund)"]],"expenses:supplier");
+    var prop=h("select",{},[h("option",{value:""},["— property (optional) —"])]);
+    (properties||[]).forEach(function(p){ prop.appendChild(h("option",{value:p.id},[p.name])); });
     var desc=h("input",{placeholder:"repair"}); var amt=h("input",{type:"number",value:"25000"}); var due=h("input",{type:"date",value:"2026-07-15"});
     return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
-      api("/bills",{method:"POST",body:{id:"b-"+Date.now(),payeeId:payee.value,dueAt:due.value,lines:[{description:desc.value||"bill",account:acct.value,amountCents:parseInt(amt.value,10)}]}}).then(function(r){ handleMut(r,"bills"); });
-    }},[ field("Payee",payee), field("Description",desc), field("Account",acct), field("Amount (minor)",amt), field("Due",due), h("div",{},[h("button",{class:"btn",type:"submit"},["Record bill"])]) ]);
+      var body={id:"b-"+Date.now(),payeeId:payee.value,dueAt:due.value,lines:[{description:desc.value||"bill",account:acct.value,amountCents:parseInt(amt.value,10)}]};
+      if(prop.value) body.propertyId=prop.value;
+      api("/bills",{method:"POST",body:body}).then(function(r){ handleMut(r,"bills"); });
+    }},[ field("Payee",payee), field("Description",desc), field("Account",acct), field("Amount (minor)",amt), field("Property",prop), field("Due",due), h("div",{},[h("button",{class:"btn",type:"submit"},["Record bill"])]) ]);
   }
   function refreshBills(wrap){
     api("/bills").then(function(r){

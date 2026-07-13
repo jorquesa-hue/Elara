@@ -1633,6 +1633,8 @@ export class App {
       if (!this.parties.getParty(ctx.tenantId, payeeId)) throw new HttpError(404, 'payee party not found');
       const entityId = this.optString(body, 'entityId');
       if (entityId && !this.entities.getEntity(ctx.tenantId, entityId)) throw new HttpError(404, 'entity not found');
+      const propertyId = this.optString(body, 'propertyId');
+      if (propertyId && !this.masterData.properties.get(ctx.tenantId, propertyId)) throw new HttpError(404, 'property not found');
       const dueAt = this.requireString(body, 'dueAt');
       const issuedAt = this.optString(body, 'issuedAt') ?? this.now();
       const currency = this.config.get(ctx.tenantId).currency;
@@ -1655,7 +1657,7 @@ export class App {
           // never leave a booked-and-payable bill behind a 409.
           const totalCents = lines.reduce((s, l) => s + l.amountCents, 0);
           if (poId) this.procurement.assertCanBill(poId, totalCents);
-          const bill = this.payables.issue({ id, tenantId: ctx.tenantId, payeeId, entityId, issuedAt, dueAt, currency, lines, memo: this.optString(body, 'memo') });
+          const bill = this.payables.issue({ id, tenantId: ctx.tenantId, payeeId, entityId, propertyId, issuedAt, dueAt, currency, lines, memo: this.optString(body, 'memo') });
           if (poId) this.procurement.recordBilling(poId, bill.totalCents, issuedAt);
           return bill;
         },
@@ -3426,7 +3428,7 @@ export class App {
     for (const dep of w.deposits) { this.deposits.hold({ id: dep.id, agreementId: dep.agreementId, amountCents: dep.amountCents, currency, heldAt: dep.heldAt }); this.depositTenant.set(dep.id, tenantId); }
 
     for (const b of w.bills) {
-      this.payables.issue({ id: b.id, tenantId, payeeId: b.payeeId, issuedAt: b.issuedAt, dueAt: b.dueAt, currency, lines: b.lines, memo: b.memo });
+      this.payables.issue({ id: b.id, tenantId, payeeId: b.payeeId, ...(b.propertyCode ? { propertyId: propId(b.propertyCode) } : {}), issuedAt: b.issuedAt, dueAt: b.dueAt, currency, lines: b.lines, memo: b.memo });
       if (b.payCents && b.payCents > 0) { this.payables.pay({ id: `appay-${b.id}`, billId: b.id, amountCents: b.payCents, method: b.payMethod ?? 'pix', paidAt: b.paidAt ?? b.issuedAt }); billPayments++; }
     }
 

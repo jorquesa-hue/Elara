@@ -194,14 +194,14 @@ test('a resident sees an envelope where they are a signer, with their status', (
   const app = mkApp();
   // The office drafts a lease envelope — the resident (with an email) is auto-rostered.
   assert.equal(D(app, 'POST', '/agreements/ag-1/lease-envelope', { id: 'env-1', provider: 'docusign' }).status, 201);
-  let mine = (D(app, 'GET', '/resident/envelopes', undefined, 'bea').body as { envelopes: Array<{ id: string; mySignerStatus: string }> }).envelopes;
+  const read = () => (D(app, 'GET', '/resident/envelopes', undefined, 'bea').body as { envelopes: Array<{ id: string; mySignerStatus: string }> }).envelopes;
+  const mine = read();
   assert.equal(mine.length, 1);
   assert.equal(mine[0]!.id, 'env-1');
   assert.equal(mine[0]!.mySignerStatus, 'draft');
   // Once sent, it awaits the resident's signature at the provider.
   D(app, 'POST', '/signature-envelopes/env-1/send', {});
-  mine = (D(app, 'GET', '/resident/envelopes', undefined, 'bea').body as { envelopes: Array<{ mySignerStatus: string }> }).envelopes;
-  assert.equal(mine[0]!.mySignerStatus, 'awaiting');
+  assert.equal(read()[0]!.mySignerStatus, 'awaiting');
 });
 
 test('a resident does not see envelopes they are not a signer on', () => {

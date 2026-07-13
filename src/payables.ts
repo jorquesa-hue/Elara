@@ -21,6 +21,7 @@ export interface Bill {
   tenantId: string;
   payeeId: string; // party in the payee role
   entityId?: string; // paying legal entity
+  propertyId?: string; // the community/property the expense belongs to (owner statements)
   issuedAt: string;
   dueAt: string;
   currency: string;
@@ -62,6 +63,7 @@ export class Payables {
     tenantId: string;
     payeeId: string;
     entityId?: string;
+    propertyId?: string;
     issuedAt: string;
     dueAt: string;
     currency?: string;
@@ -78,6 +80,7 @@ export class Payables {
       tenantId: input.tenantId,
       payeeId: input.payeeId,
       entityId: input.entityId,
+      propertyId: input.propertyId,
       issuedAt: input.issuedAt,
       dueAt: input.dueAt,
       currency: input.currency ?? 'BRL',
@@ -95,6 +98,8 @@ export class Payables {
       postedAt: input.issuedAt,
       currency: bill.currency,
       tenantId: bill.tenantId,
+      entityId: input.entityId,
+      propertyId: input.propertyId,
       memo: input.memo ?? `bill ${input.id}`,
       lines: [
         ...input.lines.map((l) => ({ account: l.account, debitCents: l.amountCents, memo: l.description })),
