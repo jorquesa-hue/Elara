@@ -115,7 +115,10 @@ export function bookingSiteHtml(): string {
   document.getElementById("from").value = today(7);
   document.getElementById("to").value = today(10);
 
-  api("/config").then(function(r){
+  // ?template=<id> on the page URL previews that design without saving it —
+  // the portal's gallery "Preview" links land here.
+  var PREVIEW = new URLSearchParams(location.search).get("template");
+  api("/config" + (PREVIEW ? "?template=" + encodeURIComponent(PREVIEW) : "")).then(function(r){
     if(r.status!==200){ document.getElementById("heroTitle").textContent="This site isn't published yet."; document.getElementById("brandName").textContent="Booking"; return; }
     cfg = r.body; document.getElementById("brandName").textContent = cfg.displayName;
     document.getElementById("foot").textContent = cfg.displayName;
@@ -135,6 +138,7 @@ export function bookingSiteHtml(): string {
       document.body.setAttribute("data-cards", th.cards||"grid");
       if(content.heroPhotoDataUrl){ rs.setProperty("--heroimg", "url("+JSON.stringify(content.heroPhotoDataUrl)+")"); }
       if(th.hero==="split"){ var hv=document.createElement("div"); hv.className="hero-visual"; var hd=document.querySelector("header.hero"); hd.insertBefore(hv, hd.querySelector(".searchbar")); }
+      if(cfg.previewTemplate){ var rb=document.createElement("div"); rb.textContent="Design preview: "+(th.name||cfg.previewTemplate)+" — not saved. Pick it in your Website settings to apply."; rb.style.cssText="position:fixed;left:0;right:0;bottom:0;z-index:60;background:#111827;color:#fff;font:600 13px system-ui;padding:9px 16px;text-align:center;opacity:.94"; document.body.appendChild(rb); }
     }
     // Brand: logo + tagline (accent already folded into the theme server-side).
     if(b.logoDataUrl){ var l=document.querySelector(".logo"); if(l){ var img=document.createElement("img"); img.src=b.logoDataUrl; img.alt=cfg.displayName; img.style.cssText="height:34px;width:auto;border-radius:6px"; l.replaceWith(img); } }

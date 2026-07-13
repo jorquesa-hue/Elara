@@ -42,6 +42,8 @@ export interface SiteListing {
   content: Omit<SiteContent, 'units'>;
   /** The picked template + adjustments + brand accent, flattened for the page. */
   theme: ResolvedTheme;
+  /** Set only when ?template= previews a design other than the saved one. */
+  previewTemplate?: string;
   units: Array<{ id: string; label: string; fromCents: number | null; details?: UnitSiteDetails }>;
 }
 

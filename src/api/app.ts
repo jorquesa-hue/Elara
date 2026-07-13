@@ -67,7 +67,7 @@ import { buildReport, computeInsights, REPORT_CATALOG, type ReportingInput } fro
 import { buildCustomReport, dataSources, type CustomReportSpec } from '../report-builder.ts';
 import { siteListing, checkAvailability, isValidDate, type BookingSiteInput } from '../booking-site.ts';
 import { SiteContentStore, SiteContentError } from '../site-content.ts';
-import { templateGallery } from '../site-templates.ts';
+import { templateGallery, isKnownTemplate, resolveTheme } from '../site-templates.ts';
 import { buildDemoWorld, DEMO_MARKER_UNIT_ID } from '../demo-data.ts';
 
 export interface ApiRequest {
@@ -2426,10 +2426,19 @@ export class App {
    *  route so the caller falls through to the normal authenticated router. */
   private bookingSiteRoute(method: string, tenant: string, action: string | undefined, body: Record<string, unknown>): ApiResponse | null {
     const inp = this.bookingSiteInput(tenant);
-    // config (listing) — GET /site/:tenant/config
+    // config (listing) — GET /site/:tenant/config[?template=<id>]
+    // ?template= is a PREVIEW override: the listing is themed with that template's
+    // defaults (brand accent still applied) WITHOUT touching the saved choice, so
+    // the operator can eyeball every design on their real site before picking.
     if (method === 'GET' && action === 'config') {
       if (!inp) return { status: 404, body: { error: 'no published inventory for this site' } };
-      return { status: 200, body: siteListing(inp) };
+      const listing = siteListing(inp);
+      const preview = this.optString(body, 'template');
+      if (preview && isKnownTemplate(preview)) {
+        listing.theme = resolveTheme(preview, undefined, inp?.brand?.color);
+        listing.previewTemplate = preview;
+      }
+      return { status: 200, body: listing };
     }
     // availability — POST /site/:tenant/availability {from,to}
     if (method === 'POST' && action === 'availability') {

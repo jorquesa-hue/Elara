@@ -1,7 +1,7 @@
 // Tranche 57 — website templates. 20 curated designs (palette + font + radius +
 // hero layout + card layout) resolved server-side with operator adjustments and
 // the brand accent. Registry integrity, resolveTheme semantics, sanitize rules,
-// the gallery endpoint, and the public site carrying the resolved theme. 11 tests.
+// the gallery endpoint, and the public site carrying the resolved theme. 12 tests.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -107,6 +107,21 @@ test('the theme folds in brand color + adjustments end to end', () => {
   assert.equal(theme.palette.accent, '#123abc');
   assert.equal(theme.cards, 'grid'); // adjusted away from zen's wide
   assert.equal(theme.radiusPx, 4); // zen default sharp preserved
+});
+
+test('?template= previews a design without touching the saved choice', () => {
+  const app = seededApp();
+  D(app, 'PUT', '/site-content', 'mgr', { content: { template: 'tropicalia' } });
+  // Preview zen: the response is themed zen and flagged as a preview…
+  const prev = D(app, 'GET', '/site/jq/config', null, { template: 'zen' }).body as { theme: { id: string }; previewTemplate?: string };
+  assert.equal(prev.theme.id, 'zen');
+  assert.equal(prev.previewTemplate, 'zen');
+  // …an unknown id is ignored, and the saved template is untouched.
+  const junk = D(app, 'GET', '/site/jq/config', null, { template: 'nope' }).body as { theme: { id: string }; previewTemplate?: string };
+  assert.equal(junk.theme.id, 'tropicalia');
+  assert.equal(junk.previewTemplate, undefined);
+  const plain = D(app, 'GET', '/site/jq/config', null).body as { theme: { id: string } };
+  assert.equal(plain.theme.id, 'tropicalia');
 });
 
 test('template choice survives snapshot → rehydrate', () => {
