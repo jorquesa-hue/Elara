@@ -57,11 +57,23 @@ await page.waitForTimeout(600);
 const afterText = await page.evaluate(() => document.body.innerText);
 const requestListed = /Leaky faucet/.test(afterText) && /open/i.test(afterText);
 
+// 3B: view the lease document + signal renewal interest.
+await page.getByRole('button', { name: 'View lease' }).click();
+await page.waitForTimeout(400);
+const docText = await page.evaluate(() => document.body.innerText);
+const leaseShown = /Residential Lease/.test(docText);
+await page.getByRole('button', { name: "I'd like to renew" }).click();
+await page.waitForTimeout(400);
+const renewToast = await page.evaluate(() => document.body.innerText);
+const renewSignalled = /notified you'd like to renew/.test(renewToast);
+
 await page.screenshot({ path: process.argv[2] ?? '/tmp/claude-0/-home-user-Elara/8362700f-e9b3-5f80-9d7c-fe02ed300b4d/scratchpad/resident.png', fullPage: true });
 await browser.close();
 server.close();
 
 console.log('resident home rendered (lease + renewal):', hasHome);
 console.log('maintenance request listed:', requestListed);
+console.log('lease document shown:', leaseShown);
+console.log('renewal interest signalled:', renewSignalled);
 console.log('console errors:', errors.length ? errors : 'NONE');
-if (errors.length || !hasHome || !requestListed) process.exit(1);
+if (errors.length || !hasHome || !requestListed || !leaseShown || !renewSignalled) process.exit(1);

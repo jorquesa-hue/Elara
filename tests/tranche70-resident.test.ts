@@ -118,3 +118,38 @@ test('the resident maintenance request still passes the work_order.open policy g
   const audit = app.snapshotWorld('mf').actionLog.filter((a) => a.action === 'work_order.open');
   assert.ok(audit.length >= 1);
 });
+
+// --- Phase 3B: renewal interest + lease document view ---------------------
+test('a resident views their own lease document', () => {
+  const app = mkApp();
+  const r = D(app, 'GET', '/resident/agreements/ag-1/lease-document', undefined, 'bea');
+  assert.equal(r.status, 200);
+  const doc = (r.body as { document: { title: string; parties: Array<{ role: string; name: string }> } }).document;
+  assert.match(doc.title, /Apt 101/);
+  assert.ok(doc.parties.some((p) => p.role === 'resident' && p.name === 'Bea Lima'));
+});
+
+test('a resident cannot view a lease document for a lease they are not linked to', () => {
+  const app = mkApp();
+  assert.equal(D(app, 'GET', '/resident/agreements/ag-1/lease-document', undefined, 'cid').status, 404);
+  assert.equal(D(app, 'GET', '/resident/agreements/ag-1/lease-document', undefined, 'own').status, 403);
+});
+
+test('a resident signals renewal interest; it records to a thread and returns the offer', () => {
+  const app = mkApp();
+  const r = D(app, 'POST', '/resident/renewal-interest', { agreementId: 'ag-1' }, 'bea');
+  assert.equal(r.status, 201);
+  const body = r.body as { recorded: boolean; threadId: string; offer: { proposedRateCents: number } };
+  assert.equal(body.recorded, true);
+  assert.equal(body.offer.proposedRateCents, 315000);
+  // The office sees it as a resident thread message (Inbox).
+  const msgs = app.dispatch({ method: 'GET', path: '/threads/' + body.threadId, bearer: 'Bearer own', body: {} }).body as { messages: Array<{ authorType: string; body: string }> };
+  assert.ok(msgs.messages.some((m) => m.authorType === 'party' && /asked to renew/.test(m.body)));
+});
+
+test('renewal interest is idempotent within the same tick and rejects an unlinked lease', () => {
+  const app = mkApp();
+  D(app, 'POST', '/resident/renewal-interest', { agreementId: 'ag-1' }, 'bea');
+  assert.equal(D(app, 'POST', '/resident/renewal-interest', { agreementId: 'ag-1' }, 'bea').status, 201); // no duplicate error
+  assert.equal(D(app, 'POST', '/resident/renewal-interest', { agreementId: 'ag-1' }, 'cid').status, 404);
+});

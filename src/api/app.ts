@@ -2230,6 +2230,43 @@ export class App {
       );
     });
 
+    // View the lease document for a lease the resident is linked to (read-only,
+    // regenerated on demand — the same jurisdiction-aware doc the office drafts).
+    this.add('GET', '/resident/agreements/:id/lease-document', null, (ctx, p) => {
+      if (ctx.partyId === undefined) throw new HttpError(403, 'a resident session is required');
+      const id = p['id']!;
+      const entry = this.agreements.get(id);
+      if (!entry || entry.tenantId !== ctx.tenantId || !this.callerLinkedToAgreement(ctx.partyId, id)) throw new HttpError(404, 'agreement not found');
+      const doc = buildLeaseDocument(this.assembleLeaseTerms(ctx.tenantId, entry.agreement));
+      return { status: 200, body: { document: doc, text: renderLeaseText(doc) } };
+    });
+
+    // Signal interest in renewing a lease. Records the request on a resident comms
+    // thread (the office sees it in the Inbox) and returns the computed offer —
+    // ACCEPTING the renewal (rent + term change) stays an operator action.
+    this.add('POST', '/resident/renewal-interest', null, (ctx, _p, body) => {
+      if (ctx.partyId === undefined) throw new HttpError(403, 'a resident session is required');
+      const agreementId = this.requireString(body, 'agreementId');
+      const entry = this.agreements.get(agreementId);
+      if (!entry || entry.tenantId !== ctx.tenantId || !this.callerLinkedToAgreement(ctx.partyId, agreementId)) throw new HttpError(404, 'agreement not found');
+      const a = entry.agreement;
+      const at = this.now();
+      const offer = renewalsDue(
+        [{ id: a.id, kind: a.kind, status: a.status, rateCents: a.rateCents, end: a.period.end }],
+        at,
+        DEFAULT_RENEWAL_POLICY,
+      )[0] ?? null;
+      const threadId = `renewal-interest-${agreementId}`;
+      try { this.comms.getThread(threadId); }
+      catch { this.comms.openThread({ id: threadId, tenantId: ctx.tenantId, subject: `Renewal interest: ${agreementId}`, kind: 'resident', createdAt: at, agreementId }); }
+      const party = this.parties.getParty(ctx.tenantId, ctx.partyId);
+      const msgId = `renewint-${agreementId}-${at}`;
+      try {
+        this.comms.post({ id: msgId, threadId, at, authorType: 'party', authorId: ctx.partyId, body: `${party?.displayName ?? 'Resident'} asked to renew${offer ? ` (offer: ${offer.proposedRateCents} through ${offer.proposedEnd})` : ''}.`, direction: 'inbound' });
+      } catch { /* duplicate within the same tick — already recorded */ }
+      return { status: 201, body: { recorded: true, threadId, messageId: msgId, offer } };
+    });
+
     this.add('GET', '/privacy/parties/:id/export', null, (ctx, p) => {
       const id = p['id']!;
       if (ctx.partyId !== undefined) {

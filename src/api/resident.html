@@ -120,6 +120,12 @@
     if(!(state.home.agreements||[]).length) wrap.appendChild(h("div",{class:"card muted"},["No active lease on file."]));
     (state.home.agreements||[]).forEach(function(a){
       var cls = a.status==="active"?"ok":"";
+      var docBox=h("div",{},[]);
+      var actions=h("div",{class:"row",style:"margin-top:12px;gap:8px"},[
+        h("button",{class:"btn ghost sm",onclick:function(){ api("/resident/agreements/"+a.id+"/lease-document").then(function(r){ docBox.innerHTML=""; if(r.status!==200) return toast((r.body||{}).error||"Error","err"); docBox.appendChild(h("pre",{style:"white-space:pre-wrap;font-size:12px;max-height:260px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px"},[r.body.text])); }); }},["View lease"])
+      ]);
+      if((state.home.renewalOffers||[]).some(function(o){return o.agreementId===a.id;}))
+        actions.appendChild(h("button",{class:"btn sm",onclick:function(){ api("/resident/renewal-interest",{method:"POST",body:{agreementId:a.id}}).then(function(r){ if(r.status===201) toast("The office has been notified you'd like to renew","ok"); else toast((r.body||{}).error||"Error","err"); }); }},["I'd like to renew"]));
       wrap.appendChild(h("div",{class:"lease"},[
         h("div",{class:"row"},[ h("strong",{},[a.unitLabel]), h("span",{class:"pill "+cls},[a.status]) ]),
         h("div",{class:"row",style:"margin-top:8px"},[
@@ -127,7 +133,8 @@
           h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},["Term"]), h("div",{},[a.start+" → "+a.end]) ]),
           h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},["Balance"]), h("div",{},[fmtMoney(a.balanceCents)]) ]),
           h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},["Expires in"]), h("div",{},[(a.daysToExpiry>=0?a.daysToExpiry+" days":"—")]) ])
-        ])
+        ]),
+        actions, docBox
       ]));
     });
     // Maintenance
