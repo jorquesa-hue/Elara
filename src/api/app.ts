@@ -47,6 +47,7 @@ import { BankAccounts } from '../bank-account.ts';
 import { gaapViewFromLines } from '../multigaap.ts';
 import { Signatures } from '../esign.ts';
 import { buildLeaseDocument, renderLeaseText, type LeaseTerms } from '../lease-doc.ts';
+import { renewalsDue, proposedRate, addMonths, DEFAULT_RENEWAL_POLICY, type RenewalPolicy, type RenewalOffer } from '../renewals.ts';
 import { meterSubscription, type SubscriptionPlan } from '../subscription.ts';
 import {
   ConfigStore,
@@ -503,6 +504,53 @@ export class App {
       ...(taxIdLabel ? { taxIdLabel } : {}),
       generatedAt: this.now(),
     };
+  }
+
+  /** The human behind an agreement — resident party link, then payer, then the
+   *  master-data guest name; used to label renewal offers. */
+  private residentNameFor(tenantId: string, agreementId: string, guestId: string): string | undefined {
+    const link = this.parties.partiesFor(agreementId, 'resident')[0] ?? this.parties.partiesFor(agreementId, 'financial_responsible')[0];
+    if (link) {
+      const p = this.parties.getParty(tenantId, link.partyId);
+      if (p) return p.displayName;
+    }
+    return this.masterData.guests.get(tenantId, guestId)?.fullName ?? (guestId || undefined);
+  }
+
+  /** The active book as renewal candidates (id, kind, status, rate, end, resident). */
+  private renewalCandidates(tenantId: string) {
+    return [...this.agreements.values()]
+      .filter((e) => e.tenantId === tenantId)
+      .map((e) => {
+        const a = e.agreement;
+        const resident = this.residentNameFor(tenantId, a.id, a.guestId);
+        return { id: a.id, kind: a.kind, status: a.status, rateCents: a.rateCents, end: a.period.end, ...(resident ? { residentName: resident } : {}) };
+      });
+  }
+
+  /** Sweep the book for leases approaching expiry and put a renewal offer in front
+   *  of each resident (best-effort notification), idempotent per (agreement, end)
+   *  via a per-agreement renewal marker thread — the retention counterpart to the
+   *  collections sweep. Returns the due offers + how many were freshly notified. */
+  private runRenewalsSweep(ctx: AuthContext, at: string, policy: RenewalPolicy): { swept: number; notified: number; offers: RenewalOffer[] } {
+    const offers = renewalsDue(this.renewalCandidates(ctx.tenantId), at, policy);
+    let notified = 0;
+    for (const o of offers) {
+      const threadId = `renewal-thread-${o.agreementId}`;
+      const msgId = `renewal-${o.agreementId}-${o.currentEnd}`;
+      let processed = false;
+      try { processed = this.comms.messagesFor(threadId).some((m) => m.id === msgId); } catch { processed = false; }
+      if (processed) continue;
+      try { this.comms.getThread(threadId); }
+      catch { this.comms.openThread({ id: threadId, tenantId: ctx.tenantId, subject: `Renewal: agreement ${o.agreementId}`, kind: 'resident', createdAt: at, agreementId: o.agreementId }); }
+      try {
+        this.comms.post({ id: msgId, threadId, at, authorType: 'agent', authorId: 'renewal-sweep', body: `Renewal offered: ${o.proposedRateCents} through ${o.proposedEnd}`, direction: 'internal' });
+      } catch { /* marker already exists — treat as processed */ continue; }
+      // Best-effort renewal-offer notice to the resident.
+      this.notify({ id: `notif-renewal-${o.agreementId}-${o.currentEnd}`, tenantId: ctx.tenantId, channel: 'email', to: this.emailForAgreement(ctx.tenantId, o.agreementId), kind: 'renewal_offer', data: { agreementId: o.agreementId, proposedRateCents: o.proposedRateCents, proposedEnd: o.proposedEnd } });
+      notified++;
+    }
+    return { swept: offers.length, notified, offers };
   }
 
   /** The optional numeric/description fields of a unit-type payload, validated. */
@@ -2667,6 +2715,49 @@ export class App {
     this.add('POST', '/collections/sweep', 'collections.run', (ctx, _p, body) => {
       const at = this.optString(body, 'at') ?? this.now();
       return { status: 200, body: this.runCollectionsSweep(ctx, at) };
+    });
+
+    // --- lease renewals (Phase 2D) ----------------------------------------
+    // The retention arm: leases approaching expiry get a renewal offer (a
+    // proposed new rent + extended term) before the resident walks. GET previews
+    // the due offers (deterministic from the book + policy); POST /renewals/sweep
+    // notifies each resident, idempotent per (agreement, end) via a renewal marker
+    // thread (like the collections sweep). Accepting is POST /agreements/:id/renew.
+    const readPolicy = (body: Record<string, unknown>): RenewalPolicy => ({
+      lookaheadDays: typeof body['lookaheadDays'] === 'number' ? (body['lookaheadDays'] as number) : DEFAULT_RENEWAL_POLICY.lookaheadDays,
+      escalationBps: typeof body['escalationBps'] === 'number' ? (body['escalationBps'] as number) : DEFAULT_RENEWAL_POLICY.escalationBps,
+      termMonths: typeof body['termMonths'] === 'number' ? (body['termMonths'] as number) : DEFAULT_RENEWAL_POLICY.termMonths,
+    });
+    this.add('GET', '/renewals', 'renewal.read', (ctx, _p, body) => {
+      const at = this.optString(body, 'at') ?? this.now();
+      return { status: 200, body: { offers: renewalsDue(this.renewalCandidates(ctx.tenantId), at, readPolicy(body)) } };
+    });
+    this.add('POST', '/renewals/sweep', 'renewal.run', (ctx, _p, body) => {
+      const at = this.optString(body, 'at') ?? this.now();
+      return { status: 200, body: this.runRenewalsSweep(ctx, at, readPolicy(body)) };
+    });
+
+    // Accept/apply a renewal: bump the rent (rent_adjusted) AND extend the term
+    // (amended). Both mutate the SAME agreement id (ledger + event continuity).
+    // Defaults come from the renewal policy; body may override rateCents/end.
+    // Gated agreement.adjust_rent (a renewal is a rent + term change).
+    this.add('POST', '/agreements/:id/renew', 'agreement.adjust', (ctx, p, body) => {
+      const a = this.ownedAgreement(ctx, p['id']!);
+      const at = this.optString(body, 'at') ?? this.now();
+      const policy = readPolicy(body);
+      const newRate = typeof body['rateCents'] === 'number' ? (body['rateCents'] as number) : proposedRate(a.rateCents, policy.escalationBps);
+      const newEnd = this.optString(body, 'end') ?? addMonths(a.period.end, policy.termMonths);
+      return this.gated(
+        'agreement.adjust_rent',
+        ctx,
+        { fromCents: a.rateCents, toCents: newRate },
+        () => {
+          a.adjustRent(at, { rateCents: newRate, basis: 'manual', reason: 'renewal' });
+          a.amend(at, { end: newEnd });
+          return a;
+        },
+        (ag) => ({ status: 200, body: { ...this.agreementSummary(ag), renewedTo: newEnd } }),
+      );
     });
 
     // --- multi-GAAP revenue view (accrual vs cash) ------------------------

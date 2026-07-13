@@ -218,6 +218,7 @@
     crm: '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
     esign: '<path d="M4 18c3-6 5-9 7-9s0 6 2 6 3-3 5-3"/><path d="M3 21h18"/>',
     applications: '<path d="M8 3h8l3 3v15H5V3z"/><path d="M8 10h8M8 14h8M8 18h5"/>',
+    renewals: '<path d="M4 12a8 8 0 0 1 14-5l2 2"/><path d="M20 4v4h-4"/><path d="M20 12a8 8 0 0 1-14 5l-2-2"/><path d="M4 20v-4h4"/>',
     reports: '<path d="M4 3v18h16"/><rect x="7" y="12" width="3" height="6" rx="1"/><rect x="12" y="8" width="3" height="10" rx="1"/><rect x="17" y="4" width="3" height="14" rx="1"/>',
     advisor: '<path d="M12 3l1.9 4.3L18 9l-4.1 1.7L12 15l-1.9-4.3L6 9l4.1-1.7z"/><path d="M18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z"/>',
     properties: '<path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M10 21v-6h4v6"/><path d="M9 10h.01M15 10h.01"/>',
@@ -435,6 +436,7 @@
     if (can("revenue.read")) items.splice(1, 0, ["pricing", "Revenue", ICONS.pricing]);
     if (can("crm.read")) items.splice(1, 0, ["crm", "Pipeline", ICONS.crm]);
     if (can("application.read")) items.splice(2, 0, ["applications", "Applications", ICONS.applications]);
+    if (can("renewal.read")) items.splice(3, 0, ["renewals", "Renewals", ICONS.renewals]);
     if (can("esign.read")) items.splice(2, 0, ["esign", "E-sign", ICONS.esign]);
     if (can("roommate.read")) items.splice(items.length - 1, 0, ["roommates", "Roommates", ICONS.roommates]);
     if (can("masterdata.read")) items.splice(1, 0, ["properties", "Properties", ICONS.properties]);
@@ -461,7 +463,7 @@
       h("main", { id: "main" }, [])
     ]));
     var main = document.getElementById("main");
-    ({ dashboard: viewDashboard, agreements: viewAgreements, properties: viewProperties, website: viewWebsite, pricing: viewPricing, crm: viewCrm, applications: viewApplications, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
+    ({ dashboard: viewDashboard, agreements: viewAgreements, properties: viewProperties, website: viewWebsite, pricing: viewPricing, crm: viewCrm, applications: viewApplications, renewals: viewRenewals, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
   }
 
   // ---- views --------------------------------------------------------------
@@ -632,7 +634,17 @@
     if (can("agreement.transfer")) forms.push(transferForm(id));
     if (can("agreement.move")) forms.push(moveForm(id));
     if (can("esign.read")) forms.push(leaseDocForm(id));
+    if (can("agreement.adjust")) forms.push(renewForm(id));
     return forms.length ? h("div",{class:"detail-actions"}, forms) : null;
+  }
+  function renewForm(id){
+    var rate=h("input",{type:"number",placeholder:"New rent (minor) — blank = +5%"});
+    var end=h("input",{type:"text",placeholder:"New end YYYY-MM-DD — blank = +12mo"});
+    return mini("Renew lease",[ field("New rent (optional)",rate), field("New end (optional)",end),
+      h("button",{class:"btn sm",onclick:function(){
+        var body={}; if(rate.value) body.rateCents=Number(rate.value); if(end.value) body.end=end.value;
+        api("/agreements/"+id+"/renew",{method:"POST",body:body}).then(actThen);
+      }},["Renew"]) ]);
   }
   function leaseDocForm(id){
     var out=h("div",{},[]);
@@ -1304,6 +1316,46 @@
     });
   }
   function handleApp(x, wrap){ if(x.status===200){ toast(t("msg.saved"),"ok"); refreshApplications(wrap);} else toast((x.body||{}).error||"err","err"); }
+
+  // ---- Renewals (Phase 2D) -------------------------------------------------
+  function viewRenewals(main){
+    main.appendChild(h("h1",{},["Renewals"]));
+    main.appendChild(h("p",{class:"sub"},["Leases approaching expiry — each with a proposed renewal (an escalated rent + an extended term). Run the sweep to notify residents, or renew one directly. Accepting bumps the rent and extends the term on the same agreement."]));
+    var bar=h("div",{class:"row",style:"gap:8px;flex-wrap:wrap;margin-bottom:12px"},[]); main.appendChild(bar);
+    var wrap=h("div",{},[]); main.appendChild(wrap);
+    if(can("renewal.run")) bar.appendChild(h("button",{class:"btn sm",onclick:function(){
+      api("/renewals/sweep",{method:"POST",body:{}}).then(function(r){
+        if(r.status===200) toast("Swept "+(r.body||{}).swept+" leases, notified "+(r.body||{}).notified,"ok");
+        else toast((r.body||{}).error||"err","err");
+        refreshRenewals(wrap);
+      });
+    }},["Run renewal sweep"]));
+    refreshRenewals(wrap);
+  }
+  function refreshRenewals(wrap){
+    api("/renewals").then(function(r){
+      wrap.innerHTML="";
+      var offers=((r.body||{}).offers)||[];
+      var rows=offers.map(function(o){
+        var act=h("div",{class:"row"},[]);
+        if(can("agreement.adjust")) act.appendChild(h("button",{class:"btn ghost sm",onclick:function(){
+          api("/agreements/"+o.agreementId+"/renew",{method:"POST",body:{}}).then(function(x){
+            if(x.status===200){ toast("Renewed to "+((x.body||{}).renewedTo||""),"ok"); refreshRenewals(wrap);} else toast((x.body||{}).error||"err","err");
+          });
+        }},["Renew"]));
+        var soon = o.daysToExpiry<=30;
+        return h("tr",{},[
+          h("td",{},[o.residentName||o.agreementId]),
+          h("td",{},[h("span",{class:"pill "+(soon?"terminated":"draft")},[o.daysToExpiry+"d"])]),
+          h("td",{class:"muted"},[o.currentEnd]),
+          h("td",{},[fmt(o.currentRateCents)+" → "+fmt(o.proposedRateCents)]),
+          h("td",{class:"muted"},[o.proposedEnd]),
+          h("td",{},[act])
+        ]);
+      });
+      wrap.appendChild(tableEl([th("Resident"),th("Expires in"),th("Current end"),th("Rent (→ proposed)"),th("Proposed end"),th("")], rows, 6, "No leases due for renewal."));
+    });
+  }
 
   function viewEsign(main){
     main.appendChild(h("h1",{},["E-signature"]));

@@ -85,6 +85,11 @@ export const PERMISSIONS = [
   // Running the overdue-collections sweep (usually a scheduled service-role cron,
   // or a manager on demand). Each stage action it takes is still policy-gated.
   'collections.run',
+  // Lease renewals: reading the due-offer list (in OPS/READS) and running the
+  // renewal sweep (a scheduled service-role cron, or a manager on demand).
+  // Applying a renewal reuses agreement.adjust — it is a rent + term change.
+  'renewal.read',
+  'renewal.run',
   // Closing / re-opening accounting periods (month-end). Finance function;
   // re-opening a closed period is additionally policy-gated (escalate).
   'period.manage',
@@ -141,6 +146,7 @@ const OPS: Permission[] = [
   'crm.read', 'crm.manage',
   'application.read', 'application.manage',
   'esign.read', 'esign.manage',
+  'renewal.read',
   'ledger.read', 'exception.read', 'subscription.read',
   'masterdata.read', 'config.read', 'reports.read',
 ];
@@ -151,7 +157,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'manager',
     name: 'Manager',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'agreement.execute', 'collections.run', 'period.manage', 'metrics.scrape', 'privacy.export', 'privacy.manage'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'agreement.execute', 'collections.run', 'renewal.run', 'period.manage', 'metrics.scrape', 'privacy.export', 'privacy.manage'],
     builtin: true,
     description: 'Runs the property: all operations, approvals, staff and master data.',
   },
@@ -159,7 +165,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'staff',
     name: 'Staff',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'masterdata.manage', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'agreement.execute', 'collections.run', 'period.manage', 'metrics.scrape', 'privacy.export', 'privacy.manage'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'masterdata.manage', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'agreement.execute', 'collections.run', 'renewal.run', 'period.manage', 'metrics.scrape', 'privacy.export', 'privacy.manage'],
     builtin: true,
     description: 'Approvals and day-to-day management.',
   },

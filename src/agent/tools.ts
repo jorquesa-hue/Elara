@@ -441,6 +441,30 @@ const TOOLS: ToolDef[] = [
     },
     toRequest: (i) => ({ method: 'POST', path: `/ils/${i['integrationId']}/syndicate`, body: {} }),
   },
+  {
+    spec: {
+      name: 'list_renewals_due',
+      description: 'List the lease-renewal offers due — active leases approaching expiry within the lookahead window, each with a proposed escalated rent and extended term. Read-only.',
+      input_schema: schema({ lookaheadDays: { type: 'number', description: 'Expiry window in days. Optional (default 90).' } }, []),
+      strict: true,
+    },
+    toRequest: (i) => ({ method: 'GET', path: '/renewals', body: i }),
+  },
+  {
+    spec: {
+      name: 'renew_agreement',
+      description: 'Renew a lease: bump the rent and extend the term on the SAME agreement id (ledger + event continuity preserved). Defaults to the renewal policy (escalated rent, +12 months); override rateCents/end if needed.',
+      input_schema: schema(
+        { id: str('Agreement to renew.'), rateCents: { type: 'number', description: 'New rent in minor units. Optional (defaults to the escalated rate).' }, end: str('New end date YYYY-MM-DD. Optional.') },
+        ['id'],
+      ),
+      strict: true,
+    },
+    toRequest: (i) => {
+      const { id, ...body } = i as { id: string };
+      return { method: 'POST', path: `/agreements/${id}/renew`, body };
+    },
+  },
   // --- maintenance / reservations / comms ---------------------------------
   {
     spec: {
