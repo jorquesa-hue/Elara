@@ -42,6 +42,7 @@ import { RoommateMatcher, type RoommatePreferences, type Chronotype } from '../r
 import { parseCsv, suggestMapping, planImport, type ImportTarget, type ColumnMapping } from '../onboarding.ts';
 import { Crm, type LeadStage } from '../crm.ts';
 import { PeriodLock } from '../period-lock.ts';
+import { BankAccounts } from '../bank-account.ts';
 import { Signatures } from '../esign.ts';
 import { meterSubscription, type SubscriptionPlan } from '../subscription.ts';
 import {
@@ -201,6 +202,7 @@ export class App {
   readonly crm = new Crm();
   readonly signatures = new Signatures();
   readonly periodLock = new PeriodLock();
+  readonly bankAccounts = new BankAccounts();
 
   readonly config: ConfigStore;
   readonly roles: RoleRegistry;
@@ -970,6 +972,26 @@ export class App {
       return { status: 200, body: this.masterData.units.update(ctx.tenantId, p['id']!, patch) };
     });
 
+    // --- bank accounts (operating vs trust) — deposit segregation ------------
+    this.add('GET', '/bank-accounts', 'entity.read', (ctx) => ({ status: 200, body: { bankAccounts: this.bankAccounts.list(ctx.tenantId) } }));
+
+    this.add('POST', '/bank-accounts', 'entity.manage', (ctx, _p, body) => {
+      const code = this.requireString(body, 'code');
+      const kind = this.optString(body, 'kind') === 'trust' ? 'trust' : 'operating';
+      const entityId = this.optString(body, 'entityId');
+      if (entityId && !this.entities.getEntity(ctx.tenantId, entityId)) throw new HttpError(404, `unknown legal entity: ${entityId}`);
+      // A trust account gets its own segregated GL cash account by default.
+      const glAccount = this.optString(body, 'glAccount') ?? (kind === 'trust' ? `assets:cash:trust:${code.toLowerCase().replace(/[^a-z0-9]+/g, '-')}` : 'assets:cash');
+      return {
+        status: 201,
+        body: this.bankAccounts.add({
+          id: this.optString(body, 'id') ?? `bank-${code.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+          tenantId: ctx.tenantId, code, name: this.requireString(body, 'name'), kind, glAccount,
+          ...(entityId ? { entityId } : {}),
+        }),
+      };
+    });
+
     // --- properties / communities — the multi-property rollup dimension ------
     this.add('GET', '/properties', 'masterdata.read', (ctx) => ({ status: 200, body: { properties: this.masterData.properties.list(ctx.tenantId) } }));
 
@@ -1250,12 +1272,17 @@ export class App {
       const amountCents = this.requireInt(body, 'amountCents');
       const heldAt = this.optString(body, 'heldAt') ?? this.now();
       const currency = this.config.get(ctx.tenantId).currency;
+      const propertyId = this.propertyForAgreement(ctx.tenantId, agreementId);
+      // Segregate deposit cash into a TRUST account when the tenant has one — it
+      // has its own GL cash account so deposits never commingle with operating
+      // cash (a jurisdictional requirement for security deposits).
+      const trust = this.bankAccounts.trustFor(ctx.tenantId);
       return this.gated(
         'deposit.hold',
         ctx,
         { agreementId, amountCents },
         () => {
-          const d = this.deposits.hold({ id, agreementId, amountCents, currency, heldAt });
+          const d = this.deposits.hold({ id, agreementId, amountCents, currency, heldAt, ...(trust ? { cashAccount: trust.glAccount, entityId: trust.entityId } : {}), ...(propertyId ? { propertyId } : {}) });
           this.depositTenant.set(id, ctx.tenantId);
           return d;
         },
@@ -2958,6 +2985,7 @@ export class App {
       // status change) so a restart never silently drops a parked human decision.
       exceptions: this.exceptions.all().filter((i) => (i.ctx as { tenantId?: string }).tenantId === tenantId),
       periodLocks: this.periodLock.list(tenantId),
+      bankAccounts: this.bankAccounts.list(tenantId),
       // --- master-data reshape v2 (all upserted, so always safe to resend) ----
       legalEntities: this.entities.listEntities(tenantId),
       parties: this.parties.listParties(tenantId),
@@ -3080,6 +3108,7 @@ export class App {
     this.notifications.hydrate((world.notifications ?? []) as never);
     this.exceptions.hydrate((world.exceptions ?? []) as never);
     this.periodLock.hydrate((world.periodLocks ?? []) as never);
+    this.bankAccounts.hydrate((world.bankAccounts ?? []) as never);
     this.runtime.hydrateLog(world.actionLog);
   }
 

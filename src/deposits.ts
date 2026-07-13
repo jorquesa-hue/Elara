@@ -22,6 +22,9 @@ export interface Deposit {
   refundedAt?: string;
   deductions: Deduction[];
   refundedCents?: number;
+  /** The cash GL account the money sits in (a trust account when segregated) —
+   *  the refund returns from the SAME account. Defaults to operating cash. */
+  cashAccount?: string;
 }
 
 export class DepositError extends Error {}
@@ -42,12 +45,18 @@ export class Deposits {
     amountCents: number;
     currency?: string;
     heldAt: string;
+    /** The cash GL account this deposit's money goes into — a segregated TRUST
+     *  account when the tenant has one configured; defaults to operating cash. */
+    cashAccount?: string;
+    propertyId?: string;
+    entityId?: string;
   }): Deposit {
     if (this.deposits.has(input.id)) throw new DepositError(`duplicate deposit: ${input.id}`);
     if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
       throw new DepositError(`deposit ${input.id}: amount must be a positive integer`);
     }
     const currency = input.currency ?? 'BRL';
+    const cashAccount = input.cashAccount ?? ACCOUNTS.cash;
 
     // Guest cash received and parked as a liability we owe back.
     this.ledger.post({
@@ -55,9 +64,11 @@ export class Deposits {
       postedAt: input.heldAt,
       currency,
       agreementId: input.agreementId,
+      ...(input.entityId ? { entityId: input.entityId } : {}),
+      ...(input.propertyId ? { propertyId: input.propertyId } : {}),
       memo: `deposit ${input.id} held`,
       lines: [
-        { account: ACCOUNTS.cash, debitCents: input.amountCents },
+        { account: cashAccount, debitCents: input.amountCents },
         { account: ACCOUNTS.depositsHeld, creditCents: input.amountCents },
       ],
     });
@@ -70,6 +81,7 @@ export class Deposits {
       status: 'held',
       heldAt: input.heldAt,
       deductions: [],
+      ...(cashAccount !== ACCOUNTS.cash ? { cashAccount } : {}),
     };
     this.deposits.set(deposit.id, deposit);
     return this.get(deposit.id);
@@ -87,10 +99,12 @@ export class Deposits {
     }
     const refundCents = deposit.amountCents - deducted;
 
-    // Release the full liability; deductions become revenue, remainder is cash out.
+    // Release the full liability; deductions become revenue, remainder is cash
+    // out FROM THE SAME (trust) account the money went into.
+    const cashAccount = deposit.cashAccount ?? ACCOUNTS.cash;
     const lines = [{ account: ACCOUNTS.depositsHeld, debitCents: deposit.amountCents }];
     if (deducted > 0) lines.push({ account: ACCOUNTS.deductionRevenue, creditCents: deducted } as never);
-    if (refundCents > 0) lines.push({ account: ACCOUNTS.cash, creditCents: refundCents } as never);
+    if (refundCents > 0) lines.push({ account: cashAccount, creditCents: refundCents } as never);
 
     this.ledger.post({
       entryId: `je-dep-refund-${id}`,

@@ -769,7 +769,34 @@
       wrap.appendChild(h("p",{class:"sub"},[t("ledger.trialBalance")+": ", h("span",{class:"pill "+(b.balanced?"ok":"bad")},[b.balanced?t("ledger.balanced"):t("ledger.unbalanced")])]));
       wrap.appendChild(tableEl([th(t("field.account")),th(t("field.balance"))], rows, 2, t("ledger.noPostings")));
     });
+    if (can("entity.manage")) { var bw=h("div",{style:"margin-top:22px"},[]); main.appendChild(bw); bankAccountsPanel(bw); }
     if (can("period.manage")) { var pw=h("div",{style:"margin-top:22px"},[]); main.appendChild(pw); periodClosePanel(pw); }
+  }
+  // Bank accounts: an operating vs TRUST distinction. Deposit cash books into a
+  // trust account (its own GL cash account) so it doesn't commingle with
+  // operating cash — a jurisdictional requirement for security deposits.
+  function bankAccountsPanel(wrap){
+    var code=h("input",{placeholder:"TRUST-01",style:"max-width:130px"});
+    var name=h("input",{placeholder:"Resident Deposits Trust"});
+    var kind=selectFrom([["operating","Operating"],["trust","Trust (deposits)"]],"trust");
+    var form=h("form",{class:"panel",onsubmit:function(e){e.preventDefault();
+      if(!code.value||!name.value) return toast("Enter a code and a name","err");
+      api("/bank-accounts",{method:"POST",body:{code:code.value,name:name.value,kind:kind.value}}).then(function(x){
+        if(x.status===201){ toast("Bank account added","ok"); code.value=""; name.value=""; bankAccountsPanel(wrap); }
+        else toast((x.body&&x.body.error)||t("msg.denied"),"err");
+      });
+    }},[
+      h("strong",{},["Bank accounts"]),
+      h("p",{class:"sub",style:"margin:6px 0 10px"},["Add a trust account to segregate security-deposit cash from operating cash — deposits book into its own GL cash account, and refunds return from the same one."]),
+      h("div",{class:"grid"},[ field("Code",code), field("Name",name), field("Kind",kind), h("div",{},[h("button",{class:"btn",type:"submit"},["＋ Add bank account"])]) ])
+    ]);
+    wrap.innerHTML=""; wrap.appendChild(form);
+    api("/bank-accounts").then(function(r){
+      var bs=((r.body||{}).bankAccounts||[]);
+      if(!bs.length) return;
+      var rows=bs.map(function(b){ return h("tr",{},[ h("td",{class:"mono muted"},[b.code]), h("td",{},[b.name]), h("td",{},[h("span",{class:"pill "+(b.kind==="trust"?"active":"")},[b.kind])]), h("td",{class:"mono muted"},[b.glAccount]) ]); });
+      wrap.appendChild(h("div",{style:"margin-top:12px"},[tableEl([th("Code"),th("Name"),th("Kind"),th("GL cash account")], rows, 4, "")]));
+    });
   }
   // Month-end period close: closing a period locks it — no entry may post into
   // it afterward. Re-opening a closed period is a policy-gated restatement.

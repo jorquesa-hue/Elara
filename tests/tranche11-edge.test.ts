@@ -105,6 +105,7 @@ function buildWorld(): WorldData {
     notifications: [{ id: 'notif-1', tenantId: 't-1', channel: 'email', to: 'ana@x.com', kind: 'collections_reminder', data: { invoiceId: 'inv-1', amountCents: 100000 }, status: 'pending', createdAt: '2026-07-01T00:00:00Z' }],
     signatureEnvelopes: [{ id: 'env-1', tenantId: 't-1', documentName: 'Lease', provider: 'docusign', providerRef: 'ext-1', leadId: 'ld-1', agreementId: 'ag-1', signers: [{ name: 'Ana', email: 'ana@x.com', role: 'resident', signedAt: '2026-07-03T00:00:00Z' }], status: 'signed', createdAt: '2026-07-01T00:00:00Z', sentAt: '2026-07-01T00:05:00Z', completedAt: '2026-07-03T00:00:00Z' }],
     periodLocks: [{ tenantId: 't-1', period: '2026-06', status: 'closed', closedAt: '2026-07-01T00:00:00Z', closedBy: 'mgr' }],
+    bankAccounts: [{ id: 'bank-trust-01', tenantId: 't-1', code: 'TRUST-01', name: 'Deposits Trust', kind: 'trust', glAccount: 'assets:cash:trust:trust-01', entityId: undefined }],
   };
 }
 

@@ -76,6 +76,7 @@ interface Deposit {
   refundedAt?: string | null;
   refundedCents?: number | null;
   deductions?: unknown[];
+  cashAccount?: string | null;
 }
 interface ActionLogRecord {
   seq: number;
@@ -131,6 +132,9 @@ export interface WorldData {
   periodLocks?: ReadonlyArray<{
     tenantId: string; period: string; status: string;
     closedAt?: string; closedBy?: string; reopenedAt?: string; reopenedBy?: string;
+  }>;
+  bankAccounts?: ReadonlyArray<{
+    id: string; tenantId: string; code: string; name: string; kind: string; glAccount: string; entityId?: string;
   }>;
   legalEntities?: Array<{ id: string; tenantId: string; role: string; name: string; taxId?: string }>;
   parties?: Array<{
@@ -246,6 +250,14 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       stmt(
         'insert into legal_entity (id, tenant_id, role, name, tax_id) values ($1, $2, $3, $4, $5) on conflict (id) do update set role = excluded.role, name = excluded.name, tax_id = excluded.tax_id',
         [e.id, e.tenantId, e.role, e.name, e.taxId ?? null],
+      ),
+    );
+  }
+  for (const ba of w.bankAccounts ?? []) {
+    out.push(
+      stmt(
+        'insert into bank_account (id, tenant_id, code, name, kind, gl_account, entity_id) values ($1, $2, $3, $4, $5, $6, $7) on conflict (id) do update set code = excluded.code, name = excluded.name, kind = excluded.kind, gl_account = excluded.gl_account, entity_id = excluded.entity_id',
+        [ba.id, ba.tenantId, ba.code, ba.name, ba.kind, ba.glAccount, ba.entityId ?? null],
       ),
     );
   }
@@ -397,8 +409,8 @@ export function projectWorld(w: WorldData): SqlStatement[] {
   for (const d of w.deposits) {
     out.push(
       stmt(
-        'insert into deposit (id, agreement_id, amount_cents, currency, status, held_at, refunded_at, refunded_cents, deductions) values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb) on conflict (id) do update set status = excluded.status, refunded_at = excluded.refunded_at, refunded_cents = excluded.refunded_cents, deductions = excluded.deductions',
-        [d.id, d.agreementId, d.amountCents, d.currency, d.status, d.heldAt, d.refundedAt ?? null, d.refundedCents ?? null, JSON.stringify(d.deductions ?? [])],
+        'insert into deposit (id, agreement_id, amount_cents, currency, status, held_at, refunded_at, refunded_cents, deductions, cash_account) values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10) on conflict (id) do update set status = excluded.status, refunded_at = excluded.refunded_at, refunded_cents = excluded.refunded_cents, deductions = excluded.deductions, cash_account = excluded.cash_account',
+        [d.id, d.agreementId, d.amountCents, d.currency, d.status, d.heldAt, d.refundedAt ?? null, d.refundedCents ?? null, JSON.stringify(d.deductions ?? []), d.cashAccount ?? null],
       ),
     );
   }
