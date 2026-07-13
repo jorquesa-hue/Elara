@@ -3224,7 +3224,7 @@ export class App {
       // material for the income statement / general-ledger reports + builder.
       ledgerLines: this.ledger.allLines
         .filter((l) => (l.agreementId != null && agIds.has(l.agreementId)) || l.tenantId === tenantId)
-        .map((l) => ({ account: l.account, debitCents: l.debitCents, creditCents: l.creditCents, postedAt: l.postedAt, ...(l.entityId ? { entityId: l.entityId } : {}), ...(l.propertyId ? { propertyId: l.propertyId } : {}) })),
+        .map((l) => ({ entryId: l.entryId, account: l.account, debitCents: l.debitCents, creditCents: l.creditCents, postedAt: l.postedAt, ...(l.entityId ? { entityId: l.entityId } : {}), ...(l.propertyId ? { propertyId: l.propertyId } : {}) })),
     };
     if (!propertyId) return full;
     // Per-property scope: restrict to units of this property and the agreements

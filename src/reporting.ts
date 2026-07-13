@@ -30,7 +30,7 @@ export interface ReportingInput {
   ledgerBalanced: boolean;
   /** Tenant-scoped journal lines — the raw material for the FINANCIAL reports
    *  (income statement, general ledger). Optional for backward compatibility. */
-  ledgerLines?: ReadonlyArray<{ account: string; debitCents: number; creditCents: number; postedAt: string; entityId?: string; propertyId?: string }>;
+  ledgerLines?: ReadonlyArray<{ account: string; debitCents: number; creditCents: number; postedAt: string; entryId?: string; entityId?: string; propertyId?: string }>;
 }
 
 export interface ReportColumn { key: string; label: string; kind?: 'money' | 'number' | 'percent' | 'text' | 'date' }
@@ -79,6 +79,7 @@ export const REPORT_CATALOG: readonly ReportSpec[] = [
   { key: 'portfolio', title: 'Portfolio mix', description: 'Agreements by kind and status; unit occupancy mix.' },
   { key: 'cashflow', title: 'Cash flow', description: 'Money in (payments) vs money out (vendor payouts) for the window.' },
   { key: 'general_ledger', title: 'General ledger', description: 'Every account with its debits, credits and running balance — the books.' },
+  { key: 'cash_flow_statement', title: 'Statement of cash flows', description: 'Opening → closing cash, with movement classified into operating, investing and financing activities.' },
 ];
 
 // --- date helpers -----------------------------------------------------------
@@ -609,6 +610,66 @@ function generalLedger(inp: ReportingInput): Report {
   };
 }
 
+/** Statement of cash flows: opening cash → operating / investing / financing
+ *  movements in the window → closing cash. Each cash movement is classified by
+ *  the counterpart account(s) of its journal entry (double-entry: every cash
+ *  line has an offsetting non-cash line). Requires ledgerLines to carry entryId. */
+function isCash(account: string): boolean { return account.startsWith('assets:cash'); }
+function classifyCounterpart(account: string): 'operating' | 'investing' | 'financing' {
+  if (account.startsWith('revenue') || account.startsWith('expense')) return 'operating';
+  if (account.startsWith('assets:accounts_receivable') || account.startsWith('liabilities:accounts_payable')) return 'operating';
+  if (account.startsWith('liabilities:deposits_held') || account.startsWith('liabilities:due_to')) return 'financing';
+  if (account.startsWith('assets')) return 'investing'; // a non-cash asset (equipment, prepaid)
+  if (account.startsWith('liabilities') || account.startsWith('equity')) return 'financing';
+  return 'operating';
+}
+function cashFlowStatement(inp: ReportingInput): Report {
+  const all = inp.ledgerLines ?? [];
+  // Opening cash: net cash movement strictly before the window.
+  let opening = 0;
+  for (const l of all) if (isCash(l.account) && ms(l.postedAt) < ms(inp.from)) opening += l.debitCents - l.creditCents;
+  // Group the in-window lines by entry so each cash movement finds its counterpart.
+  const entries = new Map<string, typeof all[number][]>();
+  for (const l of all) {
+    if (!inWindow(l.postedAt, inp.from, inp.to)) continue;
+    const k = l.entryId ?? `${l.account}:${l.postedAt}`;
+    (entries.get(k) ?? entries.set(k, []).get(k)!).push(l);
+  }
+  const buckets = { operating: 0, investing: 0, financing: 0 };
+  for (const lines of entries.values()) {
+    const cashDelta = lines.filter((l) => isCash(l.account)).reduce((n, l) => n + l.debitCents - l.creditCents, 0);
+    if (cashDelta === 0) continue;
+    // Classify by the non-cash counterpart carrying the most weight in the entry.
+    const counterparts = lines.filter((l) => !isCash(l.account));
+    let best = counterparts[0]?.account ?? 'operating';
+    let bestAmt = -1;
+    for (const c of counterparts) { const amt = c.debitCents + c.creditCents; if (amt > bestAmt) { bestAmt = amt; best = c.account; } }
+    buckets[classifyCounterpart(best)] += cashDelta;
+  }
+  const net = buckets.operating + buckets.investing + buckets.financing;
+  const closing = opening + net;
+  const rows = [
+    { section: 'Operating activities', amount: buckets.operating },
+    { section: 'Investing activities', amount: buckets.investing },
+    { section: 'Financing activities', amount: buckets.financing },
+  ];
+  return {
+    key: 'cash_flow_statement', title: 'Statement of cash flows', window: { from: inp.from, to: inp.to },
+    subtitle: 'Cash movement classified by counterpart: operating (rent, expenses, AR/AP), investing (non-cash assets), financing (deposits, loans, equity).',
+    columns: [
+      { key: 'section', label: 'Activity', kind: 'text' },
+      { key: 'amount', label: 'Net cash', kind: 'money' },
+    ],
+    rows,
+    kpis: [
+      { label: 'Opening cash', value: opening, kind: 'money' },
+      { label: 'Net change', value: net, kind: 'money' },
+      { label: 'Closing cash', value: closing, kind: 'money' },
+      { label: 'Operating', value: buckets.operating, kind: 'money' },
+    ],
+  };
+}
+
 /** Billed vs collected by month + the collection rate — the AR effectiveness view. */
 function billingCollections(inp: ReportingInput): Report {
   const billed = new Map<string, number>();
@@ -674,7 +735,7 @@ const BUILDERS: Record<string, (inp: ReportingInput) => Report> = {
   occupancy, revenue, ar_aging: arAging, collections, deposits: depositsReport, payables, pipeline, portfolio, cashflow,
   rent_roll: rentRoll, delinquency, lease_expirations: leaseExpirations, box_score: boxScore, vacancy, wo_aging: woAging,
   income_statement: incomeStatement, general_ledger: generalLedger, billing_collections: billingCollections, occupancy_trend: occupancyTrend,
-  owner_statement: ownerStatement,
+  owner_statement: ownerStatement, cash_flow_statement: cashFlowStatement,
 };
 
 export function buildReport(key: string, inp: ReportingInput): Report | null {
