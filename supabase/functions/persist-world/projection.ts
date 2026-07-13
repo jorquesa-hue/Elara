@@ -227,6 +227,10 @@ export interface WorldData {
     id: string; tenantId: string; title: string; spaceId?: string; cadenceDays: number; priority: string;
     nextDueAt: string; lastRunAt?: string; active: boolean; createdAt: string;
   }>;
+  insurancePolicies?: ReadonlyArray<{
+    id: string; tenantId: string; agreementId: string; partyId?: string; carrier: string; policyNumber: string;
+    liabilityCents: number; effectiveAt: string; expiresAt: string; status: string; verifiedAt?: string; notes?: string; createdAt: string;
+  }>;
   users?: Array<{ id: string; tenantId: string; code: string; displayName: string; roleId: string; active: boolean }>;
   customRoles?: Array<{ tenantId: string; roleId: string; name: string; description?: string; permissions: readonly string[] }>;
   integrations?: Array<{
@@ -574,6 +578,14 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       stmt(
         'insert into pm_schedule (id, tenant_id, title, space_id, cadence_days, priority, next_due_at, last_run_at, active, created_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) on conflict (id) do update set title = excluded.title, space_id = excluded.space_id, cadence_days = excluded.cadence_days, priority = excluded.priority, next_due_at = excluded.next_due_at, last_run_at = excluded.last_run_at, active = excluded.active',
         [s.id, s.tenantId, s.title, s.spaceId ?? null, s.cadenceDays, s.priority, s.nextDueAt, s.lastRunAt ?? null, s.active, s.createdAt],
+      ),
+    );
+  }
+  for (const p of w.insurancePolicies ?? []) {
+    out.push(
+      stmt(
+        'insert into insurance_policy (id, tenant_id, agreement_id, party_id, carrier, policy_number, liability_cents, effective_at, expires_at, status, verified_at, notes, created_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) on conflict (id) do update set party_id = excluded.party_id, carrier = excluded.carrier, policy_number = excluded.policy_number, liability_cents = excluded.liability_cents, effective_at = excluded.effective_at, expires_at = excluded.expires_at, status = excluded.status, verified_at = excluded.verified_at, notes = excluded.notes',
+        [p.id, p.tenantId, p.agreementId, p.partyId ?? null, p.carrier, p.policyNumber, p.liabilityCents, p.effectiveAt, p.expiresAt, p.status, p.verifiedAt ?? null, p.notes ?? null, p.createdAt],
       ),
     );
   }

@@ -221,6 +221,7 @@
     renewals: '<path d="M4 12a8 8 0 0 1 14-5l2 2"/><path d="M20 4v4h-4"/><path d="M20 12a8 8 0 0 1-14 5l-2-2"/><path d="M4 20v-4h4"/>',
     tours: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="M9 15l2 2 4-4"/>',
     turns: '<path d="M3 7h13l-3-3M21 17H8l3 3"/><rect x="3" y="10" width="7" height="4" rx="1"/><rect x="14" y="10" width="7" height="4" rx="1"/>',
+    insurance: '<path d="M12 3l7 3v5c0 4.4-3 8.4-7 10-4-1.6-7-5.6-7-10V6z"/><path d="M9 12l2 2 4-4"/>',
     reports: '<path d="M4 3v18h16"/><rect x="7" y="12" width="3" height="6" rx="1"/><rect x="12" y="8" width="3" height="10" rx="1"/><rect x="17" y="4" width="3" height="14" rx="1"/>',
     advisor: '<path d="M12 3l1.9 4.3L18 9l-4.1 1.7L12 15l-1.9-4.3L6 9l4.1-1.7z"/><path d="M18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z"/>',
     properties: '<path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M10 21v-6h4v6"/><path d="M9 10h.01M15 10h.01"/>',
@@ -431,6 +432,7 @@
     if (can("procurement.read")) items.splice(3, 0, ["purchasing", "Purchasing", ICONS.purchasing]);
     if (can("maintenance.read")) items.splice(can("bill.read") ? 4 : 3, 0, ["maintenance", "Maintenance", ICONS.maintenance]);
     if (can("turn.read")) items.splice(can("bill.read") ? 4 : 3, 0, ["turns", "Make-ready", ICONS.turns]);
+    if (can("insurance.read")) items.splice(items.length - 1, 0, ["insurance", "Insurance", ICONS.insurance]);
     if (can("reservation.read")) items.splice(3, 0, ["reservations", "Reservations", ICONS.reservations]);
     if (can("comms.read")) items.splice(items.length - 1, 0, ["inbox", "Inbox", ICONS.inbox]);
     if (can("reconciliation.read")) items.splice(items.length - 1, 0, ["reconcile", "Reconcile", ICONS.reconcile]);
@@ -467,7 +469,7 @@
       h("main", { id: "main" }, [])
     ]));
     var main = document.getElementById("main");
-    ({ dashboard: viewDashboard, agreements: viewAgreements, properties: viewProperties, website: viewWebsite, pricing: viewPricing, crm: viewCrm, applications: viewApplications, tours: viewTours, turns: viewTurns, renewals: viewRenewals, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
+    ({ dashboard: viewDashboard, agreements: viewAgreements, properties: viewProperties, website: viewWebsite, pricing: viewPricing, crm: viewCrm, applications: viewApplications, tours: viewTours, turns: viewTurns, insurance: viewInsurance, renewals: viewRenewals, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
   }
 
   // ---- views --------------------------------------------------------------
@@ -1465,6 +1467,61 @@
     });
   }
 
+  // ---- Insurance compliance (Phase 6A) -------------------------------------
+  function viewInsurance(main){
+    main.appendChild(h("h1",{},["Insurance"]));
+    main.appendChild(h("p",{class:"sub"},["Renters-insurance compliance — every active lease should carry liability coverage. Track each policy and see at a glance who is compliant, whose is about to expire, and who has none (uninsured liability)."]));
+    var kpis=h("div",{class:"row",style:"gap:12px;flex-wrap:wrap;margin-bottom:12px"},[]); main.appendChild(kpis);
+    var formSlot=h("div",{},[]); main.appendChild(formSlot);
+    var wrap=h("div",{},[]); main.appendChild(wrap);
+    if(can("insurance.manage")) formSlot.appendChild(insuranceForm(wrap,kpis));
+    refreshInsurance(wrap,kpis);
+  }
+  var INS_PILL={ compliant:"active", expiring:"draft", lapsed:"terminated", none:"terminated" };
+  function insuranceForm(wrap,kpis){
+    var ag=h("select",{},[h("option",{value:""},["— lease —"])]);
+    api("/agreements").then(function(r){ ((r.body||{}).agreements||[]).forEach(function(a){ ag.appendChild(h("option",{value:a.id},[a.id+" ("+a.kind+")"])); }); });
+    var carrier=h("input",{type:"text",placeholder:"Lemonade"});
+    var polno=h("input",{type:"text",placeholder:"POL-12345"});
+    var liab=h("input",{type:"number",min:"0",step:"1000",placeholder:"100000"});
+    var eff=h("input",{type:"date"}); var exp=h("input",{type:"date"});
+    return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
+      if(!ag.value) return toast("Pick a lease","err");
+      if(!carrier.value||!polno.value) return toast("Carrier and policy number are required","err");
+      if(!eff.value||!exp.value) return toast("Effective and expiry dates are required","err");
+      var body={ id:"ins-"+Date.now(), agreementId:ag.value, carrier:carrier.value, policyNumber:polno.value,
+        liabilityCents:Math.round((parseFloat(liab.value)||0)*100), effectiveAt:eff.value, expiresAt:exp.value };
+      api("/insurance-policies",{method:"POST",body:body}).then(function(r){ if(r.status===201){ toast("Policy added","ok"); carrier.value="";polno.value="";liab.value=""; refreshInsurance(wrap,kpis);} else toast((r.body||{}).error||"err","err"); });
+    }},[ field("Lease",ag), field("Carrier",carrier), field("Policy number",polno), field("Liability coverage",liab), field("Effective",eff), field("Expires",exp), h("div",{},[h("button",{class:"btn",type:"submit"},["Add policy"])]) ]);
+  }
+  function refreshInsurance(wrap,kpis){
+    api("/reports/insurance_compliance").then(function(r){
+      kpis.innerHTML="";
+      (((r.body||{}).report||{}).kpis||[]).forEach(function(k){
+        kpis.appendChild(h("div",{class:"panel",style:"flex:1;min-width:150px"},[ h("div",{class:"muted",style:"font-size:12px"},[k.label]), h("div",{style:"font-size:22px;font-weight:700"},[fmtKpi(k)]) ]));
+      });
+    });
+    api("/insurance-policies").then(function(r){
+      wrap.innerHTML="";
+      var pols=((r.body||{}).policies||[]);
+      if(!pols.length){ wrap.appendChild(h("div",{class:"panel muted"},["No policies on file. Add a renters-insurance policy against a lease."])); return; }
+      var rows=pols.map(function(p){
+        var actions=h("div",{class:"row",style:"gap:6px"},[]);
+        if(can("insurance.manage")){
+          if(!p.verifiedAt) actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/insurance-policies/"+p.id+"/verify",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast("Verified","ok"); refreshInsurance(wrap,kpis);} else toast((x.body||{}).error||"err","err"); }); }},["Verify"]));
+          if(p.status==="active") actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/insurance-policies/"+p.id+"/cancel",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast("Cancelled","ok"); refreshInsurance(wrap,kpis);} else toast((x.body||{}).error||"err","err"); }); }},["Cancel"]));
+        }
+        return h("tr",{},[
+          h("td",{},[p.residentName||"—"]), h("td",{},[p.unitLabel||"—"]), h("td",{},[p.carrier]),
+          h("td",{class:"mono"},[fmt(p.liabilityCents)]), h("td",{class:"mono"},[p.expiresAt]),
+          h("td",{},[h("span",{class:"pill "+(INS_PILL[p.coverage]||"draft")},[p.coverage]),(p.verifiedAt?h("span",{class:"pill active",style:"margin-left:6px"},["verified"]):"")]),
+          h("td",{},[actions])
+        ]);
+      });
+      wrap.appendChild(tableEl([th("Resident"),th("Unit"),th("Carrier"),th("Liability"),th("Expires"),th("Coverage"),th("")], rows, 7, "No policies."));
+    });
+  }
+
   // ---- Renewals (Phase 2D) -------------------------------------------------
   function viewRenewals(main){
     main.appendChild(h("h1",{},["Renewals"]));
@@ -2249,7 +2306,7 @@
 
   // ---- reports & insights -------------------------------------------------
   var CHART_PALETTE = ["#6d8bff","#8b6cff","#3aa76d","#e0894a","#e05a5a","#22a5b8","#c98a1e","#b565d8","#4f9d69","#d98a8a"];
-  var CATALOG_CHART = { occupancy:"bar", revenue:"line", ar_aging:"bar", collections:"table", deposits:"bar", payables:"bar", pipeline:"bar", portfolio:"donut", cashflow:"bar", rent_roll:"table", delinquency:"bar", lease_expirations:"bar", box_score:"table", vacancy:"table", wo_aging:"bar", income_statement:"bar", owner_statement:"bar", general_ledger:"table", billing_collections:"bar", occupancy_trend:"line", cash_flow_statement:"bar", make_ready:"table" };
+  var CATALOG_CHART = { occupancy:"bar", revenue:"line", ar_aging:"bar", collections:"table", deposits:"bar", payables:"bar", pipeline:"bar", portfolio:"donut", cashflow:"bar", rent_roll:"table", delinquency:"bar", lease_expirations:"bar", box_score:"table", vacancy:"table", wo_aging:"bar", income_statement:"bar", owner_statement:"bar", general_ledger:"table", billing_collections:"bar", occupancy_trend:"line", cash_flow_statement:"bar", make_ready:"table", insurance_compliance:"table" };
 
   // Download any report as CSV — columns become the header, cells are quoted.
   function csvEscape(v){ var s=String(v==null?"":v); return /[",\\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }

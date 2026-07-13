@@ -45,6 +45,7 @@ import { Applications, type ScreeningResult } from '../application.ts';
 import { Tours } from '../tours.ts';
 import { Turns, turnDays } from '../turns.ts';
 import { PreventiveMaintenance } from '../preventive.ts';
+import { InsuranceRegistry, coverageStatus } from '../insurance.ts';
 import { PeriodLock } from '../period-lock.ts';
 import { BankAccounts } from '../bank-account.ts';
 import { gaapViewFromLines } from '../multigaap.ts';
@@ -211,6 +212,7 @@ export class App {
   readonly tours = new Tours();
   readonly turns = new Turns();
   readonly pm = new PreventiveMaintenance();
+  readonly insurance = new InsuranceRegistry();
   readonly signatures = new Signatures();
   readonly periodLock = new PeriodLock();
   readonly bankAccounts = new BankAccounts();
@@ -234,6 +236,7 @@ export class App {
   private readonly tourTenant = new Map<string, string>();
   private readonly turnTenant = new Map<string, string>();
   private readonly pmTenant = new Map<string, string>();
+  private readonly insuranceTenant = new Map<string, string>();
   private readonly flushMarks = new Map<string, FlushMark>();
   /** Per-tenant in-flight flush, so overlapping flushes serialize (see flushWorld). */
   private readonly flushInFlight = new Map<string, Promise<void>>();
@@ -932,6 +935,21 @@ export class App {
   private ownedPmSchedule(ctx: AuthContext, id: string) {
     if (this.pmTenant.get(id) !== ctx.tenantId) throw new HttpError(404, 'PM schedule not found');
     return this.pm.get(id);
+  }
+
+  private ownedInsurancePolicy(ctx: AuthContext, id: string) {
+    if (this.insuranceTenant.get(id) !== ctx.tenantId) throw new HttpError(404, 'insurance policy not found');
+    return this.insurance.get(id);
+  }
+
+  /** Enrich a policy row with its resident/unit labels + as-of coverage status. */
+  private insurancePolicyRow(tenantId: string, p: ReturnType<InsuranceRegistry['get']>, at: string) {
+    const ag = this.agreements.get(p.agreementId)?.agreement;
+    const unitId = ag?.currentUnitId;
+    const unitLabel = unitId ? (this.masterData.units.get(tenantId, unitId)?.label ?? unitId) : undefined;
+    const coverage = coverageStatus(this.insurance.forAgreement(p.agreementId), at);
+    const residentName = ag ? this.residentNameFor(tenantId, p.agreementId, ag.guestId) : undefined;
+    return { ...p, residentName, unitLabel, agreementStatus: ag?.status, coverage };
   }
 
   private ownedProspect(ctx: AuthContext, id: string) {
@@ -2350,6 +2368,20 @@ export class App {
       return { status: 200, body: { envelopes: mine } };
     });
 
+    // The resident's own renters-insurance policies across their linked leases,
+    // with the coverage status the office sees (compliant / expiring / lapsed /
+    // none). Read-only + party-scoped — a resident sees only their own coverage.
+    this.add('GET', '/resident/insurance', null, (ctx) => {
+      if (ctx.partyId === undefined) throw new HttpError(403, 'a resident session is required');
+      const at = this.now();
+      const agIds = [...new Set(this.parties.allLinks().filter((l) => l.partyId === ctx.partyId).map((l) => l.agreementId).filter((id) => this.agreements.get(id)?.tenantId === ctx.tenantId))];
+      const leases = agIds.map((agreementId) => {
+        const policies = this.insurance.forAgreement(agreementId).map((p) => ({ id: p.id, carrier: p.carrier, policyNumber: p.policyNumber, liabilityCents: p.liabilityCents, effectiveAt: p.effectiveAt, expiresAt: p.expiresAt, status: p.status }));
+        return { agreementId, coverage: coverageStatus(this.insurance.forAgreement(agreementId), at), policies };
+      });
+      return { status: 200, body: { leases } };
+    });
+
     this.add('GET', '/privacy/parties/:id/export', null, (ctx, p) => {
       const id = p['id']!;
       if (ctx.partyId !== undefined) {
@@ -2962,6 +2994,61 @@ export class App {
       return { status: 200, body: { swept: due.length, raised } };
     });
 
+    // --- renters-insurance compliance (Phase 6A) --------------------------
+    // Residents on a lease must carry liability coverage. The operator tracks
+    // each policy against its agreement; the coverage status (compliant /
+    // expiring / lapsed / none) is a pure function of the policies + today.
+    // A liability-tracking record, not a money move — RBAC-only, no policy gate.
+    this.add('GET', '/insurance-policies', 'insurance.read', (ctx) => {
+      const at = this.now();
+      const policies = this.insurance.list(ctx.tenantId).map((p) => this.insurancePolicyRow(ctx.tenantId, p, at));
+      return { status: 200, body: { policies } };
+    });
+
+    this.add('GET', '/insurance-policies/:id', 'insurance.read', (ctx, p) => ({
+      status: 200, body: this.insurancePolicyRow(ctx.tenantId, this.ownedInsurancePolicy(ctx, p['id']!), this.now()),
+    }));
+
+    this.add('POST', '/insurance-policies', 'insurance.manage', (ctx, _p, body) => {
+      const agreementId = this.requireString(body, 'agreementId');
+      const entry = this.agreements.get(agreementId);
+      if (!entry || entry.tenantId !== ctx.tenantId) throw new HttpError(404, 'agreement not found');
+      const partyId = this.optString(body, 'partyId');
+      if (partyId && !this.parties.getParty(ctx.tenantId, partyId)) throw new HttpError(404, 'party not found');
+      const policy = this.insurance.create({
+        id: this.requireString(body, 'id'),
+        tenantId: ctx.tenantId,
+        agreementId,
+        carrier: this.requireString(body, 'carrier'),
+        policyNumber: this.requireString(body, 'policyNumber'),
+        liabilityCents: this.requireInt(body, 'liabilityCents'),
+        effectiveAt: this.requireString(body, 'effectiveAt'),
+        expiresAt: this.requireString(body, 'expiresAt'),
+        partyId,
+        notes: this.optString(body, 'notes'),
+        createdAt: this.now(),
+      });
+      this.insuranceTenant.set(policy.id, ctx.tenantId);
+      return { status: 201, body: policy };
+    });
+
+    this.add('POST', '/insurance-policies/:id/verify', 'insurance.manage', (ctx, p, _body) => {
+      this.ownedInsurancePolicy(ctx, p['id']!);
+      return { status: 200, body: this.insurance.verify(p['id']!, this.now()) };
+    });
+
+    this.add('POST', '/insurance-policies/:id/cancel', 'insurance.manage', (ctx, p, _body) => {
+      this.ownedInsurancePolicy(ctx, p['id']!);
+      return { status: 200, body: this.insurance.cancel(p['id']!) };
+    });
+
+    this.add('GET', '/agreements/:id/insurance', 'insurance.read', (ctx, p) => {
+      this.ownedAgreement(ctx, p['id']!);
+      const at = this.now();
+      const policies = this.insurance.forAgreement(p['id']!).map((x) => this.insurancePolicyRow(ctx.tenantId, x, at));
+      return { status: 200, body: { coverage: coverageStatus(this.insurance.forAgreement(p['id']!), at), policies } };
+    });
+
     // --- e-signature for lease execution (#17) ----------------------------
     // The CRM → lease → e-sign tail. The provider I/O lives in an edge adapter
     // (secretRef); a fully signed envelope advances the CRM lead but does NOT
@@ -3342,6 +3429,7 @@ export class App {
       leads: this.crm.list(tenantId).map((l) => ({ id: l.id, stage: l.stage, estValueCents: l.estValueCents, createdAt: l.createdAt, updatedAt: l.updatedAt, ...(l.source ? { source: l.source } : {}) })),
       workOrders: this.maintenance.all().filter((w) => w.tenantId === tenantId).map((w) => ({ id: w.id, status: w.status, priority: w.priority, openedAt: w.openedAt, title: w.title })),
       turns: this.turns.list(tenantId).map((t) => ({ id: t.id, unitLabel: this.masterData.units.get(tenantId, t.unitId)?.label ?? t.unitId, status: t.status, days: turnDays(t, this.now()), openTasks: t.tasks.filter((x) => !x.done).length })),
+      insurancePolicies: this.insurance.list(tenantId).map((p) => ({ agreementId: p.agreementId, carrier: p.carrier, liabilityCents: p.liabilityCents, effectiveAt: p.effectiveAt, expiresAt: p.expiresAt, status: p.status })),
       holds: this.calendar.allHolds().filter((h) => agIds.has(h.holderId)).map((h) => ({ unitId: h.unitId, start: h.start, end: h.end, status: h.status })),
       ledgerBalanced: this.trialBalance(tenantId).balanced,
       // Tenant-scoped GL lines (same predicate as the trial balance) — the raw
@@ -3779,6 +3867,7 @@ export class App {
       tours: this.tours.list(tenantId),
       unitTurns: this.turns.list(tenantId),
       pmSchedules: this.pm.list(tenantId),
+      insurancePolicies: this.insurance.list(tenantId),
       // --- full persistence: platform users, custom roles, e-sign, connectors --
       users: this.masterData.users.list(tenantId),
       customRoles: this.roles.customRolesFor(tenantId).map((r) => ({ tenantId, roleId: r.id, name: r.name, description: r.description, permissions: r.permissions === '*' ? [...this.roles.permissionsFor(tenantId, r.id)] : (r.permissions as readonly string[]) })),
@@ -3875,6 +3964,8 @@ export class App {
     for (const t of world.unitTurns ?? []) this.turnTenant.set(t.id, t.tenantId);
     this.pm.hydrate((world.pmSchedules ?? []) as never);
     for (const s of world.pmSchedules ?? []) this.pmTenant.set(s.id, s.tenantId);
+    this.insurance.hydrate((world.insurancePolicies ?? []) as never);
+    for (const p of world.insurancePolicies ?? []) this.insuranceTenant.set(p.id, p.tenantId);
     this.signatures.hydrate((world.signatureEnvelopes ?? []) as never);
     this.integrations.hydrate((world.integrations ?? []) as never);
     this.connectorOutbox.hydrate((world.connectorCommands ?? []) as never);

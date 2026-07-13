@@ -28,6 +28,8 @@ export interface ReportingInput {
   workOrders: ReadonlyArray<{ id: string; status: string; priority: string; openedAt: string; title?: string }>;
   /** Unit turns (make-ready) — for the turn-time report + insight. days = vacate→ready (or →now). */
   turns?: ReadonlyArray<{ id: string; unitLabel: string; status: string; days: number; openTasks: number }>;
+  /** Renters-insurance policies — for the compliance report + lapsed-coverage insight. */
+  insurancePolicies?: ReadonlyArray<{ agreementId: string; carrier: string; liabilityCents: number; effectiveAt: string; expiresAt: string; status: string }>;
   holds: ReadonlyArray<{ unitId: string; start: string; end: string; status: string }>;
   ledgerBalanced: boolean;
   /** Tenant-scoped journal lines — the raw material for the FINANCIAL reports
@@ -78,6 +80,7 @@ export const REPORT_CATALOG: readonly ReportSpec[] = [
   { key: 'payables', title: 'Accounts payable', description: 'Vendor bills outstanding, aged by due date.' },
   { key: 'wo_aging', title: 'Work-order aging', description: 'Open work orders by age and priority.' },
   { key: 'make_ready', title: 'Make-ready (turn time)', description: 'Unit turns with days-in-turn and the turn-time KPIs — how fast vacant units get rent-ready.' },
+  { key: 'insurance_compliance', title: 'Insurance compliance', description: 'Renters-insurance coverage per active lease — compliant, expiring, lapsed or none, with the portfolio compliance rate.' },
   { key: 'pipeline', title: 'Sales pipeline', description: 'Leads by stage, pipeline value and conversion.' },
   { key: 'portfolio', title: 'Portfolio mix', description: 'Agreements by kind and status; unit occupancy mix.' },
   { key: 'cashflow', title: 'Cash flow', description: 'Money in (payments) vs money out (vendor payouts) for the window.' },
@@ -536,6 +539,77 @@ function makeReady(inp: ReportingInput): Report {
   };
 }
 
+// Coverage classification over the report's minimal policy shape (mirrors
+// insurance.ts policyInForce/coverageStatus without the full record type).
+type PolicyLite = { effectiveAt: string; expiresAt: string; status: string };
+function insurancePolicyInForce(p: PolicyLite, asOf: string): boolean {
+  if (p.status !== 'active') return false;
+  const at = ms(asOf.slice(0, 10)), from = ms(p.effectiveAt.slice(0, 10)), to = ms(p.expiresAt.slice(0, 10));
+  if (Number.isNaN(at) || Number.isNaN(from) || Number.isNaN(to)) return false;
+  return from <= at && at < to;
+}
+function insuranceCoverage(policies: readonly PolicyLite[], asOf: string, withinDays = 30): 'compliant' | 'expiring' | 'lapsed' | 'none' {
+  if (policies.length === 0) return 'none';
+  const inForce = policies.filter((p) => insurancePolicyInForce(p, asOf));
+  if (inForce.length === 0) return 'lapsed';
+  const at = ms(asOf.slice(0, 10));
+  const coverThrough = Math.max(...inForce.map((p) => ms(p.expiresAt.slice(0, 10))));
+  return coverThrough - at <= withinDays * DAY ? 'expiring' : 'compliant';
+}
+
+/** Renters-insurance compliance: one row per active lease with its coverage
+ *  status as of now (compliant / expiring / lapsed / none). Coverage is the
+ *  pure classification of the lease's policies. */
+function insuranceCompliance(inp: ReportingInput): Report {
+  const policies = inp.insurancePolicies ?? [];
+  const byAgreement = new Map<string, typeof policies[number][]>();
+  for (const p of policies) {
+    const list = byAgreement.get(p.agreementId) ?? [];
+    list.push(p);
+    byAgreement.set(p.agreementId, list);
+  }
+  const unitLabel = new Map(inp.units.map((u) => [u.id, u.label] as const));
+  // Active residential leases are the population that must carry coverage.
+  const leases = inp.agreements.filter((a) => a.status === 'active' && (a.kind === 'lease' || a.kind === 'monthly'));
+  const rank: Record<string, number> = { none: 0, lapsed: 1, expiring: 2, compliant: 3 };
+  const rows = leases
+    .map((a) => {
+      const ps = byAgreement.get(a.id) ?? [];
+      const status = insuranceCoverage(ps, inp.now);
+      const inForce = ps.filter((p) => insurancePolicyInForce(p, inp.now));
+      const cover = inForce.sort((x, y) => ms(y.expiresAt) - ms(x.expiresAt))[0];
+      return {
+        resident: a.residentName ?? '—',
+        unit: unitLabel.get(a.unitId) ?? a.unitId,
+        carrier: cover?.carrier ?? (ps[0]?.carrier ?? '—'),
+        liabilityCents: cover?.liabilityCents ?? 0,
+        expires: cover?.expiresAt ?? (ps[0]?.expiresAt ?? '—'),
+        status,
+      };
+    })
+    .sort((x, y) => (rank[x.status]! - rank[y.status]!));
+  const covered = rows.filter((r) => r.status === 'compliant' || r.status === 'expiring').length;
+  const expiring = rows.filter((r) => r.status === 'expiring').length;
+  const uncovered = rows.filter((r) => r.status === 'lapsed' || r.status === 'none').length;
+  return {
+    key: 'insurance_compliance', title: 'Insurance compliance', window: { from: inp.from, to: inp.to },
+    subtitle: 'Renters-insurance coverage per active lease — every lapsed policy is uninsured liability.',
+    columns: [
+      { key: 'resident', label: 'Resident', kind: 'text' }, { key: 'unit', label: 'Unit', kind: 'text' },
+      { key: 'carrier', label: 'Carrier', kind: 'text' }, { key: 'liabilityCents', label: 'Liability', kind: 'money' },
+      { key: 'expires', label: 'Expires', kind: 'date' }, { key: 'status', label: 'Coverage', kind: 'text' },
+    ],
+    rows,
+    kpis: [
+      { label: 'Active leases', value: rows.length, kind: 'number' },
+      { label: 'Insured', value: covered, kind: 'number' },
+      { label: 'Compliance rate', value: pct(covered, rows.length), kind: 'percent' },
+      { label: 'Uninsured / lapsed', value: uncovered, kind: 'number' },
+      { label: 'Expiring soon', value: expiring, kind: 'number' },
+    ],
+  };
+}
+
 // --- financial statements (GL-based) -----------------------------------------
 
 /** P&L for the window: revenue accounts are credit-normal, expenses debit-normal.
@@ -767,7 +841,7 @@ const BUILDERS: Record<string, (inp: ReportingInput) => Report> = {
   occupancy, revenue, ar_aging: arAging, collections, deposits: depositsReport, payables, pipeline, portfolio, cashflow,
   rent_roll: rentRoll, delinquency, lease_expirations: leaseExpirations, box_score: boxScore, vacancy, wo_aging: woAging,
   income_statement: incomeStatement, general_ledger: generalLedger, billing_collections: billingCollections, occupancy_trend: occupancyTrend,
-  owner_statement: ownerStatement, cash_flow_statement: cashFlowStatement, make_ready: makeReady,
+  owner_statement: ownerStatement, cash_flow_statement: cashFlowStatement, make_ready: makeReady, insurance_compliance: insuranceCompliance,
 };
 
 export function buildReport(key: string, inp: ReportingInput): Report | null {
@@ -837,6 +911,17 @@ export function computeInsights(inp: ReportingInput): Insight[] {
   // Operations: units stuck in make-ready — every idle day past a week is lost rent.
   const stuckTurns = (inp.turns ?? []).filter((t) => (t.status === 'open' || t.status === 'in_progress') && t.days >= 7);
   if (stuckTurns.length > 0) out.push({ severity: 'warning', title: `${stuckTurns.length} unit(s) stuck in make-ready 7+ days`, detail: 'A slow turn is lost rent — every idle day is vacancy loss.', metric: { value: Math.max(...stuckTurns.map((t) => t.days)), kind: 'number' }, action: 'Push the checklist in Make-ready.' });
+
+  // Compliance: active leases without in-force renters insurance — uninsured liability.
+  if (inp.insurancePolicies) {
+    const polByAg = new Map<string, PolicyLite[]>();
+    for (const p of inp.insurancePolicies) { const l = polByAg.get(p.agreementId) ?? []; l.push(p); polByAg.set(p.agreementId, l); }
+    const activeLeases = inp.agreements.filter((a) => a.status === 'active' && (a.kind === 'lease' || a.kind === 'monthly'));
+    const uninsured = activeLeases.filter((a) => { const s = insuranceCoverage(polByAg.get(a.id) ?? [], inp.now); return s === 'none' || s === 'lapsed'; });
+    const expiringSoon = activeLeases.filter((a) => insuranceCoverage(polByAg.get(a.id) ?? [], inp.now) === 'expiring');
+    if (uninsured.length > 0) out.push({ severity: 'warning', title: `${uninsured.length} lease(s) have no active renters insurance`, detail: 'Uninsured residents are a liability exposure — coverage has lapsed or was never filed.', metric: { value: uninsured.length, kind: 'number' }, action: 'Chase certificates in Insurance.' });
+    else if (expiringSoon.length > 0) out.push({ severity: 'info', title: `${expiringSoon.length} insurance policy(ies) expire within 30 days`, detail: 'Coverage is about to lapse — request renewed certificates before it does.', metric: { value: expiringSoon.length, kind: 'number' }, action: 'Follow up in Insurance.' });
+  }
 
   // Profitability: NOI for the window from the ledger (when lines are provided).
   if (inp.ledgerLines?.length) {

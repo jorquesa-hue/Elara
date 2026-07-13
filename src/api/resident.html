@@ -144,6 +144,8 @@
     });
     // Documents awaiting signature
     var docsWrap=h("div",{},[]); wrap.appendChild(docsWrap); refreshEnvelopes(docsWrap);
+    // Renters insurance coverage
+    var insWrap=h("div",{},[]); wrap.appendChild(insWrap); refreshInsurance(insWrap);
     // Maintenance
     wrap.appendChild(h("h2",{},["Maintenance"]));
     wrap.appendChild(maintenanceForm());
@@ -183,6 +185,18 @@
     });
     wrap.appendChild(h("table",{},[ h("thead",{},[h("tr",{},[th("Document"),th("Provider"),th("Status")])]), h("tbody",{},rows) ]));
     wrap.appendChild(h("div",{class:"muted",style:"font-size:12px;margin-top:6px"},["When a document is awaiting your signature, sign it via the email the provider sends you."]));
+  }); }
+  function refreshInsurance(wrap){ api("/resident/insurance").then(function(r){ wrap.innerHTML="";
+    var leases=((r.body||{}).leases)||[];
+    var withPolicies=leases.filter(function(l){ return (l.policies||[]).length || l.coverage!=="none"; });
+    if(!leases.length) return;
+    wrap.appendChild(h("h2",{},["Renters insurance"]));
+    var COV={ compliant:["You're covered","ok"], expiring:["Coverage expiring soon","warn"], lapsed:["Coverage lapsed — please renew","warn"], none:["No policy on file","warn"] };
+    leases.forEach(function(l){
+      var c=COV[l.coverage]||COV.none;
+      var rows=(l.policies||[]).map(function(p){ return h("div",{class:"muted",style:"font-size:12px;margin-top:4px"},[p.carrier+" · "+p.policyNumber+" · through "+p.expiresAt+" ("+p.status+")"]); });
+      wrap.appendChild(h("div",{class:"card"},[ h("div",{class:"row"},[ h("strong",{},["Lease "+l.agreementId]), h("span",{class:"pill "+c[1]},[c[0]]) ]) ].concat(rows.length?rows:[h("div",{class:"muted",style:"font-size:12px;margin-top:4px"},["Please file a renters-insurance certificate with the office."]) ]) ));
+    });
   }); }
   function refreshInvoices(wrap){ api("/resident/invoices").then(function(r){ wrap.innerHTML="";
     var open=(((r.body||{}).invoices)||[]).filter(function(i){return i.outstandingCents>0;});

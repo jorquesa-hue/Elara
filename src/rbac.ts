@@ -83,6 +83,12 @@ export const PERMISSIONS = [
   // rent-ready. Operational, RBAC-only (no money movement).
   'turn.read',
   'turn.manage',
+  // Renters-insurance compliance — tracking each lease's liability coverage and
+  // flagging lapses/expirations. A liability-tracking record, not a money move,
+  // so RBAC-only (no PolicyEnvelope action). Managing is in OPS (leasing/front-
+  // desk collect certificates); reading is broadly available via READS.
+  'insurance.read',
+  'insurance.manage',
   'esign.read',
   'esign.manage',
   // Recording a signer's COMPLETION is the provider's webhook, relayed by the
@@ -154,6 +160,7 @@ const OPS: Permission[] = [
   'application.read', 'application.manage',
   'tour.read', 'tour.manage',
   'turn.read', 'turn.manage',
+  'insurance.read', 'insurance.manage',
   'esign.read', 'esign.manage',
   'renewal.read',
   'ledger.read', 'exception.read', 'subscription.read',
