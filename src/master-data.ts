@@ -11,6 +11,25 @@ export interface UnitRecord {
   code: string; // external/reporting key, e.g. "RIO-101"
   label: string;
   active: boolean;
+  /** Optional floorplan/unit-type this unit belongs to (multifamily portfolios). */
+  typeId?: string;
+}
+
+/** A floorplan / unit type — the multifamily unit of merchandising. A 200-unit
+ *  building is a handful of types (1BR, 2BR…) with units hanging off them:
+ *  marketing details, base rent and reporting group live on the TYPE so they
+ *  are entered once, not 200 times. */
+export interface UnitTypeRecord {
+  id: string;
+  tenantId: string;
+  code: string; // e.g. "1BR-A"
+  name: string; // e.g. "One bedroom — Garden"
+  bedrooms?: number;
+  bathrooms?: number;
+  maxGuests?: number;
+  areaSqm?: number;
+  baseRentCents?: number; // market/asking rent for the type
+  description?: string;
 }
 
 export interface GuestRecord {
@@ -79,6 +98,7 @@ class Registry<T extends { id: string; tenantId: string; code: string }> {
 
 export class MasterData {
   readonly units = new Registry<UnitRecord>('unit');
+  readonly unitTypes = new Registry<UnitTypeRecord>('unit_type');
   readonly guests = new Registry<GuestRecord>('guest');
   readonly users = new Registry<UserRecord>('user');
   readonly ratePlans = new Registry<RatePlanRecord>('rate_plan');
@@ -87,6 +107,7 @@ export class MasterData {
   snapshot(tenantId: string) {
     return {
       units: this.units.list(tenantId),
+      unitTypes: this.unitTypes.list(tenantId),
       guests: this.guests.list(tenantId),
       users: this.users.list(tenantId),
       ratePlans: this.ratePlans.list(tenantId),

@@ -88,6 +88,7 @@ export function bookingSiteHtml(): string {
       <button class="btn" id="searchBtn">Check availability</button>
     </div>
   </header>
+  <section id="planSec" style="display:none"><h2>Floorplans</h2><div id="plans" class="grid"></div></section>
   <div id="results" class="grid"></div>
   <section id="aboutSec" style="display:none"><h2 id="aboutTitle">About</h2><div class="panel" id="aboutBody" style="white-space:pre-wrap"></div></section>
   <section id="contactSec" style="display:none"><h2>Contact</h2><div class="panel contact" id="contactBody"></div></section>
@@ -115,10 +116,17 @@ export function bookingSiteHtml(): string {
   document.getElementById("from").value = today(7);
   document.getElementById("to").value = today(10);
 
-  // ?template=<id> on the page URL previews that design without saving it —
-  // the portal's gallery "Preview" links land here.
-  var PREVIEW = new URLSearchParams(location.search).get("template");
-  api("/config" + (PREVIEW ? "?template=" + encodeURIComponent(PREVIEW) : "")).then(function(r){
+  // ?template=<id> (+ optional radius/font/hero/cards) on the page URL previews
+  // that design without saving it — the portal's design preview lands here.
+  var PQS = new URLSearchParams(location.search);
+  var PREVIEW = PQS.get("template");
+  var PPARAMS = "";
+  if(PREVIEW){
+    var pq = new URLSearchParams({ template: PREVIEW });
+    ["radius","font","hero","cards"].forEach(function(k){ var v = PQS.get(k); if(v) pq.set(k, v); });
+    PPARAMS = "?" + pq.toString();
+  }
+  api("/config" + PPARAMS).then(function(r){
     if(r.status!==200){ document.getElementById("heroTitle").textContent="This site isn't published yet."; document.getElementById("brandName").textContent="Booking"; return; }
     cfg = r.body; document.getElementById("brandName").textContent = cfg.displayName;
     document.getElementById("foot").textContent = cfg.displayName;
@@ -147,6 +155,7 @@ export function bookingSiteHtml(): string {
     document.title = (content.heroTitle || "Book your stay") + " · " + cfg.displayName;
     if(content.about){ document.getElementById("aboutSec").style.display=""; document.getElementById("aboutTitle").textContent="About "+cfg.displayName; document.getElementById("aboutBody").textContent = content.about; }
     renderContact(content);
+    renderFloorplans(cfg.floorplans||[]);
     (cfg.units||[]).forEach(function(u){ detailsById[u.id] = u.details || {}; });
     renderUnits(cfg.units.map(function(u){ return { unitId:u.id, label:u.label, available:true, nightlyCents:u.fromCents, from:true }; }));
   });
@@ -196,6 +205,26 @@ export function bookingSiteHtml(): string {
     var wrap=document.getElementById("results"); wrap.innerHTML="";
     if(!units.length){ wrap.appendChild(el("p",{class:"muted center"},["No units published yet."])); return; }
     units.forEach(function(u){ wrap.appendChild(unitCard(u)); });
+  }
+
+  // Floorplan sections — how multifamily portfolios merchandise: the plan's
+  // details + market "from" price + how many residences it has, entered once.
+  function renderFloorplans(plans){
+    if(!plans.length) return;
+    var ps=document.getElementById("plans"); ps.innerHTML="";
+    plans.forEach(function(f){
+      var kids=[ el("h3",{},[f.name]) ];
+      var meta=[];
+      if(f.bedrooms!=null) meta.push("🛏 "+f.bedrooms);
+      if(f.bathrooms!=null) meta.push("🛁 "+f.bathrooms);
+      if(f.areaSqm!=null) meta.push("📐 "+f.areaSqm+" m²");
+      if(meta.length) kids.push(el("div",{class:"badges"}, meta.map(function(m){ return el("span",{},[m]); })));
+      if(f.description) kids.push(el("p",{class:"desc"},[f.description]));
+      kids.push(el("div",{class:"price"},[ f.fromCents!=null? el("span",{},[money(f.fromCents)]) : el("span",{class:"muted"},["Contact for rates"]), el("small",{},[f.fromCents!=null?" from":""]) ]));
+      kids.push(el("div",{class:"muted",style:"font-size:12.5px"},[f.unitCount+(f.unitCount===1?" residence":" residences")]));
+      ps.appendChild(el("div",{class:"card"},[ el("div",{class:"body"}, kids) ]));
+    });
+    document.getElementById("planSec").style.display="";
   }
 
   document.getElementById("searchBtn").addEventListener("click", function(){

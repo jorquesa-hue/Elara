@@ -15,9 +15,24 @@ import { computeQuote, type PricingRule } from './revenue.ts';
 import type { SiteContent, UnitSiteDetails } from './site-content.ts';
 import { resolveTheme, type ResolvedTheme } from './site-templates.ts';
 
-export interface SiteUnit { id: string; label: string; active: boolean }
+export interface SiteUnit { id: string; label: string; active: boolean; typeId?: string }
 export interface SiteHold { unitId: string; start: string; end: string; status: string }
 export interface SiteAgreementRate { unitId: string; rateCents: number; start: string }
+
+/** A floorplan/unit type — multifamily portfolios merchandise these, not the
+ *  individual doors. Marketing details live once on the type. */
+export interface SiteUnitType {
+  id: string; code: string; name: string;
+  bedrooms?: number; bathrooms?: number; maxGuests?: number; areaSqm?: number;
+  baseRentCents?: number; description?: string;
+}
+
+/** One floorplan section on the public site: its details, how many published
+ *  units it has, and the lowest advertised price across them. */
+export interface SiteFloorplan extends SiteUnitType {
+  unitCount: number;
+  fromCents: number | null;
+}
 
 export interface SiteBrand { color?: string; logoDataUrl?: string; tagline?: string; locale?: string }
 
@@ -32,6 +47,8 @@ export interface BookingSiteInput {
   brand?: SiteBrand;
   /** Operator-authored page content + per-unit marketing details. */
   content?: SiteContent;
+  /** The tenant's floorplans/unit types, if it merchandises by type. */
+  unitTypes?: readonly SiteUnitType[];
 }
 
 export interface SiteListing {
@@ -44,7 +61,9 @@ export interface SiteListing {
   theme: ResolvedTheme;
   /** Set only when ?template= previews a design other than the saved one. */
   previewTemplate?: string;
-  units: Array<{ id: string; label: string; fromCents: number | null; details?: UnitSiteDetails }>;
+  units: Array<{ id: string; label: string; fromCents: number | null; typeId?: string; details?: UnitSiteDetails }>;
+  /** Floorplan sections (only types with ≥1 published unit), largest first. */
+  floorplans: SiteFloorplan[];
 }
 
 export interface AvailabilityUnit {
@@ -85,6 +104,41 @@ function isPublished(u: SiteUnit, inp: BookingSiteInput): boolean {
  *  operator-authored details, plus the page content (hero/about/contact). */
 export function siteListing(inp: BookingSiteInput): SiteListing {
   const { units: _unitDetails, ...page } = inp.content ?? {};
+  const typeById = new Map((inp.unitTypes ?? []).map((t) => [t.id, t]));
+  const units = inp.units
+    .filter((u) => isPublished(u, inp))
+    .map((u) => {
+      // Unit-level authored details win; gaps inherit from the floorplan, so a
+      // 200-unit building is merchandised by editing a handful of types.
+      const own = inp.content?.units?.[u.id];
+      const t = u.typeId ? typeById.get(u.typeId) : undefined;
+      const inherited: UnitSiteDetails | undefined = t
+        ? {
+            ...(t.bedrooms !== undefined ? { bedrooms: t.bedrooms } : {}),
+            ...(t.bathrooms !== undefined ? { bathrooms: t.bathrooms } : {}),
+            ...(t.maxGuests !== undefined ? { maxGuests: t.maxGuests } : {}),
+            ...(t.description !== undefined && !own?.description ? { description: t.description } : {}),
+            ...own,
+          }
+        : own;
+      return {
+        id: u.id,
+        label: u.label,
+        fromCents: unitBaseCents(u.id, inp) ?? t?.baseRentCents ?? null,
+        ...(u.typeId ? { typeId: u.typeId } : {}),
+        ...(inherited && Object.keys(inherited).length ? { details: inherited } : {}),
+      };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label));
+  // Fold published units into floorplan sections (types with no live units are skipped).
+  const floorplans: SiteFloorplan[] = [...typeById.values()]
+    .map((t) => {
+      const inType = units.filter((u) => u.typeId === t.id);
+      const prices = inType.map((u) => u.fromCents).filter((c): c is number => c != null);
+      return { ...t, unitCount: inType.length, fromCents: prices.length ? Math.min(...prices) : null };
+    })
+    .filter((f) => f.unitCount > 0)
+    .sort((a, b) => b.unitCount - a.unitCount || a.name.localeCompare(b.name));
   return {
     tenantId: inp.tenantId,
     displayName: inp.displayName,
@@ -92,13 +146,8 @@ export function siteListing(inp: BookingSiteInput): SiteListing {
     brand: inp.brand ?? {},
     content: page,
     theme: resolveTheme(page.template, page.templateOptions, inp.brand?.color),
-    units: inp.units
-      .filter((u) => isPublished(u, inp))
-      .map((u) => {
-        const details = inp.content?.units?.[u.id];
-        return { id: u.id, label: u.label, fromCents: unitBaseCents(u.id, inp), ...(details ? { details } : {}) };
-      })
-      .sort((a, b) => a.label.localeCompare(b.label)),
+    units,
+    floorplans,
   };
 }
 
@@ -115,11 +164,12 @@ export function checkAvailability(inp: BookingSiteInput, from: string, to: strin
   if (!isValidDate(from) || !isValidDate(to)) throw new Error('from and to must be YYYY-MM-DD dates');
   const nights = Math.round((ms(to) - ms(from)) / DAY);
   if (nights <= 0) throw new Error('to must be after from');
+  const typeById = new Map((inp.unitTypes ?? []).map((t) => [t.id, t]));
   return inp.units
     .filter((u) => isPublished(u, inp))
     .map((u) => {
       const held = inp.holds.some((h) => h.unitId === u.id && overlaps(h, from, to));
-      const base = unitBaseCents(u.id, inp);
+      const base = unitBaseCents(u.id, inp) ?? (u.typeId ? typeById.get(u.typeId)?.baseRentCents ?? null : null);
       let nightlyCents: number | null = null;
       let totalCents: number | null = null;
       let factors: AvailabilityUnit['factors'];

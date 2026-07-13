@@ -14,7 +14,7 @@ export interface ReportingInput {
   from: string; // window start, ISO date (YYYY-MM-DD)
   to: string; // window end, ISO date (exclusive)
   currency: string;
-  units: ReadonlyArray<{ id: string; label: string; active: boolean }>;
+  units: ReadonlyArray<{ id: string; label: string; active: boolean; typeName?: string }>;
   /** residentName: resolved by the App (party role link, else master-data guest). */
   agreements: ReadonlyArray<{ id: string; kind: string; status: string; unitId: string; start: string; end: string; rateCents: number; residentName?: string }>;
   invoices: ReadonlyArray<{ id: string; agreementId: string; issuedAt: string; dueAt: string; totalCents: number; paidCents: number; status: string }>;
@@ -300,6 +300,7 @@ function rentRoll(inp: ReportingInput): Report {
       const a = occ.get(u.id);
       return {
         unit: u.label,
+        floorplan: u.typeName ?? '',
         status: a ? 'occupied' : u.active ? 'vacant' : 'offline',
         resident: a ? (a.residentName ?? '—') : '',
         kind: a?.kind ?? '',
@@ -317,7 +318,8 @@ function rentRoll(inp: ReportingInput): Report {
     key: 'rent_roll', title: 'Rent roll', window: { from: inp.from, to: inp.to },
     subtitle: 'Rate is per the agreement term (nightly stays show the nightly rate).',
     columns: [
-      { key: 'unit', label: 'Unit', kind: 'text' }, { key: 'status', label: 'Status', kind: 'text' },
+      { key: 'unit', label: 'Unit', kind: 'text' }, { key: 'floorplan', label: 'Floorplan', kind: 'text' },
+      { key: 'status', label: 'Status', kind: 'text' },
       { key: 'resident', label: 'Resident', kind: 'text' }, { key: 'kind', label: 'Type', kind: 'text' },
       { key: 'leaseStart', label: 'Start', kind: 'date' }, { key: 'leaseEnd', label: 'End', kind: 'date' },
       { key: 'rent', label: 'Rate', kind: 'money' }, { key: 'deposit', label: 'Deposit held', kind: 'money' },

@@ -1564,24 +1564,82 @@
   // ---- properties (units / inventory) -------------------------------------
   function viewProperties(main){
     main.appendChild(h("h1",{},["Properties"]));
-    main.appendChild(h("p",{class:"sub"},["Your bookable inventory. Add a unit here, or bulk-import a whole portfolio from a spreadsheet in Import. Deactivating a unit keeps its history but hides it from bookings and the website."]));
+    main.appendChild(h("p",{class:"sub"},["Your bookable inventory. Define floorplans (unit types) once, then add units one by one, generate a whole building in bulk, or import a spreadsheet in Import. Deactivating a unit keeps its history but hides it from bookings and the website."]));
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
     var wrap=h("div",{},[]); main.appendChild(wrap);
-    if(can("masterdata.manage")) formSlot.appendChild(propertyForm(wrap));
+    if(can("masterdata.manage")) formSlot.appendChild(propertyForms(wrap));
     refreshProperties(wrap);
   }
-  function propertyForm(wrap){
-    var code=h("input",{placeholder:"ILH-201"}); var label=h("input",{placeholder:"Praia do Curral — Apto 201"});
-    return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
-      if(!code.value||!label.value) return toast("Enter a code and a name","err");
-      api("/units",{method:"POST",body:{ id:"unit-"+code.value.replace(/[^A-Za-z0-9_-]/g,"-"), code:code.value, label:label.value }}).then(function(r){
-        if(r.status===201){ toast("Property added","ok"); code.value=""; label.value=""; refreshProperties(wrap); }
-        else toast((r.body&&r.body.error)||t("msg.denied"),"err");
+  function typeSelect(types, sel){
+    var s=h("select",{},[h("option",{value:""},["— no floorplan —"])]);
+    (types||[]).forEach(function(t2){ var o=h("option",{value:t2.id},[t2.name+" ("+t2.code+")"]); if(sel===t2.id) o.selected=true; s.appendChild(o); });
+    return s;
+  }
+  function propertyForms(wrap){
+    var box=h("div",{},[]);
+    api("/unit-types").then(function(r){
+      var types=((r.body||{}).unitTypes||[]);
+      // -- floorplans: the multifamily merchandising unit, defined once --------
+      var tCode=h("input",{placeholder:"1BR"}); var tName=h("input",{placeholder:"One bedroom — Garden"});
+      var tBeds=h("input",{type:"number",min:"0",placeholder:"1"}); var tBaths=h("input",{type:"number",min:"0",placeholder:"1"});
+      var tGuests=h("input",{type:"number",min:"0",placeholder:"2"}); var tArea=h("input",{type:"number",min:"0",step:"0.1",placeholder:"52"});
+      var tRent=h("input",{type:"number",min:"0",step:"0.01",placeholder:"2500.00"});
+      var typeForm=h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
+        if(!tCode.value||!tName.value) return toast("Enter a floorplan code and name","err");
+        var body={ code:tCode.value, name:tName.value };
+        if(tBeds.value) body.bedrooms=Number(tBeds.value);
+        if(tBaths.value) body.bathrooms=Number(tBaths.value);
+        if(tGuests.value) body.maxGuests=Number(tGuests.value);
+        if(tArea.value) body.areaSqm=Number(tArea.value);
+        if(tRent.value) body.baseRentCents=Math.round(Number(tRent.value)*100);
+        api("/unit-types",{method:"POST",body:body}).then(function(x){
+          if(x.status===201){ toast("Floorplan added","ok"); render(); }
+          else toast((x.body&&x.body.error)||t("msg.denied"),"err");
+        });
+      }},[ field("Plan code",tCode), field("Plan name",tName), field("Bedrooms",tBeds), field("Bathrooms",tBaths), field("Max guests",tGuests), field("Area m²",tArea), field("Market rent",tRent), h("div",{},[h("button",{class:"btn",type:"submit"},["＋ Add floorplan"])]) ]);
+      var typeRows=types.map(function(t2){
+        return h("tr",{},[ h("td",{class:"mono muted"},[t2.code]), h("td",{},[t2.name]),
+          h("td",{},[t2.bedrooms!=null?String(t2.bedrooms):"—"]), h("td",{},[t2.bathrooms!=null?String(t2.bathrooms):"—"]),
+          h("td",{},[t2.areaSqm!=null?t2.areaSqm+" m²":"—"]), h("td",{class:"mono"},[t2.baseRentCents!=null?fmt(t2.baseRentCents):"—"]) ]);
       });
-    }},[ field("Unit code",code), field("Property / unit name",label), h("div",{},[h("button",{class:"btn",type:"submit"},["＋ Add property"])]) ]);
+      box.appendChild(h("div",{class:"panel",style:"margin-bottom:14px"},[
+        h("strong",{},["Floorplans / unit types"]),
+        h("p",{class:"sub",style:"margin:6px 0 10px"},["A 200-unit building is a handful of floorplans. Define each type once — beds, baths, area, market rent — and every unit of that type inherits it (on the website, in reports, in pricing fallbacks)."]),
+        typeForm,
+        types.length?tableEl([th("Code"),th("Floorplan"),th("Beds"),th("Baths"),th("Area"),th("Market rent")], typeRows, 6, ""):h("span",{},[])
+      ]));
+      // -- add one unit ---------------------------------------------------------
+      var code=h("input",{placeholder:"ILH-201"}); var label=h("input",{placeholder:"Praia do Curral — Apto 201"});
+      var oneType=typeSelect(types);
+      box.appendChild(h("form",{class:"grid panel",style:"margin-bottom:14px",onsubmit:function(e){e.preventDefault();
+        if(!code.value||!label.value) return toast("Enter a code and a name","err");
+        var body={ id:"unit-"+code.value.replace(/[^A-Za-z0-9_-]/g,"-"), code:code.value, label:label.value };
+        if(oneType.value) body.typeId=oneType.value;
+        api("/units",{method:"POST",body:body}).then(function(r2){
+          if(r2.status===201){ toast("Property added","ok"); code.value=""; label.value=""; refreshProperties(wrap); }
+          else toast((r2.body&&r2.body.error)||t("msg.denied"),"err");
+        });
+      }},[ field("Unit code",code), field("Property / unit name",label), field("Floorplan",oneType), h("div",{},[h("button",{class:"btn",type:"submit"},["＋ Add property"])]) ]));
+      // -- bulk add: generate a building ---------------------------------------
+      var bPrefix=h("input",{placeholder:"TOWER-A-"}); var bStart=h("input",{type:"number",min:"1",placeholder:"101",value:"101"});
+      var bCount=h("input",{type:"number",min:"1",max:"500",placeholder:"50"});
+      var bType=typeSelect(types);
+      box.appendChild(h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
+        if(!bPrefix.value||!bCount.value) return toast("Enter a code prefix and how many units","err");
+        var body={ codePrefix:bPrefix.value, count:Number(bCount.value), startNumber:Number(bStart.value||"101") };
+        if(bType.value) body.typeId=bType.value;
+        api("/units/bulk",{method:"POST",body:body}).then(function(r2){
+          if(r2.status===201){ toast("Created "+r2.body.created+" units"+(r2.body.skipped?" · "+r2.body.skipped+" already existed":""),"ok"); refreshProperties(wrap); }
+          else toast((r2.body&&r2.body.error)||t("msg.denied"),"err");
+        });
+      }},[ field("Code prefix",bPrefix), field("First number",bStart), field("How many",bCount), field("Floorplan",bType), h("div",{},[h("button",{class:"btn",type:"submit"},["⚡ Generate units"])]) ]));
+    });
+    return box;
   }
   function refreshProperties(wrap){
-    api("/master-data").then(function(r){
+    Promise.all([api("/master-data"),api("/unit-types")]).then(function(rs){
+      var r=rs[0];
+      var typesById={}; (((rs[1]||{}).body||{}).unitTypes||[]).forEach(function(t2){ typesById[t2.id]=t2; });
       wrap.innerHTML="";
       var units=((r.body||{}).units||[]).slice().sort(function(a,b){ return a.label.localeCompare(b.label); });
       var rows=units.map(function(u){
@@ -1589,12 +1647,14 @@
         if(can("masterdata.manage")){
           actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/units/"+u.id,{method:"PUT",body:{active: u.active===false}}).then(function(x){ if(x.status===200){ toast("Updated","ok"); refreshProperties(wrap);} else toast((x.body&&x.body.error)||"err","err"); }); }},[u.active===false?"Reactivate":"Deactivate"]));
         }
-        return h("tr",{},[ h("td",{class:"mono muted"},[u.code]), h("td",{},[u.label]), h("td",{},[h("span",{class:"pill "+(u.active===false?"terminated":"active")},[u.active===false?"inactive":"active"])]), h("td",{},[actions]) ]);
+        var tp=u.typeId&&typesById[u.typeId]?typesById[u.typeId].name:"—";
+        return h("tr",{},[ h("td",{class:"mono muted"},[u.code]), h("td",{},[u.label]), h("td",{class:"muted"},[tp]), h("td",{},[h("span",{class:"pill "+(u.active===false?"terminated":"active")},[u.active===false?"inactive":"active"])]), h("td",{},[actions]) ]);
       });
       wrap.appendChild(h("div",{class:"cards",style:"margin-bottom:14px"},[]));
       wrap.lastChild.appendChild(mkCard("Total units",String(units.length)));
       wrap.lastChild.appendChild(mkCard("Active",String(units.filter(function(u){return u.active!==false;}).length)));
-      wrap.appendChild(tableEl([th("Code"),th("Property / unit"),th(t("field.status")),th("")], rows, 4, "No properties yet — add one above or import a portfolio."));
+      wrap.lastChild.appendChild(mkCard("Floorplans",String(Object.keys(typesById).length)));
+      wrap.appendChild(tableEl([th("Code"),th("Property / unit"),th("Floorplan"),th(t("field.status")),th("")], rows, 5, "No properties yet — add one above or import a portfolio."));
     });
   }
   function mkCard(k,v){ return h("div",{class:"card"},[ h("div",{class:"k"},[k]), h("div",{class:"v"},[v]) ]); }
@@ -1629,6 +1689,7 @@
     var opts = w.templateOptions || {};
     var heroPhotoData = w.heroPhotoDataUrl || "";
     var adjRadius=null, adjFont=null, adjHero=null, adjCards=null;
+    var refreshPreview=function(){};
     if(templates && templates.length){
       slot.appendChild(h("h2",{},["Design — pick a template"]));
       slot.appendChild(h("p",{class:"sub"},["20 designs modeled on the best property-marketing sites. Pick one, then fine-tune corners, typography and layout below — your brand color from Settings → Branding is applied automatically."]));
@@ -1637,11 +1698,8 @@
       function highlight(){ Object.keys(cardEls).forEach(function(id){ cardEls[id].style.borderColor = id===pickedTemplate ? "var(--accent)" : "var(--border)"; cardEls[id].style.boxShadow = id===pickedTemplate ? "0 0 0 2px var(--accent-soft)" : "none"; }); }
       templates.forEach(function(tp){
         var sw=h("div",{class:"row",style:"gap:4px;margin:8px 0 6px"}, (tp.swatch||[]).map(function(c){ return h("span",{style:"width:20px;height:20px;border-radius:6px;border:1px solid rgba(0,0,0,.12);background:"+c},[]) ; }));
-        var prevTenant=(state.me&&state.me.tenantId)||(state.config&&state.config.tenantId)||"";
-        var prevLink=h("a",{href:"/site/"+encodeURIComponent(prevTenant)+"?template="+encodeURIComponent(tp.id),target:"_blank",rel:"noopener",style:"font-size:12px;font-weight:600;color:var(--accent);text-decoration:none"},["Preview ↗"]);
-        prevLink.addEventListener("click",function(e){ e.stopPropagation(); }); // preview without picking
-        var cardEl=h("div",{class:"panel",style:"cursor:pointer;padding:13px;border:2px solid var(--border)",onclick:function(){ pickedTemplate=tp.id; highlight(); }},[
-          h("div",{class:"row",style:"justify-content:space-between;align-items:baseline;gap:8px"},[ h("strong",{style:"font-size:14px"},[tp.name]), prevLink ]), sw,
+        var cardEl=h("div",{class:"panel",style:"cursor:pointer;padding:13px;border:2px solid var(--border)",onclick:function(){ pickedTemplate=tp.id; highlight(); refreshPreview(); }},[
+          h("strong",{style:"font-size:14px"},[tp.name]), sw,
           h("div",{class:"muted",style:"font-size:12px;line-height:1.35"},[tp.description]),
           h("div",{class:"muted",style:"font-size:11px;margin-top:6px;opacity:.8"},["Inspired by "+tp.inspiration+" · "+tp.hero+" hero · "+tp.cards+" cards"])
         ]);
@@ -1664,6 +1722,28 @@
         h("div",{class:"grid",style:"margin-top:10px"},[ field("Corners",adjRadius), field("Typography",adjFont), field("Hero layout",adjHero), field("Unit cards",adjCards), field("Hero photo (≤256 KB)",heroFile) ]),
         h("div",{style:"margin-top:6px"},[heroPrev])
       ]));
+      // LIVE PREVIEW — the real public site rendered in the selected design
+      // (template + fine-tune), straight from the ?template= preview override.
+      // Nothing is saved until "Save website".
+      var prevTenant=(state.me&&state.me.tenantId)||(state.config&&state.config.tenantId)||"";
+      var prevFrame=h("iframe",{style:"width:100%;height:520px;border:1px solid var(--border);border-radius:12px;background:#fff",title:"Design preview"},[]);
+      var prevOpen=h("a",{target:"_blank",rel:"noopener",style:"font-size:12.5px;font-weight:600;color:var(--accent);text-decoration:none"},["Open full preview ↗"]);
+      refreshPreview=function(){
+        var q=new URLSearchParams({ template: pickedTemplate });
+        if(adjRadius&&adjRadius.value) q.set("radius",adjRadius.value);
+        if(adjFont&&adjFont.value) q.set("font",adjFont.value);
+        if(adjHero&&adjHero.value) q.set("hero",adjHero.value);
+        if(adjCards&&adjCards.value) q.set("cards",adjCards.value);
+        var url="/site/"+encodeURIComponent(prevTenant)+"?"+q.toString();
+        prevFrame.src=url; prevOpen.href=url;
+      };
+      [adjRadius,adjFont,adjHero,adjCards].forEach(function(s){ s.addEventListener("change",refreshPreview); });
+      slot.appendChild(h("div",{class:"panel",style:"margin-top:12px"},[
+        h("div",{class:"row",style:"justify-content:space-between;align-items:baseline"},[ h("strong",{},["Live preview"]), prevOpen ]),
+        h("p",{class:"sub",style:"margin:6px 0 10px"},["This is your real site in the selected design — click any template above to see it change. Nothing is applied until you press Save website."]),
+        prevFrame
+      ]));
+      refreshPreview();
     }
     function readDesign(body){
       body.template = pickedTemplate;

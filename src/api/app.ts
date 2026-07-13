@@ -66,7 +66,7 @@ import { recommendAccess } from '../access-advisor.ts';
 import { buildReport, computeInsights, REPORT_CATALOG, type ReportingInput } from '../reporting.ts';
 import { buildCustomReport, dataSources, type CustomReportSpec } from '../report-builder.ts';
 import { siteListing, checkAvailability, isValidDate, type BookingSiteInput } from '../booking-site.ts';
-import { SiteContentStore, SiteContentError } from '../site-content.ts';
+import { SiteContentStore, SiteContentError, sanitizeSiteContent } from '../site-content.ts';
 import { templateGallery, isKnownTemplate, resolveTheme } from '../site-templates.ts';
 import { buildDemoWorld, DEMO_MARKER_UNIT_ID } from '../demo-data.ts';
 
@@ -420,6 +420,30 @@ export class App {
 
   private optString(body: Record<string, unknown>, key: string): string | undefined {
     return typeof body[key] === 'string' ? (body[key] as string) : undefined;
+  }
+
+  /** Resolve an optional typeId in a unit payload — 404s on an unknown type so
+   *  a unit can never point at a floorplan that doesn't exist. */
+  private unitTypeLink(tenantId: string, body: Record<string, unknown>): { typeId?: string } {
+    const typeId = this.optString(body, 'typeId');
+    if (typeId === undefined || typeId === '') return {};
+    if (!this.masterData.unitTypes.get(tenantId, typeId)) throw new HttpError(404, `unknown unit type: ${typeId}`);
+    return { typeId };
+  }
+
+  /** The optional numeric/description fields of a unit-type payload, validated. */
+  private unitTypeFields(body: Record<string, unknown>) {
+    const out: { bedrooms?: number; bathrooms?: number; maxGuests?: number; areaSqm?: number; baseRentCents?: number; description?: string } = {};
+    for (const k of ['bedrooms', 'bathrooms', 'maxGuests', 'areaSqm', 'baseRentCents'] as const) {
+      const v = body[k];
+      if (v === undefined || v === null || v === '') continue;
+      const n = typeof v === 'number' ? v : Number(v);
+      if (!Number.isFinite(n) || n < 0) throw new HttpError(400, `invalid '${k}'`);
+      out[k] = k === 'areaSqm' ? Math.round(n * 10) / 10 : Math.round(n);
+    }
+    const description = this.optString(body, 'description');
+    if (description !== undefined) out.description = description.slice(0, 2000);
+    return out;
   }
 
   private agreementSummary(a: Agreement) {
@@ -896,18 +920,75 @@ export class App {
         code: this.requireString(body, 'code'),
         label: this.requireString(body, 'label'),
         active: body['active'] !== false,
+        ...this.unitTypeLink(ctx.tenantId, body),
       }),
     }));
 
-    // Update a property/unit — rename or activate/deactivate. Deactivating keeps
-    // history (reports still reference it) but drops it from the bookable set.
+    // Update a property/unit — rename, activate/deactivate, or re-type.
+    // Deactivating keeps history (reports still reference it) but drops it
+    // from the bookable set.
     this.add('PUT', '/units/:id', 'masterdata.manage', (ctx, p, body) => {
       if (!this.masterData.units.get(ctx.tenantId, p['id']!)) throw new HttpError(404, 'unit not found');
-      const patch: { label?: string; active?: boolean } = {};
+      const patch: { label?: string; active?: boolean; typeId?: string | undefined } = {};
       const label = this.optString(body, 'label');
       if (label !== undefined) patch.label = label;
       if (typeof body['active'] === 'boolean') patch.active = body['active'] as boolean;
+      if (body['typeId'] === '') patch.typeId = undefined; // '' unlinks the floorplan
+      else Object.assign(patch, this.unitTypeLink(ctx.tenantId, body));
       return { status: 200, body: this.masterData.units.update(ctx.tenantId, p['id']!, patch) };
+    });
+
+    // --- unit types (floorplans) — the multifamily merchandising unit --------
+    // A 200-unit building is a handful of floorplans; details/base rent are
+    // entered ONCE on the type and every unit of that type inherits them.
+    this.add('GET', '/unit-types', 'masterdata.read', (ctx) => ({ status: 200, body: { unitTypes: this.masterData.unitTypes.list(ctx.tenantId) } }));
+
+    this.add('POST', '/unit-types', 'masterdata.manage', (ctx, _p, body) => {
+      const code = this.requireString(body, 'code');
+      return {
+        status: 201,
+        body: this.masterData.unitTypes.add({
+          id: this.optString(body, 'id') ?? `utype-${code.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+          tenantId: ctx.tenantId,
+          code,
+          name: this.requireString(body, 'name'),
+          ...this.unitTypeFields(body),
+        }),
+      };
+    });
+
+    this.add('PUT', '/unit-types/:id', 'masterdata.manage', (ctx, p, body) => {
+      if (!this.masterData.unitTypes.get(ctx.tenantId, p['id']!)) throw new HttpError(404, 'unit type not found');
+      const patch: Record<string, unknown> = this.unitTypeFields(body);
+      const name = this.optString(body, 'name');
+      if (name !== undefined) patch['name'] = name;
+      return { status: 200, body: this.masterData.unitTypes.update(ctx.tenantId, p['id']!, patch) };
+    });
+
+    // Bulk unit generation — the "add a 200-apartment property" path. One call
+    // creates `count` units code `<codePrefix><n>` (n from startNumber), all
+    // linked to a floorplan; codes already in use are SKIPPED (idempotent), so
+    // re-running or overlapping ranges never duplicates inventory.
+    this.add('POST', '/units/bulk', 'masterdata.manage', (ctx, _p, body) => {
+      const codePrefix = this.requireString(body, 'codePrefix');
+      const count = typeof body['count'] === 'number' && Number.isInteger(body['count']) ? (body['count'] as number) : NaN;
+      if (!(count >= 1 && count <= 500)) throw new HttpError(400, 'count must be an integer between 1 and 500');
+      const start = typeof body['startNumber'] === 'number' && Number.isInteger(body['startNumber']) ? (body['startNumber'] as number) : 101;
+      const labelPrefix = this.optString(body, 'labelPrefix') ?? codePrefix;
+      const link = this.unitTypeLink(ctx.tenantId, body);
+      const existing = new Set(this.masterData.units.list(ctx.tenantId).map((u) => u.code));
+      const created: string[] = [];
+      const skipped: string[] = [];
+      for (let n = start; n < start + count; n++) {
+        const code = `${codePrefix}${n}`;
+        if (existing.has(code)) { skipped.push(code); continue; }
+        this.masterData.units.add({
+          id: `unit-${code.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+          tenantId: ctx.tenantId, code, label: `${labelPrefix}${n}`, active: true, ...link,
+        });
+        created.push(code);
+      }
+      return { status: 201, body: { created: created.length, skipped: skipped.length, codes: created, skippedCodes: skipped } };
     });
 
     // --- website content (the integrated booking-site builder) ------------
@@ -2108,8 +2189,20 @@ export class App {
         const code = row.record['code']!;
         if (existing.has(code)) { skipped++; continue; }
         const id = `${target === 'units' ? 'unit' : 'guest'}-${code}`;
-        if (target === 'units') this.masterData.units.add({ id, tenantId: ctx.tenantId, code, label: row.record['label'] ?? code, active: true });
-        else this.masterData.guests.add({ id, tenantId: ctx.tenantId, code, fullName: row.record['fullName']!, email: row.record['email'] });
+        if (target === 'units') {
+          // A "type"/floorplan column auto-creates the unit type on first sight
+          // and links every unit that names it — 200 rows → a few types.
+          let typeLink: { typeId?: string } = {};
+          const typeCode = (row.record['type'] ?? '').trim();
+          if (typeCode) {
+            const typeId = `utype-${typeCode.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+            if (!this.masterData.unitTypes.get(ctx.tenantId, typeId)) {
+              this.masterData.unitTypes.add({ id: typeId, tenantId: ctx.tenantId, code: typeCode, name: typeCode });
+            }
+            typeLink = { typeId };
+          }
+          this.masterData.units.add({ id, tenantId: ctx.tenantId, code, label: row.record['label'] ?? code, active: true, ...typeLink });
+        } else this.masterData.guests.add({ id, tenantId: ctx.tenantId, code, fullName: row.record['fullName']!, email: row.record['email'] });
         existing.add(code);
         created++;
       }
@@ -2376,7 +2469,10 @@ export class App {
       from,
       to,
       currency: this.config.get(tenantId).currency,
-      units: this.masterData.units.list(tenantId).map((u) => ({ id: u.id, label: u.label, active: u.active !== false })),
+      units: this.masterData.units.list(tenantId).map((u) => {
+        const t = u.typeId ? this.masterData.unitTypes.get(tenantId, u.typeId) : null;
+        return { id: u.id, label: u.label, active: u.active !== false, ...(t ? { typeName: t.name } : {}) };
+      }),
       agreements: entries.map((e) => {
         const rn = residentFor(e.agreement.id, e.agreement.guestId);
         return { id: e.agreement.id, kind: e.agreement.kind, status: e.agreement.status, unitId: e.agreement.currentUnitId, start: e.agreement.period.start, end: e.agreement.period.end, rateCents: e.agreement.rateCents, ...(rn ? { residentName: rn } : {}) };
@@ -2413,7 +2509,16 @@ export class App {
       tenantId,
       displayName: cfg.displayName,
       currency: cfg.currency,
-      units: units.map((u) => ({ id: u.id, label: u.label, active: u.active !== false })),
+      units: units.map((u) => ({ id: u.id, label: u.label, active: u.active !== false, ...(u.typeId ? { typeId: u.typeId } : {}) })),
+      unitTypes: this.masterData.unitTypes.list(tenantId).map((t) => ({
+        id: t.id, code: t.code, name: t.name,
+        ...(t.bedrooms !== undefined ? { bedrooms: t.bedrooms } : {}),
+        ...(t.bathrooms !== undefined ? { bathrooms: t.bathrooms } : {}),
+        ...(t.maxGuests !== undefined ? { maxGuests: t.maxGuests } : {}),
+        ...(t.areaSqm !== undefined ? { areaSqm: t.areaSqm } : {}),
+        ...(t.baseRentCents !== undefined ? { baseRentCents: t.baseRentCents } : {}),
+        ...(t.description !== undefined ? { description: t.description } : {}),
+      })),
       holds: this.calendar.allHolds().filter((h) => agIds.has(h.holderId)).map((h) => ({ unitId: h.unitId, start: h.start, end: h.end, status: h.status })),
       agreements: entries.map((e) => ({ unitId: e.agreement.currentUnitId, rateCents: e.agreement.rateCents, start: e.agreement.period.start })),
       rule: this.revenue.listRules(tenantId)[0],
@@ -2426,16 +2531,26 @@ export class App {
    *  route so the caller falls through to the normal authenticated router. */
   private bookingSiteRoute(method: string, tenant: string, action: string | undefined, body: Record<string, unknown>): ApiResponse | null {
     const inp = this.bookingSiteInput(tenant);
-    // config (listing) — GET /site/:tenant/config[?template=<id>]
-    // ?template= is a PREVIEW override: the listing is themed with that template's
-    // defaults (brand accent still applied) WITHOUT touching the saved choice, so
-    // the operator can eyeball every design on their real site before picking.
+    // config (listing) — GET /site/:tenant/config[?template=<id>&radius=&font=&hero=&cards=]
+    // ?template= (+ optional fine-tune params) is a PREVIEW override: the listing
+    // is themed with that template + adjustments (brand accent still applied)
+    // WITHOUT touching the saved choice, so the operator can eyeball every design
+    // on their real site before picking. Invalid values are dropped by sanitize.
     if (method === 'GET' && action === 'config') {
       if (!inp) return { status: 404, body: { error: 'no published inventory for this site' } };
       const listing = siteListing(inp);
       const preview = this.optString(body, 'template');
       if (preview && isKnownTemplate(preview)) {
-        listing.theme = resolveTheme(preview, undefined, inp?.brand?.color);
+        const opts = sanitizeSiteContent({
+          template: preview,
+          templateOptions: {
+            radius: this.optString(body, 'radius'),
+            font: this.optString(body, 'font'),
+            hero: this.optString(body, 'hero'),
+            cards: this.optString(body, 'cards'),
+          },
+        }).templateOptions;
+        listing.theme = resolveTheme(preview, opts, inp?.brand?.color);
         listing.previewTemplate = preview;
       }
       return { status: 200, body: listing };
@@ -2656,7 +2771,16 @@ export class App {
     return {
       // The tenant row now carries its full country-environment config.
       tenants: [{ id: tenantId, name: cfg.displayName ?? tenantId, displayName: cfg.displayName, locale: cfg.locale, currency: cfg.currency, timezone: cfg.timezone, businessStructure: cfg.businessStructure, country: cfg.country, jurisdiction: cfg.jurisdiction, brandColor: cfg.brandColor, logoDataUrl: cfg.logoDataUrl, tagline: cfg.tagline, ...(this.siteContent.has(tenantId) ? { siteContent: this.siteContent.get(tenantId) as Record<string, unknown> } : {}) }],
-      units: this.masterData.units.list(tenantId).map((u) => ({ id: u.id, tenantId, label: u.label, code: u.code, active: u.active })),
+      units: this.masterData.units.list(tenantId).map((u) => ({ id: u.id, tenantId, label: u.label, code: u.code, active: u.active, ...(u.typeId ? { typeId: u.typeId } : {}) })),
+      unitTypes: this.masterData.unitTypes.list(tenantId).map((t) => ({
+        id: t.id, tenantId, code: t.code, name: t.name,
+        ...(t.bedrooms !== undefined ? { bedrooms: t.bedrooms } : {}),
+        ...(t.bathrooms !== undefined ? { bathrooms: t.bathrooms } : {}),
+        ...(t.maxGuests !== undefined ? { maxGuests: t.maxGuests } : {}),
+        ...(t.areaSqm !== undefined ? { areaSqm: t.areaSqm } : {}),
+        ...(t.baseRentCents !== undefined ? { baseRentCents: t.baseRentCents } : {}),
+        ...(t.description !== undefined ? { description: t.description } : {}),
+      })),
       guests: this.masterData.guests.list(tenantId).map((g) => ({ id: g.id, tenantId, fullName: g.fullName, code: g.code, email: g.email })),
       ratePlans: this.masterData.ratePlans.list(tenantId).map((r) => ({
         id: r.id, tenantId, name: r.name, kind: r.kind, baseCents: r.baseMinor, currency: cfg.currency,
@@ -2751,8 +2875,17 @@ export class App {
       });
       if (t.siteContent) this.siteContent.set(t.id, t.siteContent);
     }
-    // Master data (unit code/active + guest code/email are all persisted now).
-    for (const u of world.units) this.masterData.units.add({ id: u.id, tenantId: u.tenantId, code: u.code ?? u.id, label: u.label, active: u.active ?? true });
+    // Master data (unit code/active/type + guest code/email are all persisted now).
+    for (const t of world.unitTypes ?? []) this.masterData.unitTypes.add({
+      id: t.id, tenantId: t.tenantId, code: t.code, name: t.name,
+      ...(t.bedrooms !== undefined ? { bedrooms: t.bedrooms } : {}),
+      ...(t.bathrooms !== undefined ? { bathrooms: t.bathrooms } : {}),
+      ...(t.maxGuests !== undefined ? { maxGuests: t.maxGuests } : {}),
+      ...(t.areaSqm !== undefined ? { areaSqm: t.areaSqm } : {}),
+      ...(t.baseRentCents !== undefined ? { baseRentCents: t.baseRentCents } : {}),
+      ...(t.description !== undefined ? { description: t.description } : {}),
+    });
+    for (const u of world.units) this.masterData.units.add({ id: u.id, tenantId: u.tenantId, code: u.code ?? u.id, label: u.label, active: u.active ?? true, ...(u.typeId ? { typeId: u.typeId } : {}) });
     for (const g of world.guests) this.masterData.guests.add({ id: g.id, tenantId: g.tenantId, code: g.code ?? g.id, fullName: g.fullName, email: g.email });
     for (const r of world.ratePlans ?? []) this.masterData.ratePlans.add({ id: r.id, tenantId: r.tenantId, code: r.id, name: r.name, kind: r.kind as 'nightly' | 'monthly' | 'lease', baseMinor: r.baseCents });
     for (const u of world.users ?? []) this.masterData.users.add({ id: u.id, tenantId: u.tenantId, code: u.code, displayName: u.displayName, roleId: u.roleId, active: u.active });

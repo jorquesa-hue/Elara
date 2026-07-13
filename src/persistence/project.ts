@@ -27,7 +27,9 @@ export interface WorldData {
     displayName?: string; locale?: string; currency?: string; timezone?: string;
     businessStructure?: string; country?: string; jurisdiction?: string; brandColor?: string; logoDataUrl?: string; tagline?: string; siteContent?: Record<string, unknown>;
   }>;
-  units: Array<{ id: string; tenantId: string; label: string; code?: string; active?: boolean }>;
+  units: Array<{ id: string; tenantId: string; label: string; code?: string; active?: boolean; typeId?: string }>;
+  /** Floorplans/unit types — parents of typed units, emitted first. */
+  unitTypes?: Array<{ id: string; tenantId: string; code: string; name: string; bedrooms?: number; bathrooms?: number; maxGuests?: number; areaSqm?: number; baseRentCents?: number; description?: string }>;
   guests: Array<{ id: string; tenantId: string; fullName: string; code?: string; email?: string }>;
   ratePlans?: Array<{
     id: string;
@@ -183,9 +185,17 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       ),
     );
   }
+  for (const t of w.unitTypes ?? []) {
+    out.push(
+      stmt(
+        'insert into unit_type (id, tenant_id, code, name, bedrooms, bathrooms, max_guests, area_sqm, base_rent_cents, description) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) on conflict (id) do update set code = excluded.code, name = excluded.name, bedrooms = excluded.bedrooms, bathrooms = excluded.bathrooms, max_guests = excluded.max_guests, area_sqm = excluded.area_sqm, base_rent_cents = excluded.base_rent_cents, description = excluded.description',
+        [t.id, t.tenantId, t.code, t.name, t.bedrooms ?? null, t.bathrooms ?? null, t.maxGuests ?? null, t.areaSqm ?? null, t.baseRentCents ?? null, t.description ?? null],
+      ),
+    );
+  }
   for (const u of w.units) {
     out.push(
-      stmt('insert into unit (id, tenant_id, label, code, active) values ($1, $2, $3, $4, $5) on conflict (id) do update set label = excluded.label, code = excluded.code, active = excluded.active', [u.id, u.tenantId, u.label, u.code ?? u.id, u.active ?? true]),
+      stmt('insert into unit (id, tenant_id, label, code, active, type_id) values ($1, $2, $3, $4, $5, $6) on conflict (id) do update set label = excluded.label, code = excluded.code, active = excluded.active, type_id = excluded.type_id', [u.id, u.tenantId, u.label, u.code ?? u.id, u.active ?? true, u.typeId ?? null]),
     );
   }
   for (const g of w.guests) {

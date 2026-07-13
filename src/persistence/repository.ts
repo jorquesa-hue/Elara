@@ -163,7 +163,8 @@ export class Repositories {
       brandColor: s(r['brand_color']), logoDataUrl: s(r['logo_data_url']), tagline: s(r['tagline']),
       siteContent: (r['site_content'] && typeof r['site_content'] === 'object' ? (r['site_content'] as Record<string, unknown>) : undefined),
     }));
-    const units = (await one('select id, tenant_id, label, code, active from unit where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, label: String(r['label']), code: s(r['code']), active: r['active'] == null ? undefined : Boolean(r['active']) }));
+    const unitTypes = (await one('select id, tenant_id, code, name, bedrooms, bathrooms, max_guests, area_sqm, base_rent_cents, description from unit_type where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, code: String(r['code']), name: String(r['name']), bedrooms: n(r['bedrooms']), bathrooms: n(r['bathrooms']), maxGuests: n(r['max_guests']), areaSqm: n(r['area_sqm']), baseRentCents: n(r['base_rent_cents']), description: s(r['description']) }));
+    const units = (await one('select id, tenant_id, label, code, active, type_id from unit where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, label: String(r['label']), code: s(r['code']), active: r['active'] == null ? undefined : Boolean(r['active']), typeId: s(r['type_id']) }));
     const guests = (await one('select id, tenant_id, full_name, code, email from guest where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, fullName: String(r['full_name']), code: s(r['code']), email: s(r['email']) }));
     const ratePlans = (await one('select id, tenant_id, name, kind, base_cents, currency, deposit_cents from rate_plan where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, name: String(r['name']), kind: String(r['kind']), baseCents: Number(r['base_cents']), currency: String(r['currency']), depositCents: n(r['deposit_cents']) }));
     const users = (await one('select id, tenant_id, code, display_name, role_id, active from app_user where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, code: String(r['code']), displayName: String(r['display_name']), roleId: String(r['role_id']), active: Boolean(r['active']) }));
@@ -225,7 +226,7 @@ export class Repositories {
     // filter by tenant_id or a cold-start would rehydrate every tenant's audit.
     const actionLog = (await one('select seq, tenant_id, at, actor, action, effect, rule_id, outcome, reason, exception_id from action_log where tenant_id = $1 order by seq')).map((r) => ({ seq: Number(r['seq']), tenantId: tid, at: toIso(r['at']), actor: String(r['actor']), action: String(r['action']), effect: String(r['effect']), ruleId: s(r['rule_id']) ?? null, outcome: String(r['outcome']), reason: String(r['reason']), exceptionId: s(r['exception_id']) ?? null }));
 
-    return { tenants, units, guests, ratePlans, users, customRoles, legalEntities, parties, spaces, chargeTypes, agreements, holds, journalLines, invoices, payments, deposits, bills, apPayments, agreementParties, pricingRules, purchaseOrders, budgets, prospects, leads, integrations, connectorCommands, signatureEnvelopes, workOrders, notifications, exceptions, actionLog } as unknown as WorldData;
+    return { tenants, units, unitTypes, guests, ratePlans, users, customRoles, legalEntities, parties, spaces, chargeTypes, agreements, holds, journalLines, invoices, payments, deposits, bills, apPayments, agreementParties, pricingRules, purchaseOrders, budgets, prospects, leads, integrations, connectorCommands, signatureEnvelopes, workOrders, notifications, exceptions, actionLog } as unknown as WorldData;
   }
 
   private async activeHoldsAll(): Promise<CalendarHold[]> {
