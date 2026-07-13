@@ -12,6 +12,7 @@
 // any PII.
 
 import { computeQuote, type PricingRule } from './revenue.ts';
+import type { SiteContent, UnitSiteDetails } from './site-content.ts';
 
 export interface SiteUnit { id: string; label: string; active: boolean }
 export interface SiteHold { unitId: string; start: string; end: string; status: string }
@@ -28,6 +29,8 @@ export interface BookingSiteInput {
   agreements: readonly SiteAgreementRate[]; // used only to derive a per-unit base rate
   rule?: PricingRule; // the tenant's primary dynamic-pricing rule, if any
   brand?: SiteBrand;
+  /** Operator-authored page content + per-unit marketing details. */
+  content?: SiteContent;
 }
 
 export interface SiteListing {
@@ -35,7 +38,8 @@ export interface SiteListing {
   displayName: string;
   currency: string;
   brand: SiteBrand;
-  units: Array<{ id: string; label: string; fromCents: number | null }>;
+  content: Omit<SiteContent, 'units'>;
+  units: Array<{ id: string; label: string; fromCents: number | null; details?: UnitSiteDetails }>;
 }
 
 export interface AvailabilityUnit {
@@ -67,16 +71,27 @@ function unitBaseCents(unitId: string, inp: BookingSiteInput): number | null {
   return null;
 }
 
-/** The marketing listing: every bookable (active) unit with a "from" price. */
+/** A unit is on the site when it is active AND not explicitly unpublished. */
+function isPublished(u: SiteUnit, inp: BookingSiteInput): boolean {
+  return u.active && inp.content?.units?.[u.id]?.published !== false;
+}
+
+/** The marketing listing: every published unit with a "from" price + its
+ *  operator-authored details, plus the page content (hero/about/contact). */
 export function siteListing(inp: BookingSiteInput): SiteListing {
+  const { units: _unitDetails, ...page } = inp.content ?? {};
   return {
     tenantId: inp.tenantId,
     displayName: inp.displayName,
     currency: inp.currency,
     brand: inp.brand ?? {},
+    content: page,
     units: inp.units
-      .filter((u) => u.active)
-      .map((u) => ({ id: u.id, label: u.label, fromCents: unitBaseCents(u.id, inp) }))
+      .filter((u) => isPublished(u, inp))
+      .map((u) => {
+        const details = inp.content?.units?.[u.id];
+        return { id: u.id, label: u.label, fromCents: unitBaseCents(u.id, inp), ...(details ? { details } : {}) };
+      })
       .sort((a, b) => a.label.localeCompare(b.label)),
   };
 }
@@ -95,7 +110,7 @@ export function checkAvailability(inp: BookingSiteInput, from: string, to: strin
   const nights = Math.round((ms(to) - ms(from)) / DAY);
   if (nights <= 0) throw new Error('to must be after from');
   return inp.units
-    .filter((u) => u.active)
+    .filter((u) => isPublished(u, inp))
     .map((u) => {
       const held = inp.holds.some((h) => h.unitId === u.id && overlaps(h, from, to));
       const base = unitBaseCents(u.id, inp);

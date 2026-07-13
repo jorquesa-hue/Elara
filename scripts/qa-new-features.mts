@@ -61,6 +61,14 @@ await shot('04c-lease-expirations');
 await page.click('button:has-text("Portfolio mix")');
 await page.waitForTimeout(500);
 await shot('04-reports-catalog-chart');
+// Financial reports: the income statement with its CSV export button.
+await page.click('button:has-text("Income statement")');
+await page.waitForSelector('text=Net operating income');
+await page.waitForTimeout(400);
+await shot('04d-income-statement');
+await page.click('button:has-text("Billed vs collected")');
+await page.waitForTimeout(500);
+await shot('04e-billed-collected');
 // Build tab: compose a custom report + chart.
 await page.click('button:has-text("Build a report")');
 await page.waitForSelector('text=Data source');
@@ -107,11 +115,21 @@ await page.click('button:has-text("Add property")');
 await page.waitForTimeout(500);
 await shot('08-properties');
 
-// Website: the operator's booking-site link + published units.
+// Website builder: page content + per-unit editor; save and verify live.
 await page.click('nav button:has-text("Website")');
-await page.waitForSelector('text=public booking link');
-await page.waitForTimeout(600);
-await shot('09-website-panel');
+await page.waitForSelector('text=Page content');
+await page.fill('input[placeholder="Find your stay on Ilhabela"]', 'Sua ilha te espera');
+await page.fill('input[placeholder="reservas@example.com"]', 'reservas@ilhabelastays.com');
+await page.fill('input[placeholder="+55 12 99999-0000"]', '+55 12 98888-7777');
+const aboutTa = page.locator('textarea').first();
+await aboutTa.fill('Somos uma família de Ilhabela cuidando de casas de praia há 10 anos.');
+// First unit: headline + beds + amenities.
+await page.locator('input[placeholder="Frente mar, pôr do sol da varanda"]').first().fill('Vista para o mar');
+await page.locator('input[placeholder="2"]').first().fill('3');
+await page.locator('input[placeholder="Wi-Fi, Ar-condicionado, Piscina, Cozinha"]').first().fill('Wi-Fi, Piscina, Churrasqueira');
+await page.click('button:has-text("Save website")');
+await page.waitForTimeout(700);
+await shot('09-website-builder');
 
 // The PUBLIC booking microsite (as a guest — new page, no auth).
 const pub = await (await browser.newContext({ viewport: { width: 1200, height: 950 } })).newPage();
@@ -119,7 +137,10 @@ const pubErrors: string[] = [];
 pub.on('console', (m) => { if (m.type() === 'error') pubErrors.push(m.text()); });
 pub.on('pageerror', (e) => pubErrors.push('PAGEERROR: ' + e.message));
 await pub.goto(base + '/site/jq');
-await pub.waitForSelector('text=Find your stay');
+await pub.waitForSelector('text=Sua ilha te espera'); // the builder-authored hero title
+await pub.waitForSelector('text=Vista para o mar');   // per-unit headline
+await pub.waitForSelector('text=Churrasqueira');      // amenity chip
+await pub.waitForSelector('text=reservas@ilhabelastays.com'); // contact section
 await pub.waitForTimeout(700);
 await pub.screenshot({ path: './qa-shots/10-public-site.png', fullPage: true });
 console.log('shot: 10-public-site');

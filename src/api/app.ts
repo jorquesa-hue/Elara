@@ -66,6 +66,7 @@ import { recommendAccess } from '../access-advisor.ts';
 import { buildReport, computeInsights, REPORT_CATALOG, type ReportingInput } from '../reporting.ts';
 import { buildCustomReport, dataSources, type CustomReportSpec } from '../report-builder.ts';
 import { siteListing, checkAvailability, isValidDate, type BookingSiteInput } from '../booking-site.ts';
+import { SiteContentStore, SiteContentError } from '../site-content.ts';
 import { buildDemoWorld, DEMO_MARKER_UNIT_ID } from '../demo-data.ts';
 
 export interface ApiRequest {
@@ -210,6 +211,7 @@ export class App {
   readonly obs: Observability;
   private readonly rateLimiter?: RateLimiter;
   private readonly agreements = new Map<string, { agreement: Agreement; tenantId: string }>();
+  private readonly siteContent = new SiteContentStore();
   private readonly invoiceTenant = new Map<string, string>();
   private readonly depositTenant = new Map<string, string>();
   private readonly flushMarks = new Map<string, FlushMark>();
@@ -905,6 +907,20 @@ export class App {
       if (label !== undefined) patch.label = label;
       if (typeof body['active'] === 'boolean') patch.active = body['active'] as boolean;
       return { status: 200, body: this.masterData.units.update(ctx.tenantId, p['id']!, patch) };
+    });
+
+    // --- website content (the integrated booking-site builder) ------------
+    // The operator-authored page: hero/about/contact plus per-unit marketing
+    // details and publish switches. Marketing data only — validated + size-capped.
+    this.add('GET', '/site-content', 'masterdata.read', (ctx) => ({ status: 200, body: { content: this.siteContent.get(ctx.tenantId) } }));
+
+    this.add('PUT', '/site-content', 'masterdata.manage', (ctx, _p, body) => {
+      try {
+        return { status: 200, body: { content: this.siteContent.set(ctx.tenantId, body['content'] ?? body) } };
+      } catch (e) {
+        if (e instanceof SiteContentError) throw new HttpError(400, e.message);
+        throw e;
+      }
     });
 
     this.add('POST', '/guests', 'masterdata.manage', (ctx, _p, body) => ({
@@ -2370,6 +2386,11 @@ export class App {
       workOrders: this.maintenance.all().filter((w) => w.tenantId === tenantId).map((w) => ({ id: w.id, status: w.status, priority: w.priority, openedAt: w.openedAt, title: w.title })),
       holds: this.calendar.allHolds().filter((h) => agIds.has(h.holderId)).map((h) => ({ unitId: h.unitId, start: h.start, end: h.end, status: h.status })),
       ledgerBalanced: this.trialBalance(tenantId).balanced,
+      // Tenant-scoped GL lines (same predicate as the trial balance) — the raw
+      // material for the income statement / general-ledger reports + builder.
+      ledgerLines: this.ledger.allLines
+        .filter((l) => (l.agreementId != null && agIds.has(l.agreementId)) || l.tenantId === tenantId)
+        .map((l) => ({ account: l.account, debitCents: l.debitCents, creditCents: l.creditCents, postedAt: l.postedAt })),
     };
   }
 
@@ -2393,6 +2414,7 @@ export class App {
       agreements: entries.map((e) => ({ unitId: e.agreement.currentUnitId, rateCents: e.agreement.rateCents, start: e.agreement.period.start })),
       rule: this.revenue.listRules(tenantId)[0],
       brand: { color: cfg.brandColor, logoDataUrl: cfg.logoDataUrl, tagline: cfg.tagline, locale: cfg.locale },
+      content: this.siteContent.get(tenantId),
     };
   }
 
@@ -2620,7 +2642,7 @@ export class App {
 
     return {
       // The tenant row now carries its full country-environment config.
-      tenants: [{ id: tenantId, name: cfg.displayName ?? tenantId, displayName: cfg.displayName, locale: cfg.locale, currency: cfg.currency, timezone: cfg.timezone, businessStructure: cfg.businessStructure, country: cfg.country, jurisdiction: cfg.jurisdiction, brandColor: cfg.brandColor, logoDataUrl: cfg.logoDataUrl, tagline: cfg.tagline }],
+      tenants: [{ id: tenantId, name: cfg.displayName ?? tenantId, displayName: cfg.displayName, locale: cfg.locale, currency: cfg.currency, timezone: cfg.timezone, businessStructure: cfg.businessStructure, country: cfg.country, jurisdiction: cfg.jurisdiction, brandColor: cfg.brandColor, logoDataUrl: cfg.logoDataUrl, tagline: cfg.tagline, ...(this.siteContent.has(tenantId) ? { siteContent: this.siteContent.get(tenantId) as Record<string, unknown> } : {}) }],
       units: this.masterData.units.list(tenantId).map((u) => ({ id: u.id, tenantId, label: u.label, code: u.code, active: u.active })),
       guests: this.masterData.guests.list(tenantId).map((g) => ({ id: g.id, tenantId, fullName: g.fullName, code: g.code, email: g.email })),
       ratePlans: this.masterData.ratePlans.list(tenantId).map((r) => ({
@@ -2714,6 +2736,7 @@ export class App {
         businessStructure: t.businessStructure ?? 'mixed_portfolio', country: t.country ?? 'US', jurisdiction: t.jurisdiction ?? 'US',
         ...(t.brandColor ? { brandColor: t.brandColor } : {}), ...(t.logoDataUrl ? { logoDataUrl: t.logoDataUrl } : {}), ...(t.tagline ? { tagline: t.tagline } : {}),
       });
+      if (t.siteContent) this.siteContent.set(t.id, t.siteContent);
     }
     // Master data (unit code/active + guest code/email are all persisted now).
     for (const u of world.units) this.masterData.units.add({ id: u.id, tenantId: u.tenantId, code: u.code ?? u.id, label: u.label, active: u.active ?? true });

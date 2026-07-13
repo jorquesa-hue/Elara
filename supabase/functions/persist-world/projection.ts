@@ -92,7 +92,7 @@ export interface WorldData {
   tenants: Array<{
     id: string; name: string;
     displayName?: string; locale?: string; currency?: string; timezone?: string;
-    businessStructure?: string; country?: string; jurisdiction?: string; brandColor?: string; logoDataUrl?: string; tagline?: string;
+    businessStructure?: string; country?: string; jurisdiction?: string; brandColor?: string; logoDataUrl?: string; tagline?: string; siteContent?: Record<string, unknown>;
   }>;
   units: Array<{ id: string; tenantId: string; label: string; code?: string; active?: boolean }>;
   guests: Array<{ id: string; tenantId: string; fullName: string; code?: string; email?: string }>;
@@ -226,8 +226,8 @@ export function projectWorld(w: WorldData): SqlStatement[] {
   for (const t of w.tenants) {
     out.push(
       stmt(
-        'insert into tenant (id, name, display_name, locale, currency, timezone, business_structure, country, jurisdiction, brand_color, logo_data_url, tagline) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) on conflict (id) do update set name = excluded.name, display_name = excluded.display_name, locale = excluded.locale, currency = excluded.currency, timezone = excluded.timezone, business_structure = excluded.business_structure, country = excluded.country, jurisdiction = excluded.jurisdiction, brand_color = excluded.brand_color, logo_data_url = excluded.logo_data_url, tagline = excluded.tagline',
-        [t.id, t.name, t.displayName ?? t.name, t.locale ?? 'en', t.currency ?? 'USD', t.timezone ?? 'UTC', t.businessStructure ?? 'mixed_portfolio', t.country ?? 'US', t.jurisdiction ?? 'US', t.brandColor ?? null, t.logoDataUrl ?? null, t.tagline ?? null],
+        'insert into tenant (id, name, display_name, locale, currency, timezone, business_structure, country, jurisdiction, brand_color, logo_data_url, tagline, site_content) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb) on conflict (id) do update set name = excluded.name, display_name = excluded.display_name, locale = excluded.locale, currency = excluded.currency, timezone = excluded.timezone, business_structure = excluded.business_structure, country = excluded.country, jurisdiction = excluded.jurisdiction, brand_color = excluded.brand_color, logo_data_url = excluded.logo_data_url, tagline = excluded.tagline, site_content = excluded.site_content',
+        [t.id, t.name, t.displayName ?? t.name, t.locale ?? 'en', t.currency ?? 'USD', t.timezone ?? 'UTC', t.businessStructure ?? 'mixed_portfolio', t.country ?? 'US', t.jurisdiction ?? 'US', t.brandColor ?? null, t.logoDataUrl ?? null, t.tagline ?? null, t.siteContent ? JSON.stringify(t.siteContent) : null],
       ),
     );
   }

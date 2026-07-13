@@ -1599,39 +1599,115 @@
   }
   function mkCard(k,v){ return h("div",{class:"card"},[ h("div",{class:"k"},[k]), h("div",{class:"v"},[v]) ]); }
 
-  // ---- integrated booking website -----------------------------------------
+  // ---- integrated booking website (builder) --------------------------------
   function viewWebsite(main){
-    main.appendChild(h("h1",{},["Booking website"]));
-    main.appendChild(h("p",{class:"sub"},["Your guest-facing site is generated live from this portfolio — every unit, its dynamic price and real-time availability. Booking requests land in your Pipeline as leads. Share the link, or point your own domain at it."]));
+    main.appendChild(h("h1",{},["Website builder"]));
+    main.appendChild(h("p",{class:"sub"},["Your guest-facing site is generated live from this portfolio — every unit, its dynamic price and real-time availability. Edit the page content and each unit's presentation below; booking requests land in your Pipeline as leads."]));
     var tenant=(state.me&&state.me.tenantId)||(state.config&&state.config.tenantId)||"";
     var url=location.origin+"/site/"+tenant;
-    var linkRow=h("div",{class:"panel"},[
+    main.appendChild(h("div",{class:"panel"},[
       h("label",{},["Your public booking link"]),
       h("div",{class:"row",style:"gap:10px;flex-wrap:wrap;margin-top:6px"},[
         h("input",{value:url,readonly:"readonly",style:"flex:1;min-width:240px"}),
         h("button",{class:"btn sm",onclick:function(){ if(navigator.clipboard) navigator.clipboard.writeText(url); toast("Link copied","ok"); }},["Copy"]),
         h("a",{class:"btn ghost sm",href:url,target:"_blank",rel:"noopener",style:"text-decoration:none"},["Open site ↗"])
       ]),
-      h("div",{class:"muted",style:"font-size:12.5px;margin-top:8px"},["Tip: attach elarapms.com (or a per-property domain) to this path with a rewrite, and it becomes your branded booking site."])
-    ]);
-    main.appendChild(linkRow);
-    main.appendChild(h("h2",{},["What's published"]));
-    var pubWrap=h("div",{},[h("div",{class:"muted"},["Loading…"])]); main.appendChild(pubWrap);
-    // Read the PUBLIC site config the same way a guest would — proves it works end-to-end.
-    fetch("/site/"+tenant+"/config").then(function(r){ return r.json().then(function(j){ return {status:r.status,body:j}; }); }).then(function(r){
-      pubWrap.innerHTML="";
-      if(r.status!==200){ pubWrap.appendChild(h("p",{class:"muted"},["No bookable units yet — add properties to publish your site."])); return; }
-      var cards=h("div",{class:"cards"},[]); pubWrap.appendChild(cards);
-      cards.appendChild(mkCard("Units on site",String((r.body.units||[]).length)));
-      cards.appendChild(mkCard("Currency",r.body.currency||"—"));
-      var rows=(r.body.units||[]).map(function(u){ return h("tr",{},[ h("td",{},[u.label]), h("td",{},[u.fromCents!=null?fmt(u.fromCents)+" / night":"—"]) ]); });
-      pubWrap.appendChild(tableEl([th("Unit"),th("From price")], rows, 2, "No units published."));
+      h("div",{class:"muted",style:"font-size:12.5px;margin-top:8px"},["Logo, brand color and tagline come from Settings → Branding. Point elarapms.com (or any domain) at this path to make it your own."])
+    ]));
+    var slot=h("div",{},[h("div",{class:"muted",style:"margin-top:14px"},["Loading site content…"])]); main.appendChild(slot);
+    Promise.all([api("/site-content"), api("/master-data")]).then(function(rs){
+      slot.innerHTML="";
+      if(rs[0].status!==200||rs[1].status!==200){ slot.appendChild(h("p",{class:"muted"},[t("msg.denied")])); return; }
+      buildSiteEditor(slot, rs[0].body.content||{}, (rs[1].body.units||[]).slice().sort(function(a,b){return a.label.localeCompare(b.label);}));
     });
+  }
+  function buildSiteEditor(slot, content, units){
+    var editable = can("masterdata.manage");
+    var w = JSON.parse(JSON.stringify(content||{})); w.units = w.units||{};
+    // --- page content -----------------------------------------------------
+    var heroTitle=h("input",{value:w.heroTitle||"",placeholder:"Find your stay on Ilhabela"});
+    var about=h("textarea",{rows:"4",style:"width:100%;resize:vertical;font:inherit;padding:9px 11px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2);color:var(--text)"},[]);
+    about.value = w.about||"";
+    var cEmail=h("input",{value:w.contactEmail||"",placeholder:"reservas@example.com"});
+    var cPhone=h("input",{value:w.contactPhone||"",placeholder:"+55 12 3896-0000"});
+    var cWhats=h("input",{value:w.whatsapp||"",placeholder:"+55 12 99999-0000"});
+    var cInsta=h("input",{value:w.instagram||"",placeholder:"@ilhabelastays"});
+    var cFace=h("input",{value:w.facebook||"",placeholder:"ilhabelastays"});
+    slot.appendChild(h("h2",{},["Page content"]));
+    slot.appendChild(h("div",{class:"panel"},[
+      h("div",{class:"grid"},[ field("Hero title",heroTitle), field("Contact email",cEmail), field("Phone",cPhone), field("WhatsApp",cWhats), field("Instagram",cInsta), field("Facebook",cFace) ]),
+      h("div",{style:"margin-top:10px"},[ h("label",{},["About your properties (shown on the site)"]), about ])
+    ]));
+    // --- per-unit presentation ---------------------------------------------
+    slot.appendChild(h("h2",{},["Units on your website"]));
+    if(!units.length) slot.appendChild(h("p",{class:"muted"},["No properties yet — add them in Properties first."]));
+    var unitEls = units.map(function(u){
+      var d = w.units[u.id] || {};
+      var pub=h("input",{type:"checkbox"}); pub.checked = d.published!==false && u.active!==false;
+      if(u.active===false){ pub.disabled=true; pub.checked=false; }
+      var headline=h("input",{value:d.headline||"",placeholder:"Frente mar, pôr do sol da varanda"});
+      var beds=h("input",{type:"number",value:d.bedrooms!=null?String(d.bedrooms):"",placeholder:"2",min:"0"});
+      var baths=h("input",{type:"number",value:d.bathrooms!=null?String(d.bathrooms):"",placeholder:"1",min:"0"});
+      var guests=h("input",{type:"number",value:d.maxGuests!=null?String(d.maxGuests):"",placeholder:"4",min:"1"});
+      var amen=h("input",{value:(d.amenities||[]).join(", "),placeholder:"Wi-Fi, Ar-condicionado, Piscina, Cozinha"});
+      var desc=h("textarea",{rows:"2",style:"width:100%;resize:vertical;font:inherit;padding:9px 11px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2);color:var(--text)"},[]);
+      desc.value = d.description||"";
+      var photoData = d.photoDataUrl||"";
+      var preview=h("div",{class:"row",style:"gap:10px;align-items:center"},[]);
+      function drawP(){ preview.innerHTML=""; if(photoData){ var img=document.createElement("img"); img.src=photoData; img.style.cssText="height:54px;width:86px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"; preview.appendChild(img); var rm=h("button",{class:"btn ghost sm"},["Remove"]); rm.addEventListener("click",function(e){e.preventDefault(); photoData=""; drawP();}); preview.appendChild(rm); } else preview.appendChild(h("span",{class:"muted",style:"font-size:12.5px"},["No photo"])); }
+      drawP();
+      var file=h("input",{type:"file",accept:"image/png,image/jpeg,image/webp"});
+      file.addEventListener("change",function(){ var f=file.files&&file.files[0]; if(!f) return; if(f.size>256*1024) return toast("Photo too large (max 256 KB) — resize it first","err"); var rd=new FileReader(); rd.onload=function(){ photoData=String(rd.result); drawP(); }; rd.readAsDataURL(f); });
+      slot.appendChild(h("div",{class:"panel"},[
+        h("div",{class:"row",style:"justify-content:space-between;align-items:center;margin-bottom:10px"},[
+          h("strong",{},[u.label + (u.active===false?" (inactive)":"")]),
+          h("label",{class:"row",style:"gap:7px;font-size:13px;cursor:pointer"},[pub, "Show on website"])
+        ]),
+        h("div",{class:"grid"},[ field("Headline",headline), field("Bedrooms",beds), field("Bathrooms",baths), field("Max guests",guests), field("Amenities (comma-separated)",amen), field("Photo (≤256 KB)",file) ]),
+        h("div",{style:"margin:8px 0"},[preview]),
+        h("div",{},[ h("label",{},["Description"]), desc ])
+      ]));
+      return { unit:u, read:function(){
+        var det={ published: pub.checked };
+        if(headline.value.trim()) det.headline=headline.value.trim();
+        if(desc.value.trim()) det.description=desc.value.trim();
+        if(beds.value!=="") det.bedrooms=Number(beds.value);
+        if(baths.value!=="") det.bathrooms=Number(baths.value);
+        if(guests.value!=="") det.maxGuests=Number(guests.value);
+        var am=amen.value.split(",").map(function(s){return s.trim();}).filter(Boolean);
+        if(am.length) det.amenities=am;
+        if(photoData) det.photoDataUrl=photoData;
+        return det;
+      } };
+    });
+    // --- save ----------------------------------------------------------------
+    if(editable){
+      slot.appendChild(h("div",{style:"margin:6px 0 30px"},[ h("button",{class:"btn",onclick:function(){
+        var body={ heroTitle:heroTitle.value, about:about.value, contactEmail:cEmail.value, contactPhone:cPhone.value, whatsapp:cWhats.value, instagram:cInsta.value, facebook:cFace.value, units:{} };
+        unitEls.forEach(function(ue){ body.units[ue.unit.id]=ue.read(); });
+        api("/site-content",{method:"PUT",body:{content:body}}).then(function(r){
+          if(r.status!==200) return toast((r.body&&r.body.error)||t("msg.denied"),"err");
+          toast("Website saved — changes are live","ok");
+        });
+      }},["Save website"]) ]));
+    }
   }
 
   // ---- reports & insights -------------------------------------------------
   var CHART_PALETTE = ["#6d8bff","#8b6cff","#3aa76d","#e0894a","#e05a5a","#22a5b8","#c98a1e","#b565d8","#4f9d69","#d98a8a"];
-  var CATALOG_CHART = { occupancy:"bar", revenue:"line", ar_aging:"bar", collections:"table", deposits:"bar", payables:"bar", pipeline:"bar", portfolio:"donut", cashflow:"bar", rent_roll:"table", delinquency:"bar", lease_expirations:"bar", box_score:"table", vacancy:"table", wo_aging:"bar" };
+  var CATALOG_CHART = { occupancy:"bar", revenue:"line", ar_aging:"bar", collections:"table", deposits:"bar", payables:"bar", pipeline:"bar", portfolio:"donut", cashflow:"bar", rent_roll:"table", delinquency:"bar", lease_expirations:"bar", box_score:"table", vacancy:"table", wo_aging:"bar", income_statement:"bar", general_ledger:"table", billing_collections:"bar", occupancy_trend:"line" };
+
+  // Download any report as CSV — columns become the header, cells are quoted.
+  function csvEscape(v){ var s=String(v==null?"":v); return /[",\\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
+  function downloadCsv(rep, name){
+    var cols=rep.columns||[]; var lines=[cols.map(function(c){return csvEscape(c.label);}).join(",")];
+    (rep.rows||[]).forEach(function(row){
+      lines.push(cols.map(function(c){ var v=row[c.key]; if(c.kind==="money") v=(Number(v)||0)/100; return csvEscape(v); }).join(","));
+    });
+    var blob=new Blob([lines.join("\\n")],{type:"text/csv;charset=utf-8"});
+    var a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=(name||rep.title||"report").replace(/[^A-Za-z0-9_-]+/g,"-").toLowerCase()+".csv";
+    document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },500);
+  }
 
   function viewReports(main) {
     main.appendChild(h("h1", {}, ["Reports & analytics"]));
@@ -1750,6 +1826,7 @@
       var kpiWrap = h("div", { class:"cards" }, []);
       (rep.kpis||[]).forEach(function(k){ card(kpiWrap, k.label, fmtKpi(k) + (typeof k.delta === "number" ? (" ("+(k.delta>=0?"+":"")+k.delta+"%)") : "")); });
       wrap.appendChild(kpiWrap);
+      wrap.appendChild(h("div",{class:"row",style:"justify-content:flex-end;margin:4px 0"},[ h("button",{class:"btn ghost sm",onclick:function(){ downloadCsv(rep, rep.key); }},["⬇ Download CSV"]) ]));
       if (rep.subtitle) wrap.appendChild(h("p",{class:"muted",style:"font-size:13px;margin:2px 0 10px"},[rep.subtitle]));
       var ctype = CATALOG_CHART[key] || "bar";
       var series = seriesFromReport(rep);
@@ -1820,7 +1897,7 @@
   function renderBuiltReport(out, rep, spec, titleInput){
     if(titleInput && !titleInput.value) titleInput.value = rep.title;
     var kpiWrap=h("div",{class:"cards"},[]); (rep.kpis||[]).forEach(function(k){ card(kpiWrap,k.label,fmtKpi(k)); }); out.appendChild(kpiWrap);
-    out.appendChild(h("h3",{style:"margin:8px 0 10px"},[rep.title]));
+    out.appendChild(h("div",{class:"row",style:"justify-content:space-between;align-items:center;margin:8px 0 10px"},[ h("h3",{style:"margin:0"},[rep.title]), h("button",{class:"btn ghost sm",onclick:function(){ downloadCsv(rep, rep.title); }},["⬇ Download CSV"]) ]));
     if(spec.chart!=="table"){ var c=chartEl(rep.series, spec.chart); if(c) out.appendChild(c); }
     var heads=(rep.columns||[]).map(function(c){return th(c.label);});
     var rows=(rep.rows||[]).map(function(row){ return h("tr",{},(rep.columns||[]).map(function(c){

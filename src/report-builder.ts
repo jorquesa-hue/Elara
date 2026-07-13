@@ -126,6 +126,21 @@ const SOURCES: Source[] = [
     ],
     measures: [{ key: 'amount', label: 'Amount (sum)', kind: 'money', get: (r) => Number(r['amountCents'] || 0) }],
   },
+  {
+    key: 'ledger', label: 'Ledger (GL)',
+    rows: (i) => (i.ledgerLines ?? []) as unknown as Record<string, unknown>[],
+    dimensions: [
+      { key: 'account', label: 'Account', get: (r) => String(r['account']) },
+      { key: 'category', label: 'Account category', get: (r) => String(r['account']).split(':')[0] ?? '—' },
+      { key: 'month', label: 'Month posted', get: (r) => monthKey(r['postedAt']), time: true },
+    ],
+    measures: [
+      { key: 'net', label: 'Net (DR−CR, sum)', kind: 'money', get: (r) => Number(r['debitCents'] || 0) - Number(r['creditCents'] || 0) },
+      { key: 'debits', label: 'Debits (sum)', kind: 'money', get: (r) => Number(r['debitCents'] || 0) },
+      { key: 'credits', label: 'Credits (sum)', kind: 'money', get: (r) => Number(r['creditCents'] || 0) },
+    ],
+    filters: [{ key: 'category', label: 'Category', options: ['assets', 'liabilities', 'revenue', 'expense', 'equity'], get: (r) => String(r['account']).split(':')[0] ?? '—' }],
+  },
 ];
 
 export interface CustomReportSpec {

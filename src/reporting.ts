@@ -26,6 +26,9 @@ export interface ReportingInput {
   workOrders: ReadonlyArray<{ id: string; status: string; priority: string; openedAt: string; title?: string }>;
   holds: ReadonlyArray<{ unitId: string; start: string; end: string; status: string }>;
   ledgerBalanced: boolean;
+  /** Tenant-scoped journal lines — the raw material for the FINANCIAL reports
+   *  (income statement, general ledger). Optional for backward compatibility. */
+  ledgerLines?: ReadonlyArray<{ account: string; debitCents: number; creditCents: number; postedAt: string }>;
 }
 
 export interface ReportColumn { key: string; label: string; kind?: 'money' | 'number' | 'percent' | 'text' | 'date' }
@@ -56,10 +59,13 @@ export const REPORT_CATALOG: readonly ReportSpec[] = [
   // The property-management staples (the RealPage/Entrata-class operational set).
   { key: 'rent_roll', title: 'Rent roll', description: 'Every unit with its resident, lease dates, scheduled rent, deposit held and outstanding balance — plus occupancy and scheduled-rent totals.' },
   { key: 'delinquency', title: 'Delinquency (aged)', description: 'Aged receivables by resident: current, 1–30, 31–60, 61–90 and 90+ day buckets per account.' },
+  { key: 'income_statement', title: 'Income statement', description: 'Revenue and expenses from the ledger for the window — the P&L, with net operating income.' },
+  { key: 'billing_collections', title: 'Billed vs collected', description: 'Invoiced vs cash collected by month, with the collection rate.' },
   { key: 'lease_expirations', title: 'Lease expirations', description: 'Active leases bucketed by expiration month — the renewal-exposure schedule.' },
   { key: 'box_score', title: 'Box score', description: 'Leasing activity for the window: move-ins, move-outs, funnel counts and occupancy.' },
   { key: 'vacancy', title: 'Vacancy & availability', description: 'Vacant units with days vacant, last occupancy and rent at risk.' },
   { key: 'occupancy', title: 'Occupancy', description: 'Sold vs available room-nights per unit for the window.' },
+  { key: 'occupancy_trend', title: 'Occupancy trend', description: 'Portfolio occupancy month by month.' },
   { key: 'revenue', title: 'Revenue & ADR', description: 'Cash collected, ADR and RevPAR, by month.' },
   { key: 'ar_aging', title: 'Receivables aging', description: 'Outstanding invoices bucketed by days overdue.' },
   { key: 'collections', title: 'Collections', description: 'Every past-due invoice with days overdue and outstanding balance.' },
@@ -69,6 +75,7 @@ export const REPORT_CATALOG: readonly ReportSpec[] = [
   { key: 'pipeline', title: 'Sales pipeline', description: 'Leads by stage, pipeline value and conversion.' },
   { key: 'portfolio', title: 'Portfolio mix', description: 'Agreements by kind and status; unit occupancy mix.' },
   { key: 'cashflow', title: 'Cash flow', description: 'Money in (payments) vs money out (vendor payouts) for the window.' },
+  { key: 'general_ledger', title: 'General ledger', description: 'Every account with its debits, credits and running balance — the books.' },
 ];
 
 // --- date helpers -----------------------------------------------------------
@@ -489,9 +496,132 @@ function woAging(inp: ReportingInput): Report {
   };
 }
 
+// --- financial statements (GL-based) -----------------------------------------
+
+/** P&L for the window: revenue accounts are credit-normal, expenses debit-normal.
+ *  Net operating income = revenue − expenses. */
+function incomeStatement(inp: ReportingInput): Report {
+  const lines = (inp.ledgerLines ?? []).filter((l) => inWindow(l.postedAt, inp.from, inp.to));
+  const byAccount = new Map<string, number>();
+  for (const l of lines) {
+    if (l.account.startsWith('revenue')) byAccount.set(l.account, (byAccount.get(l.account) ?? 0) + (l.creditCents - l.debitCents));
+    else if (l.account.startsWith('expense')) byAccount.set(l.account, (byAccount.get(l.account) ?? 0) + (l.debitCents - l.creditCents));
+  }
+  const income = [...byAccount.entries()].filter(([a]) => a.startsWith('revenue')).map(([account, amount]) => ({ group: 'Income', account, amount })).sort((x, y) => y.amount - x.amount);
+  const expenses = [...byAccount.entries()].filter(([a]) => a.startsWith('expense')).map(([account, amount]) => ({ group: 'Expense', account, amount })).sort((x, y) => y.amount - x.amount);
+  const revenueTotal = sum(income.map((r) => r.amount));
+  const expenseTotal = sum(expenses.map((r) => r.amount));
+  const noi = revenueTotal - expenseTotal;
+  return {
+    key: 'income_statement', title: 'Income statement', window: { from: inp.from, to: inp.to },
+    subtitle: 'Accrual basis, straight from the ledger: revenue when billed, expenses when the bill posts.',
+    columns: [
+      { key: 'group', label: 'Section', kind: 'text' }, { key: 'account', label: 'Account', kind: 'text' },
+      { key: 'amount', label: 'Amount', kind: 'money' },
+    ],
+    rows: [...income, ...expenses],
+    kpis: [
+      { label: 'Revenue', value: revenueTotal, kind: 'money' },
+      { label: 'Expenses', value: expenseTotal, kind: 'money' },
+      { label: 'Net operating income', value: noi, kind: 'money' },
+      { label: 'Margin', value: revenueTotal > 0 ? pct(noi, revenueTotal) : 0, kind: 'percent' },
+    ],
+  };
+}
+
+/** All-time balances per account: the books, netting to zero when balanced. */
+function generalLedger(inp: ReportingInput): Report {
+  const acc = new Map<string, { debits: number; credits: number }>();
+  for (const l of inp.ledgerLines ?? []) {
+    const a = acc.get(l.account) ?? { debits: 0, credits: 0 };
+    a.debits += l.debitCents; a.credits += l.creditCents;
+    acc.set(l.account, a);
+  }
+  const rows = [...acc.entries()]
+    .map(([account, a]) => ({ account, debits: a.debits, credits: a.credits, balance: a.debits - a.credits }))
+    .sort((x, y) => x.account.localeCompare(y.account));
+  return {
+    key: 'general_ledger', title: 'General ledger (trial balance)', window: { from: inp.from, to: inp.to },
+    subtitle: 'All-time account balances. A healthy ledger nets to zero.',
+    columns: [
+      { key: 'account', label: 'Account', kind: 'text' }, { key: 'debits', label: 'Debits', kind: 'money' },
+      { key: 'credits', label: 'Credits', kind: 'money' }, { key: 'balance', label: 'Balance (DR−CR)', kind: 'money' },
+    ],
+    rows,
+    kpis: [
+      { label: 'Accounts', value: rows.length, kind: 'number' },
+      { label: 'Total debits', value: sum(rows.map((r) => r.debits)), kind: 'money' },
+      { label: 'Total credits', value: sum(rows.map((r) => r.credits)), kind: 'money' },
+      { label: 'Net (should be 0)', value: sum(rows.map((r) => r.balance)), kind: 'money' },
+    ],
+  };
+}
+
+/** Billed vs collected by month + the collection rate — the AR effectiveness view. */
+function billingCollections(inp: ReportingInput): Report {
+  const billed = new Map<string, number>();
+  for (const i of inp.invoices) if (i.status !== 'void' && inWindow(i.issuedAt, inp.from, inp.to)) billed.set(monthKey(i.issuedAt), (billed.get(monthKey(i.issuedAt)) ?? 0) + i.totalCents);
+  const collected = new Map<string, number>();
+  for (const p of inp.payments) if (p.status !== 'void' && inWindow(p.receivedAt, inp.from, inp.to)) collected.set(monthKey(p.receivedAt), (collected.get(monthKey(p.receivedAt)) ?? 0) + p.amountCents);
+  const months = [...new Set([...billed.keys(), ...collected.keys()])].sort();
+  const rows = months.map((m) => {
+    const b = billed.get(m) ?? 0, c = collected.get(m) ?? 0;
+    return { month: m, billed: b, collected: c, rate: b > 0 ? pct(c, b) : 0 };
+  });
+  const bTot = sum(rows.map((r) => r.billed)), cTot = sum(rows.map((r) => r.collected));
+  return {
+    key: 'billing_collections', title: 'Billed vs collected', window: { from: inp.from, to: inp.to },
+    columns: [
+      { key: 'month', label: 'Month', kind: 'text' }, { key: 'billed', label: 'Billed', kind: 'money' },
+      { key: 'collected', label: 'Collected', kind: 'money' }, { key: 'rate', label: 'Collection rate', kind: 'percent' },
+    ],
+    rows,
+    kpis: [
+      { label: 'Billed', value: bTot, kind: 'money' },
+      { label: 'Collected', value: cTot, kind: 'money' },
+      { label: 'Collection rate', value: bTot > 0 ? pct(cTot, bTot) : 0, kind: 'percent' },
+    ],
+  };
+}
+
+/** Portfolio occupancy month by month across the window. */
+function occupancyTrend(inp: ReportingInput): Report {
+  const active = inp.holds.filter((h) => h.status === 'active');
+  const unitCount = Math.max(1, inp.units.length);
+  const rows: Array<{ month: string; occupancy: number }> = [];
+  // Walk month starts from `from` to `to`, clipping each month to the window.
+  let cur = new Date(`${inp.from.slice(0, 7)}-01T00:00:00Z`);
+  const endMs = ms(inp.to);
+  while (cur.getTime() < endMs) {
+    const next = new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth() + 1, 1));
+    const clipFrom = Math.max(cur.getTime(), ms(inp.from));
+    const clipTo = Math.min(next.getTime(), endMs);
+    const nights = Math.round((clipTo - clipFrom) / DAY);
+    if (nights > 0) {
+      const f = new Date(clipFrom).toISOString().slice(0, 10);
+      const t2 = new Date(clipTo).toISOString().slice(0, 10);
+      const sold = sum(active.map((h) => overlapNights(h.start, h.end, f, t2)));
+      rows.push({ month: cur.toISOString().slice(0, 7), occupancy: pct(sold, nights * unitCount) });
+    }
+    cur = next;
+  }
+  const latest = rows.length ? rows[rows.length - 1]!.occupancy : 0;
+  return {
+    key: 'occupancy_trend', title: 'Occupancy trend', window: { from: inp.from, to: inp.to },
+    columns: [{ key: 'month', label: 'Month', kind: 'text' }, { key: 'occupancy', label: 'Occupancy', kind: 'percent' }],
+    rows,
+    kpis: [
+      { label: 'Latest month', value: latest, kind: 'percent' },
+      { label: 'Best month', value: rows.length ? Math.max(...rows.map((r) => r.occupancy)) : 0, kind: 'percent' },
+      { label: 'Months', value: rows.length, kind: 'number' },
+    ],
+  };
+}
+
 const BUILDERS: Record<string, (inp: ReportingInput) => Report> = {
   occupancy, revenue, ar_aging: arAging, collections, deposits: depositsReport, payables, pipeline, portfolio, cashflow,
   rent_roll: rentRoll, delinquency, lease_expirations: leaseExpirations, box_score: boxScore, vacancy, wo_aging: woAging,
+  income_statement: incomeStatement, general_ledger: generalLedger, billing_collections: billingCollections, occupancy_trend: occupancyTrend,
 };
 
 export function buildReport(key: string, inp: ReportingInput): Report | null {
@@ -557,6 +687,27 @@ export function computeInsights(inp: ReportingInput): Insight[] {
   // High-priority open work orders.
   const urgentWo = inp.workOrders.filter((w) => !['completed', 'cancelled'].includes(w.status) && (w.priority === 'high' || w.priority === 'urgent'));
   if (urgentWo.length > 0) out.push({ severity: 'warning', title: `${urgentWo.length} high-priority work order(s) open`, detail: 'Urgent maintenance is unresolved.', metric: { value: urgentWo.length, kind: 'number' }, action: 'Assign/complete in Maintenance.' });
+
+  // Profitability: NOI for the window from the ledger (when lines are provided).
+  if (inp.ledgerLines?.length) {
+    let rev = 0, exp = 0;
+    for (const l of inp.ledgerLines) {
+      if (!inWindow(l.postedAt, inp.from, inp.to)) continue;
+      if (l.account.startsWith('revenue')) rev += l.creditCents - l.debitCents;
+      else if (l.account.startsWith('expense')) exp += l.debitCents - l.creditCents;
+    }
+    if (rev > 0 && exp > rev) {
+      out.push({ severity: 'warning', title: 'Operating at a loss this window', detail: 'Expenses exceeded revenue on the ledger — the portfolio lost money in this period.', metric: { value: rev - exp, kind: 'money' }, action: 'Open the Income statement report to see which accounts drove it.' });
+    }
+  }
+
+  // Collection effectiveness: billed vs collected inside the window.
+  const billedWin = sum(inp.invoices.filter((i) => i.status !== 'void' && inWindow(i.issuedAt, inp.from, inp.to)).map((i) => i.totalCents));
+  const collectedWin = sum(inp.payments.filter((p) => p.status !== 'void' && inWindow(p.receivedAt, inp.from, inp.to)).map((p) => p.amountCents));
+  if (billedWin > 0) {
+    const rate = pct(collectedWin, billedWin);
+    if (rate < 85) out.push({ severity: 'warning', title: `Collection rate is ${rate}%`, detail: 'Less than 85% of what you billed this window has been collected.', metric: { value: rate, kind: 'percent' }, action: 'Review Billed vs collected, then run a collections sweep.' });
+  }
 
   // Revenue trend vs the prior window.
   const settled = inp.payments.filter((p) => p.status !== 'void');
