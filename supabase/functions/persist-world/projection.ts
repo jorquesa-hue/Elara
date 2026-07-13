@@ -218,6 +218,11 @@ export interface WorldData {
     scheduledAt: string; status: string; agentId?: string; notes?: string; createdAt: string;
     completedAt?: string; cancelReason?: string;
   }>;
+  unitTurns?: ReadonlyArray<{
+    id: string; tenantId: string; unitId: string; status: string; vacatedAt: string; readyAt?: string;
+    tasks: ReadonlyArray<{ key: string; label: string; done: boolean; doneAt?: string }>;
+    agentId?: string; notes?: string; createdAt: string; cancelReason?: string;
+  }>;
   users?: Array<{ id: string; tenantId: string; code: string; displayName: string; roleId: string; active: boolean }>;
   customRoles?: Array<{ tenantId: string; roleId: string; name: string; description?: string; permissions: readonly string[] }>;
   integrations?: Array<{
@@ -549,6 +554,14 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       stmt(
         'insert into tour (id, tenant_id, lead_id, unit_id, prospect_name, prospect_email, scheduled_at, status, agent_id, notes, created_at, completed_at, cancel_reason) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) on conflict (id) do update set lead_id = excluded.lead_id, unit_id = excluded.unit_id, prospect_name = excluded.prospect_name, prospect_email = excluded.prospect_email, scheduled_at = excluded.scheduled_at, status = excluded.status, agent_id = excluded.agent_id, notes = excluded.notes, completed_at = excluded.completed_at, cancel_reason = excluded.cancel_reason',
         [t.id, t.tenantId, t.leadId ?? null, t.unitId ?? null, t.prospectName, t.prospectEmail ?? null, t.scheduledAt, t.status, t.agentId ?? null, t.notes ?? null, t.createdAt, t.completedAt ?? null, t.cancelReason ?? null],
+      ),
+    );
+  }
+  for (const t of w.unitTurns ?? []) {
+    out.push(
+      stmt(
+        'insert into unit_turn (id, tenant_id, unit_id, status, vacated_at, ready_at, tasks, agent_id, notes, created_at, cancel_reason) values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11) on conflict (id) do update set status = excluded.status, ready_at = excluded.ready_at, tasks = excluded.tasks, agent_id = excluded.agent_id, notes = excluded.notes, cancel_reason = excluded.cancel_reason',
+        [t.id, t.tenantId, t.unitId, t.status, t.vacatedAt, t.readyAt ?? null, JSON.stringify(t.tasks ?? []), t.agentId ?? null, t.notes ?? null, t.createdAt, t.cancelReason ?? null],
       ),
     );
   }

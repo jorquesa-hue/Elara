@@ -486,6 +486,24 @@ const TOOLS: ToolDef[] = [
     },
     toRequest: (i) => ({ method: 'POST', path: `/tours/${i['id']}/complete`, body: {} }),
   },
+  {
+    spec: {
+      name: 'open_unit_turn',
+      description: 'Open a make-ready turn on a vacated unit — it starts with the standard make-ready checklist. Turn time (vacate → ready) is the ops KPI; mark tasks done and then mark the unit rent-ready.',
+      input_schema: schema({ id: str('Client-chosen turn id.'), unitId: str('The vacated unit.'), vacatedAt: str('When it went vacant (ISO). Optional (defaults now).') }, ['id', 'unitId']),
+      strict: true,
+    },
+    toRequest: (i) => ({ method: 'POST', path: '/turns', body: i }),
+  },
+  {
+    spec: {
+      name: 'mark_unit_ready',
+      description: 'Mark a unit rent-ready, closing its turn. Requires every make-ready checklist task to be complete.',
+      input_schema: schema({ id: str('Turn id to mark ready.') }, ['id']),
+      strict: true,
+    },
+    toRequest: (i) => ({ method: 'POST', path: `/turns/${i['id']}/ready`, body: {} }),
+  },
   // --- maintenance / reservations / comms ---------------------------------
   {
     spec: {

@@ -79,6 +79,10 @@ export const PERMISSIONS = [
   // Tour scheduling — the top of the leasing funnel (a prospect walking a unit).
   'tour.read',
   'tour.manage',
+  // Unit turns (make-ready) — the operations board tracking a vacant unit to
+  // rent-ready. Operational, RBAC-only (no money movement).
+  'turn.read',
+  'turn.manage',
   'esign.read',
   'esign.manage',
   // Recording a signer's COMPLETION is the provider's webhook, relayed by the
@@ -149,6 +153,7 @@ const OPS: Permission[] = [
   'crm.read', 'crm.manage',
   'application.read', 'application.manage',
   'tour.read', 'tour.manage',
+  'turn.read', 'turn.manage',
   'esign.read', 'esign.manage',
   'renewal.read',
   'ledger.read', 'exception.read', 'subscription.read',

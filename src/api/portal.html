@@ -220,6 +220,7 @@
     applications: '<path d="M8 3h8l3 3v15H5V3z"/><path d="M8 10h8M8 14h8M8 18h5"/>',
     renewals: '<path d="M4 12a8 8 0 0 1 14-5l2 2"/><path d="M20 4v4h-4"/><path d="M20 12a8 8 0 0 1-14 5l-2-2"/><path d="M4 20v-4h4"/>',
     tours: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="M9 15l2 2 4-4"/>',
+    turns: '<path d="M3 7h13l-3-3M21 17H8l3 3"/><rect x="3" y="10" width="7" height="4" rx="1"/><rect x="14" y="10" width="7" height="4" rx="1"/>',
     reports: '<path d="M4 3v18h16"/><rect x="7" y="12" width="3" height="6" rx="1"/><rect x="12" y="8" width="3" height="10" rx="1"/><rect x="17" y="4" width="3" height="14" rx="1"/>',
     advisor: '<path d="M12 3l1.9 4.3L18 9l-4.1 1.7L12 15l-1.9-4.3L6 9l4.1-1.7z"/><path d="M18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z"/>',
     properties: '<path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M10 21v-6h4v6"/><path d="M9 10h.01M15 10h.01"/>',
@@ -429,6 +430,7 @@
     if (can("bill.read")) items.splice(3, 0, ["bills", "Bills", ICONS.bills]);
     if (can("procurement.read")) items.splice(3, 0, ["purchasing", "Purchasing", ICONS.purchasing]);
     if (can("maintenance.read")) items.splice(can("bill.read") ? 4 : 3, 0, ["maintenance", "Maintenance", ICONS.maintenance]);
+    if (can("turn.read")) items.splice(can("bill.read") ? 4 : 3, 0, ["turns", "Make-ready", ICONS.turns]);
     if (can("reservation.read")) items.splice(3, 0, ["reservations", "Reservations", ICONS.reservations]);
     if (can("comms.read")) items.splice(items.length - 1, 0, ["inbox", "Inbox", ICONS.inbox]);
     if (can("reconciliation.read")) items.splice(items.length - 1, 0, ["reconcile", "Reconcile", ICONS.reconcile]);
@@ -465,7 +467,7 @@
       h("main", { id: "main" }, [])
     ]));
     var main = document.getElementById("main");
-    ({ dashboard: viewDashboard, agreements: viewAgreements, properties: viewProperties, website: viewWebsite, pricing: viewPricing, crm: viewCrm, applications: viewApplications, tours: viewTours, renewals: viewRenewals, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
+    ({ dashboard: viewDashboard, agreements: viewAgreements, properties: viewProperties, website: viewWebsite, pricing: viewPricing, crm: viewCrm, applications: viewApplications, tours: viewTours, turns: viewTurns, renewals: viewRenewals, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
   }
 
   // ---- views --------------------------------------------------------------
@@ -1371,6 +1373,56 @@
     });
   }
   function tourAct(id, action, body, wrap){ api("/tours/"+id+"/"+action,{method:"POST",body:body||{}}).then(function(x){ if(x.status===200){ toast(t("msg.saved"),"ok"); refreshTours(wrap);} else toast((x.body||{}).error||"err","err"); }); }
+
+  // ---- Make-ready / unit turns (Phase 5A) ----------------------------------
+  function viewTurns(main){
+    main.appendChild(h("h1",{},["Make-ready"]));
+    main.appendChild(h("p",{class:"sub"},["The turn board — every vacant unit's make-ready checklist to rent-ready. Turn time (days from vacate to ready) is your operations KPI: the faster a unit turns, the less rent you lose."]));
+    var formSlot=h("div",{},[]); main.appendChild(formSlot);
+    var wrap=h("div",{},[]); main.appendChild(wrap);
+    if(can("turn.manage")) formSlot.appendChild(turnForm(wrap));
+    refreshTurns(wrap);
+  }
+  function turnForm(wrap){
+    var unit=h("select",{},[h("option",{value:""},["— unit —"])]);
+    var when=h("input",{type:"date"});
+    if(can("masterdata.read")) api("/master-data").then(function(r){ ((r.body||{}).units||[]).forEach(function(u){ unit.appendChild(h("option",{value:u.id},[u.label||u.code||u.id])); }); });
+    return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
+      if(!unit.value) return toast("Pick a unit","err");
+      var body={ id:"turn-"+Date.now(), unitId:unit.value };
+      if(when.value) body.vacatedAt=new Date(when.value).toISOString();
+      api("/turns",{method:"POST",body:body}).then(function(r){ if(r.status===201){ toast("Turn opened","ok"); refreshTurns(wrap);} else toast((r.body||{}).error||"err","err"); });
+    }},[ field("Unit",unit), field("Vacated (optional)",when), h("div",{},[h("button",{class:"btn",type:"submit"},["Open turn"])]) ]);
+  }
+  function refreshTurns(wrap){
+    api("/turns").then(function(r){
+      wrap.innerHTML="";
+      var turns=((r.body||{}).turns||[]).slice().sort(function(a,b){ return (b.days||0)-(a.days||0); });
+      if(!turns.length){ wrap.appendChild(h("div",{class:"panel muted"},["No units in make-ready. Open a turn when a unit goes vacant."])); return; }
+      turns.forEach(function(tn){
+        var open = tn.status==="open"||tn.status==="in_progress";
+        var stCls = tn.status==="ready"?"active":(tn.status==="cancelled"?"terminated":"draft");
+        var daysCls = tn.days>=7 ? "terminated" : (tn.days>=4 ? "draft" : "active");
+        var tasks=h("div",{class:"row",style:"gap:6px;flex-wrap:wrap;margin-top:10px"},(tn.tasks||[]).map(function(tk){
+          return h("button",{class:"btn ghost sm",disabled:(!open||!can("turn.manage"))?"disabled":null,style:tk.done?"opacity:.55;text-decoration:line-through":"",onclick:function(){
+            api("/turns/"+tn.id+"/task",{method:"POST",body:{key:tk.key,done:!tk.done}}).then(function(x){ if(x.status===200) refreshTurns(wrap); else toast((x.body||{}).error||"err","err"); });
+          }},[(tk.done?"✓ ":"")+tk.label]);
+        }));
+        var actions=h("div",{class:"row",style:"gap:8px;margin-top:10px"},[]);
+        if(open && can("turn.manage")){
+          actions.appendChild(h("button",{class:"btn sm",disabled:(tn.openTasks>0)?"disabled":null,title:tn.openTasks>0?"Complete all tasks first":"",onclick:function(){ api("/turns/"+tn.id+"/ready",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast("Unit rent-ready 🎉","ok"); refreshTurns(wrap);} else toast((x.body||{}).error||"err","err"); }); }},["Mark rent-ready"]));
+          actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/turns/"+tn.id+"/cancel",{method:"POST",body:{reason:"cancelled"}}).then(function(x){ if(x.status===200){ toast(t("msg.saved"),"ok"); refreshTurns(wrap);} else toast((x.body||{}).error||"err","err"); }); }},["Cancel"]));
+        }
+        wrap.appendChild(h("div",{class:"panel",style:"margin-bottom:12px"},[
+          h("div",{class:"row",style:"justify-content:space-between;flex-wrap:wrap;gap:8px"},[
+            h("strong",{},[tn.unitLabel]),
+            h("div",{class:"row",style:"gap:8px"},[ h("span",{class:"pill "+daysCls},[tn.days+"d turn"]), h("span",{class:"pill "+stCls},[tn.status.replace("_"," ")]) ])
+          ]),
+          tasks, actions
+        ]));
+      });
+    });
+  }
 
   // ---- Renewals (Phase 2D) -------------------------------------------------
   function viewRenewals(main){

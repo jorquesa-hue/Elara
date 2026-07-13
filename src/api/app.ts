@@ -43,6 +43,7 @@ import { parseCsv, suggestMapping, planImport, type ImportTarget, type ColumnMap
 import { Crm, type LeadStage } from '../crm.ts';
 import { Applications, type ScreeningResult } from '../application.ts';
 import { Tours } from '../tours.ts';
+import { Turns, turnDays } from '../turns.ts';
 import { PeriodLock } from '../period-lock.ts';
 import { BankAccounts } from '../bank-account.ts';
 import { gaapViewFromLines } from '../multigaap.ts';
@@ -207,6 +208,7 @@ export class App {
   readonly crm = new Crm();
   readonly applications = new Applications();
   readonly tours = new Tours();
+  readonly turns = new Turns();
   readonly signatures = new Signatures();
   readonly periodLock = new PeriodLock();
   readonly bankAccounts = new BankAccounts();
@@ -228,6 +230,7 @@ export class App {
   private readonly depositTenant = new Map<string, string>();
   private readonly applicationTenant = new Map<string, string>();
   private readonly tourTenant = new Map<string, string>();
+  private readonly turnTenant = new Map<string, string>();
   private readonly flushMarks = new Map<string, FlushMark>();
   /** Per-tenant in-flight flush, so overlapping flushes serialize (see flushWorld). */
   private readonly flushInFlight = new Map<string, Promise<void>>();
@@ -916,6 +919,11 @@ export class App {
   private ownedTour(ctx: AuthContext, id: string) {
     if (this.tourTenant.get(id) !== ctx.tenantId) throw new HttpError(404, 'tour not found');
     return this.tours.get(id);
+  }
+
+  private ownedTurn(ctx: AuthContext, id: string) {
+    if (this.turnTenant.get(id) !== ctx.tenantId) throw new HttpError(404, 'turn not found');
+    return this.turns.get(id);
   }
 
   private ownedProspect(ctx: AuthContext, id: string) {
@@ -2839,6 +2847,55 @@ export class App {
       return { status: 200, body: this.tours.cancel(p['id']!, this.optString(body, 'reason')) };
     });
 
+    // --- unit turns / make-ready (Phase 5A) -------------------------------
+    // The operations board: a vacant unit's make-ready checklist to rent-ready.
+    // Turn time (vacate → ready) is the ops KPI. Operational, RBAC-only.
+    this.add('GET', '/turns', 'turn.read', (ctx) => {
+      const at = this.now();
+      const turns = this.turns.list(ctx.tenantId).map((t) => {
+        const unit = this.masterData.units.get(ctx.tenantId, t.unitId);
+        const open = t.tasks.length ? t.tasks.filter((x) => !x.done).length : 0;
+        return { ...t, unitLabel: unit?.label ?? t.unitId, days: turnDays(t, at), openTasks: open };
+      });
+      return { status: 200, body: { turns } };
+    });
+
+    this.add('GET', '/turns/:id', 'turn.read', (ctx, p) => ({ status: 200, body: this.ownedTurn(ctx, p['id']!) }));
+
+    this.add('POST', '/turns', 'turn.manage', (ctx, _p, body) => {
+      const unitId = this.requireString(body, 'unitId');
+      if (this.tenantHasUnits(ctx.tenantId) && !this.masterData.units.get(ctx.tenantId, unitId)) throw new HttpError(404, 'unit not found');
+      const turn = this.turns.open({
+        id: this.requireString(body, 'id'),
+        tenantId: ctx.tenantId,
+        unitId,
+        vacatedAt: this.optString(body, 'vacatedAt') ?? this.now(),
+        agentId: this.optString(body, 'agentId'),
+        notes: this.optString(body, 'notes'),
+        createdAt: this.now(),
+      });
+      this.turnTenant.set(turn.id, ctx.tenantId);
+      return { status: 201, body: turn };
+    });
+
+    // Toggle a make-ready checklist task done/undone.
+    this.add('POST', '/turns/:id/task', 'turn.manage', (ctx, p, body) => {
+      this.ownedTurn(ctx, p['id']!);
+      const key = this.requireString(body, 'key');
+      const done = body['done'] !== false; // default true
+      return { status: 200, body: this.turns.setTask(p['id']!, key, done, this.now()) };
+    });
+
+    this.add('POST', '/turns/:id/ready', 'turn.manage', (ctx, p, _body) => {
+      this.ownedTurn(ctx, p['id']!);
+      return { status: 200, body: this.turns.markReady(p['id']!, this.now()) };
+    });
+
+    this.add('POST', '/turns/:id/cancel', 'turn.manage', (ctx, p, body) => {
+      this.ownedTurn(ctx, p['id']!);
+      return { status: 200, body: this.turns.cancel(p['id']!, this.optString(body, 'reason')) };
+    });
+
     // --- e-signature for lease execution (#17) ----------------------------
     // The CRM → lease → e-sign tail. The provider I/O lives in an edge adapter
     // (secretRef); a fully signed envelope advances the CRM lead but does NOT
@@ -3653,6 +3710,7 @@ export class App {
       })),
       applications: this.applications.list(tenantId),
       tours: this.tours.list(tenantId),
+      unitTurns: this.turns.list(tenantId),
       // --- full persistence: platform users, custom roles, e-sign, connectors --
       users: this.masterData.users.list(tenantId),
       customRoles: this.roles.customRolesFor(tenantId).map((r) => ({ tenantId, roleId: r.id, name: r.name, description: r.description, permissions: r.permissions === '*' ? [...this.roles.permissionsFor(tenantId, r.id)] : (r.permissions as readonly string[]) })),
@@ -3745,6 +3803,8 @@ export class App {
     for (const a of world.applications ?? []) this.applicationTenant.set(a.id, a.tenantId);
     this.tours.hydrate((world.tours ?? []) as never);
     for (const t of world.tours ?? []) this.tourTenant.set(t.id, t.tenantId);
+    this.turns.hydrate((world.unitTurns ?? []) as never);
+    for (const t of world.unitTurns ?? []) this.turnTenant.set(t.id, t.tenantId);
     this.signatures.hydrate((world.signatureEnvelopes ?? []) as never);
     this.integrations.hydrate((world.integrations ?? []) as never);
     this.connectorOutbox.hydrate((world.connectorCommands ?? []) as never);
