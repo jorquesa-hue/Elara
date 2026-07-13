@@ -15,8 +15,11 @@ const D = (app: App, method: string, path: string, token: string, body?: Record<
 
 function makeApp() {
   const mgr: AuthContext = { actor: 'mgr', tenantId: 't1', role: 'manager' };
+  // A SECOND manager: segregation of duties forbids the initiator ('mgr') from
+  // approving their own escalation, so a different authorized human signs off.
+  const boss: AuthContext = { actor: 'boss', tenantId: 't1', role: 'manager' };
   const agent: AuthContext = { actor: 'bot', tenantId: 't1', role: 'agent' };
-  const auth = new StaticTokenAuthenticator({ mgr, bot: agent });
+  const auth = new StaticTokenAuthenticator({ mgr, boss, bot: agent });
   return new App({ authenticator: auth, units: [{ id: 'u-1', tenantId: 't1' }], now: () => T });
 }
 
@@ -43,7 +46,7 @@ test('a human approving the escalation binds the lease', () => {
   activeLease(app);
   const esc = D(app, 'POST', '/agreements/ag-1/execute-lease', 'mgr', {});
   const exId = (esc.body as { exceptionId: string }).exceptionId;
-  const ap = D(app, 'POST', `/exceptions/${exId}/approve`, 'mgr', {});
+  const ap = D(app, 'POST', `/exceptions/${exId}/approve`, 'boss', {}); // different approver
   assert.equal(ap.status, 200);
   // Now the binding event exists.
   const hist = (D(app, 'GET', '/agreements/ag-1', 'mgr').body as { history: Array<{ type: string }> }).history;
@@ -65,7 +68,7 @@ test('cannot execute a lease on a non-lease agreement', () => {
   const esc = D(app, 'POST', '/agreements/ag-x/execute-lease', 'mgr', {});
   assert.equal(esc.status, 202);
   const exId = (esc.body as { exceptionId: string }).exceptionId;
-  const ap = D(app, 'POST', `/exceptions/${exId}/approve`, 'mgr', {});
+  const ap = D(app, 'POST', `/exceptions/${exId}/approve`, 'boss', {}); // different approver
   assert.notEqual(ap.status, 200); // the bind throws (wrong kind) on approval
 });
 
@@ -73,9 +76,9 @@ test('a second execution after binding is refused on approval (idempotent bindin
   const app = makeApp();
   activeLease(app);
   const e1 = D(app, 'POST', '/agreements/ag-1/execute-lease', 'mgr', {});
-  D(app, 'POST', `/exceptions/${(e1.body as { exceptionId: string }).exceptionId}/approve`, 'mgr', {});
+  D(app, 'POST', `/exceptions/${(e1.body as { exceptionId: string }).exceptionId}/approve`, 'boss', {});
   const e2 = D(app, 'POST', '/agreements/ag-1/execute-lease', 'mgr', {});
-  const ap2 = D(app, 'POST', `/exceptions/${(e2.body as { exceptionId: string }).exceptionId}/approve`, 'mgr', {});
+  const ap2 = D(app, 'POST', `/exceptions/${(e2.body as { exceptionId: string }).exceptionId}/approve`, 'boss', {});
   assert.notEqual(ap2.status, 200); // already executed
 });
 
@@ -83,7 +86,7 @@ test('the executed lease survives snapshot → rehydrate (event-sourced)', () =>
   const app = makeApp();
   activeLease(app);
   const e = D(app, 'POST', '/agreements/ag-1/execute-lease', 'mgr', { documentRef: 'ref-9' });
-  D(app, 'POST', `/exceptions/${(e.body as { exceptionId: string }).exceptionId}/approve`, 'mgr', {});
+  D(app, 'POST', `/exceptions/${(e.body as { exceptionId: string }).exceptionId}/approve`, 'boss', {});
   const snap = app.snapshotWorld('t1');
   const b = new App({ authenticator: new StaticTokenAuthenticator({ mgr: { actor: 'mgr', tenantId: 't1', role: 'manager' } }), now: () => T });
   b.rehydrate(snap);

@@ -159,9 +159,9 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'accountant',
     name: 'Accountant',
-    permissions: ['invoice.read', 'payment.record', 'deposit.read', 'deposit.refund', 'ledger.read', 'subscription.read', 'masterdata.read', 'config.read', 'party.read', 'entity.read', 'entity.manage', 'bill.read', 'bill.issue', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'procurement.read', 'procurement.manage'],
+    permissions: ['invoice.read', 'invoice.issue', 'payment.record', 'deposit.read', 'deposit.refund', 'ledger.read', 'reports.read', 'collections.run', 'subscription.read', 'masterdata.read', 'config.read', 'party.read', 'entity.read', 'entity.manage', 'bill.read', 'bill.issue', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'procurement.read', 'procurement.manage'],
     builtin: true,
-    description: 'Finance: ledger, payments, deposit refunds, accounts payable, reporting.',
+    description: 'Finance: bills rent, ledger, payments, deposit refunds, accounts payable, collections, reporting.',
   },
   {
     id: 'agent',

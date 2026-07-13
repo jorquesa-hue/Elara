@@ -86,11 +86,15 @@ export function isValidDate(d: unknown): d is string {
   return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === d;
 }
 
-/** The base nightly rate to advertise for a unit: its most recent agreement's
- *  rate, else the tenant rule's base, else null ("contact for rates"). */
-function unitBaseCents(unitId: string, inp: BookingSiteInput): number | null {
+/** The base rate to advertise for a unit, in precedence order: its most recent
+ *  agreement rate (real per-unit signal), else its floorplan's market rent
+ *  (authored per type — beats the generic pricing rule so a nightly dynamic
+ *  rule can't mask a multifamily monthly asking rent), else the tenant rule's
+ *  base, else null ("contact for rates"). */
+function unitBaseCents(unitId: string, inp: BookingSiteInput, typeRentCents?: number): number | null {
   const forUnit = inp.agreements.filter((a) => a.unitId === unitId).sort((a, b) => (a.start < b.start ? 1 : -1));
   if (forUnit.length && forUnit[0]!.rateCents > 0) return forUnit[0]!.rateCents;
+  if (typeRentCents && typeRentCents > 0) return typeRentCents;
   if (inp.rule && inp.rule.baseCents > 0) return inp.rule.baseCents;
   return null;
 }
@@ -124,7 +128,7 @@ export function siteListing(inp: BookingSiteInput): SiteListing {
       return {
         id: u.id,
         label: u.label,
-        fromCents: unitBaseCents(u.id, inp) ?? t?.baseRentCents ?? null,
+        fromCents: unitBaseCents(u.id, inp, t?.baseRentCents),
         ...(u.typeId ? { typeId: u.typeId } : {}),
         ...(inherited && Object.keys(inherited).length ? { details: inherited } : {}),
       };
@@ -169,7 +173,7 @@ export function checkAvailability(inp: BookingSiteInput, from: string, to: strin
     .filter((u) => isPublished(u, inp))
     .map((u) => {
       const held = inp.holds.some((h) => h.unitId === u.id && overlaps(h, from, to));
-      const base = unitBaseCents(u.id, inp) ?? (u.typeId ? typeById.get(u.typeId)?.baseRentCents ?? null : null);
+      const base = unitBaseCents(u.id, inp, u.typeId ? typeById.get(u.typeId)?.baseRentCents : undefined);
       let nightlyCents: number | null = null;
       let totalCents: number | null = null;
       let factors: AvailabilityUnit['factors'];

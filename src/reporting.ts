@@ -22,7 +22,7 @@ export interface ReportingInput {
   deposits: ReadonlyArray<{ id: string; agreementId: string; amountCents: number; status: string; heldAt: string; refundedCents?: number | null }>;
   bills: ReadonlyArray<{ id: string; payeeId: string; totalCents: number; paidCents: number; status: string; issuedAt: string; dueAt: string }>;
   apPayments: ReadonlyArray<{ id: string; billId: string; amountCents: number; paidAt: string; status: string }>;
-  leads: ReadonlyArray<{ id: string; stage: string; estValueCents: number; createdAt: string; updatedAt: string }>;
+  leads: ReadonlyArray<{ id: string; stage: string; estValueCents: number; createdAt: string; updatedAt: string; source?: string }>;
   workOrders: ReadonlyArray<{ id: string; status: string; priority: string; openedAt: string; title?: string }>;
   holds: ReadonlyArray<{ unitId: string; start: string; end: string; status: string }>;
   ledgerBalanced: boolean;

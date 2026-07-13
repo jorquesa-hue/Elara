@@ -447,7 +447,9 @@ export class App {
   }
 
   private agreementSummary(a: Agreement) {
-    return { id: a.id, kind: a.kind, status: a.status, rateCents: a.rateCents, period: a.period, unitId: a.currentUnitId };
+    // leaseExecuted is surfaced directly (folded from the event history) so API
+    // consumers and the portal read binding status without scanning events.
+    return { id: a.id, kind: a.kind, status: a.status, rateCents: a.rateCents, period: a.period, unitId: a.currentUnitId, leaseExecuted: a.leaseExecuted };
   }
 
   private ownedAgreement(ctx: AuthContext, id: string): Agreement {
@@ -1568,7 +1570,7 @@ export class App {
     this.add('POST', '/agreements/:id/execute-lease', 'agreement.execute', (ctx, p, body) => {
       const a = this.ownedAgreement(ctx, p['id']!);
       const at = this.optString(body, 'at') ?? this.now();
-      return this.gated('lease.execute', ctx, { id: a.id }, () => { a.executeLease(at, { documentRef: this.optString(body, 'documentRef'), note: this.optString(body, 'note') }); return a; }, (ag) => ({ status: 200, body: { ...this.agreementSummary(ag), leaseExecuted: ag.leaseExecuted } }));
+      return this.gated('lease.execute', ctx, { id: a.id }, () => { a.executeLease(at, { documentRef: this.optString(body, 'documentRef'), note: this.optString(body, 'note') }); return a; }, (ag) => ({ status: 200, body: this.agreementSummary(ag) }));
     });
 
     this.add('POST', '/inspections', 'inspection.manage', (ctx, _p, body) => {
@@ -2327,6 +2329,16 @@ export class App {
     this.add('POST', '/exceptions/:id/approve', 'exception.approve', (ctx, p, body) => {
       const item = this.exceptions.get(p['id']!); // throws -> 409 if unknown
       if ((item.ctx as { tenantId?: string }).tenantId !== ctx.tenantId) throw new HttpError(404, 'exception not found');
+      // Segregation of duties: the human who INITIATED the escalated action cannot
+      // also approve it. The RBAC gate already blocks the AI agent from approving
+      // anything; this closes the parallel hole for human self-approval (a manager
+      // rubber-stamping their own >R$5k payout). A different authorized approver
+      // must sign off. (Escalations with no attributable initiator — e.g. a
+      // scheduled sweep — carry the service/system actor and are unaffected.)
+      const initiator = (item.ctx as { actor?: string }).actor;
+      if (initiator && initiator === ctx.actor) {
+        throw new HttpError(403, 'segregation of duties: the initiator of an escalated action cannot approve it — a different authorized approver must sign off');
+      }
       // A REHYDRATED escalation (parked before a restart) no longer carries its
       // deferred operation — a closure cannot be persisted. Approving it records
       // the human decision; `executed:false` tells the operator the underlying
@@ -2462,7 +2474,10 @@ export class App {
         const p = this.parties.getParty(tenantId, link.partyId);
         if (p) return p.displayName;
       }
-      return this.masterData.guests.get(tenantId, guestId)?.fullName;
+      // Prefer a master-data guest's name; else fall back to the raw guestId so
+      // an API-/CSV-booked agreement (no party link, no master-data guest) still
+      // shows an identifier on the rent roll instead of a blank "—".
+      return this.masterData.guests.get(tenantId, guestId)?.fullName ?? (guestId || undefined);
     };
     return {
       now: this.now(),
@@ -2482,7 +2497,7 @@ export class App {
       deposits: this.deposits.all().filter((d) => agIds.has(d.agreementId)).map((d) => ({ id: d.id, agreementId: d.agreementId, amountCents: d.amountCents, status: d.status, heldAt: d.heldAt, refundedCents: d.refundedCents })),
       bills: bills.map((b) => ({ id: b.id, payeeId: b.payeeId, totalCents: b.totalCents, paidCents: b.paidCents, status: b.status, issuedAt: b.issuedAt, dueAt: b.dueAt })),
       apPayments: this.payables.allPayments().filter((p) => billIds.has(p.billId)).map((p) => ({ id: p.id, billId: p.billId, amountCents: p.amountCents, paidAt: p.paidAt, status: p.status })),
-      leads: this.crm.list(tenantId).map((l) => ({ id: l.id, stage: l.stage, estValueCents: l.estValueCents, createdAt: l.createdAt, updatedAt: l.updatedAt })),
+      leads: this.crm.list(tenantId).map((l) => ({ id: l.id, stage: l.stage, estValueCents: l.estValueCents, createdAt: l.createdAt, updatedAt: l.updatedAt, ...(l.source ? { source: l.source } : {}) })),
       workOrders: this.maintenance.all().filter((w) => w.tenantId === tenantId).map((w) => ({ id: w.id, status: w.status, priority: w.priority, openedAt: w.openedAt, title: w.title })),
       holds: this.calendar.allHolds().filter((h) => agIds.has(h.holderId)).map((h) => ({ unitId: h.unitId, start: h.start, end: h.end, status: h.status })),
       ledgerBalanced: this.trialBalance(tenantId).balanced,

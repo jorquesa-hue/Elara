@@ -31,7 +31,9 @@ const D = (app: App, method: string, path: string, token: string, body?: Record<
 
 function makeApp(persistence?: PersistenceBackend) {
   const mgr: AuthContext = { actor: 'mgr', tenantId: 't1', role: 'manager' };
-  const auth = new StaticTokenAuthenticator({ mgr });
+  // A second approver: SoD forbids the initiator ('mgr') approving their own escalation.
+  const boss: AuthContext = { actor: 'boss', tenantId: 't1', role: 'manager' };
+  const auth = new StaticTokenAuthenticator({ mgr, boss });
   return new App({
     authenticator: auth,
     units: [{ id: 'u-1', tenantId: 't1' }, { id: 'u-2', tenantId: 't1' }, { id: 'u-3', tenantId: 't1' }],
@@ -243,11 +245,11 @@ test('a pending escalation is in the snapshot and still pending after rehydrate'
 test('approving a REHYDRATED escalation records the decision with executed:false', () => {
   const app = makeApp();
   const excId = escalate(app);
-  const auth = new StaticTokenAuthenticator({ mgr: { actor: 'mgr', tenantId: 't1', role: 'manager' } });
+  const auth = new StaticTokenAuthenticator({ mgr: { actor: 'mgr', tenantId: 't1', role: 'manager' }, boss: { actor: 'boss', tenantId: 't1', role: 'manager' } });
   const fresh = new App({ authenticator: auth, now: () => T });
   fresh.rehydrate(app.snapshotWorld('t1'));
 
-  const r = D(fresh, 'POST', '/exceptions/' + excId + '/approve', 'mgr', { note: 'ok' });
+  const r = D(fresh, 'POST', '/exceptions/' + excId + '/approve', 'boss', { note: 'ok' });
   assert.equal(r.status, 200);
   const body = r.body as { status: string; executed: boolean };
   assert.equal(body.status, 'approved');
@@ -259,7 +261,7 @@ test('approving a REHYDRATED escalation records the decision with executed:false
 test('approving a LIVE escalation still executes the deferred payment (executed:true)', () => {
   const app = makeApp();
   const excId = escalate(app);
-  const r = D(app, 'POST', '/exceptions/' + excId + '/approve', 'mgr', {});
+  const r = D(app, 'POST', '/exceptions/' + excId + '/approve', 'boss', {});
   assert.equal((r.body as { executed: boolean }).executed, true);
   const bill = (D(app, 'GET', '/bills', 'mgr').body as { bills: Array<{ id: string; status: string }> }).bills.find((b) => b.id === 'b-big');
   assert.equal(bill!.status, 'paid');

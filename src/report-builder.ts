@@ -101,6 +101,9 @@ const SOURCES: Source[] = [
     rows: (i) => i.leads as unknown as Record<string, unknown>[],
     dimensions: [
       { key: 'stage', label: 'Stage', get: (r) => String(r['stage']) },
+      // Marketing attribution: group leads by acquisition channel (Zillow,
+      // website, referral, walk-in…). Blank source folds into 'unattributed'.
+      { key: 'source', label: 'Source', get: (r) => String(r['source'] || 'unattributed') },
       { key: 'month', label: 'Created month', get: (r) => monthKey(r['createdAt']), time: true },
     ],
     measures: [{ key: 'est', label: 'Est. value (sum)', kind: 'money', get: (r) => Number(r['estValueCents'] || 0) }],
