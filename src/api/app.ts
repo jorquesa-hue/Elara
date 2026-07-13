@@ -37,7 +37,7 @@ import { fullContract, isKnownAction, isKnownEvent } from '../integration-contra
 import { Notifications, NOTIFICATION_KINDS, isKnownNotificationKind, type NotificationChannel } from '../notifications.ts';
 import { defaultAdapterRegistry, AdapterError, type AdapterRegistry } from '../adapter-registry.ts';
 import { RevenueManagement, revenueKpis, computeRevenueInsights, type PricingRule, type QuoteContext, type OccupancyTier, type LeadTimeTier, type LosDiscount, type SeasonWindow } from '../revenue.ts';
-import { Procurement, computeBudgetStatus, type PurchaseOrderLine, type Budget } from '../procurement.ts';
+import { Procurement, computeBudgetStatus, monthlyBudgetBuckets, type PurchaseOrderLine, type Budget } from '../procurement.ts';
 import { RoommateMatcher, type RoommatePreferences, type Chronotype } from '../roommate.ts';
 import { parseCsv, suggestMapping, planImport, type ImportTarget, type ColumnMapping } from '../onboarding.ts';
 import { Crm, type LeadStage } from '../crm.ts';
@@ -2537,6 +2537,15 @@ export class App {
       return { status: 200, body: { budget: b, status: this.budgetStatus(ctx.tenantId, b) } };
     });
 
+    // Month-by-month budget vs actual: the period budget split evenly across its
+    // months, with the posted bill spend bucketed per month — the burn view.
+    this.add('GET', '/budgets/:id/monthly', 'procurement.read', (ctx, p) => {
+      const b = this.procurement.getBudget(ctx.tenantId, p['id']!);
+      if (!b) throw new HttpError(404, 'budget not found');
+      const actualByMonth = this.actualByMonthForAccount(ctx.tenantId, b.account, b.periodStart, b.periodEnd);
+      return { status: 200, body: { budget: b, buckets: monthlyBudgetBuckets(b, actualByMonth) } };
+    });
+
     // --- student roommate matching (#9) -----------------------------------
     // Matching is config-like pure computation → RBAC-only (no PolicyEnvelope).
     this.add('POST', '/prospects', 'roommate.manage', (ctx, _p, body) => {
@@ -3523,6 +3532,19 @@ export class App {
     const committed = this.procurement.committedForAccount(tenantId, b.account, b.periodStart, b.periodEnd);
     const actual = this.actualForAccount(tenantId, b.account, b.periodStart, b.periodEnd);
     return computeBudgetStatus(b, committed, actual);
+  }
+
+  /** Posted (non-void) bill spend for an account, bucketed by the YYYY-MM month
+   *  the bill posted in — feeds the monthly budget-variance view. */
+  private actualByMonthForAccount(tenantId: string, account: string, start: string, end: string): Map<string, number> {
+    const byMonth = new Map<string, number>();
+    for (const bill of this.payables.allBills()) {
+      if (bill.tenantId !== tenantId || bill.status === 'void') continue;
+      if (bill.issuedAt < start || bill.issuedAt >= end) continue;
+      const month = bill.issuedAt.slice(0, 7);
+      for (const l of bill.lines) if (l.account === account) byMonth.set(month, (byMonth.get(month) ?? 0) + l.amountCents);
+    }
+    return byMonth;
   }
 
   // --- durable persistence (the persist-world Edge Function) ----------------

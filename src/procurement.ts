@@ -53,6 +53,49 @@ export interface BudgetStatus {
   overBudget: boolean;
 }
 
+/** A single month's slice of a budget: the evenly-split budgeted figure vs the
+ *  actual spend booked that month, with the variance. */
+export interface BudgetMonthBucket {
+  month: string; // YYYY-MM
+  budgetedCents: number;
+  actualCents: number;
+  varianceCents: number; // budgeted − actual (positive = under budget)
+  overBudget: boolean;
+}
+
+/** Enumerate the YYYY-MM months a [start, end) date window spans (end exclusive). */
+export function monthsInWindow(start: string, end: string): string[] {
+  const s = start.slice(0, 7), e = end.slice(0, 7);
+  const [sy, sm] = s.split('-').map((n) => parseInt(n, 10));
+  const [ey, em] = e.split('-').map((n) => parseInt(n, 10));
+  if (!sy || !sm || !ey || !em) return [];
+  const out: string[] = [];
+  let y = sy, m = sm;
+  // end is exclusive: the end month is included only if end is past its first day.
+  const endExclusiveDay = end.slice(8, 10);
+  const includeEndMonth = endExclusiveDay !== '01' && endExclusiveDay !== '';
+  while (y < ey || (y === ey && (m < em || (m === em && includeEndMonth)))) {
+    out.push(`${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}`);
+    m++; if (m > 12) { m = 1; y++; }
+  }
+  return out;
+}
+
+/** Split a budget evenly across the months it spans and bucket actuals by month.
+ *  The even split carries its rounding remainder onto the LAST month so the
+ *  monthly budgeted figures sum back to exactly the period total. Pure. */
+export function monthlyBudgetBuckets(budget: Budget, actualByMonth: ReadonlyMap<string, number>): BudgetMonthBucket[] {
+  const months = monthsInWindow(budget.periodStart, budget.periodEnd);
+  if (months.length === 0) return [];
+  const per = Math.floor(budget.amountCents / months.length);
+  const remainder = budget.amountCents - per * months.length;
+  return months.map((month, i) => {
+    const budgetedCents = per + (i === months.length - 1 ? remainder : 0);
+    const actualCents = actualByMonth.get(month) ?? 0;
+    return { month, budgetedCents, actualCents, varianceCents: budgetedCents - actualCents, overBudget: actualCents > budgetedCents };
+  });
+}
+
 export class ProcurementError extends Error {}
 
 // A PO holds a commitment while approved or received; draft is not yet committed,

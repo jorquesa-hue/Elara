@@ -1512,12 +1512,37 @@
   function refreshBudgets(wrap){
     api("/budgets").then(function(r){
       wrap.innerHTML="";
+      var detail=h("div",{},[]);
       var rows=((r.body||{}).budgets||[]).map(function(b){
         var s=b.status||{}; var pct=Math.min(100, s.usedPct||0);
         var bar=h("div",{style:"height:6px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:5px"},[ h("div",{style:"height:6px;width:"+pct+"%;background:"+(s.overBudget?"var(--bad,#e5484d)":"var(--accent,#6d8bff)")},[]) ]);
-        return h("tr",{},[ h("td",{class:"mono"},[b.account]), h("td",{class:"muted"},[b.label||"—"]), h("td",{},[fmt(s.budgetedCents||0)]), h("td",{class:"muted"},[fmt(s.committedCents||0)]), h("td",{class:"muted"},[fmt(s.actualCents||0)]), h("td",{},[ h("div",{},[ h("span",{class:s.overBudget?"pill terminated":""},[fmt(s.remainingCents||0)]), bar ]) ]) ]);
+        var monthsBtn=h("button",{class:"btn ghost sm",style:"margin-top:6px",onclick:function(){ budgetMonths(b.id, detail); }},["Months ▾"]);
+        return h("tr",{},[ h("td",{class:"mono"},[b.account]), h("td",{class:"muted"},[b.label||"—"]), h("td",{},[fmt(s.budgetedCents||0)]), h("td",{class:"muted"},[fmt(s.committedCents||0)]), h("td",{class:"muted"},[fmt(s.actualCents||0)]), h("td",{},[ h("div",{},[ h("span",{class:s.overBudget?"pill terminated":""},[fmt(s.remainingCents||0)]), bar, monthsBtn ]) ]) ]);
       });
       wrap.appendChild(tableEl([th("Account"),th("Label"),th("Budget"),th("Committed"),th("Actual"),th("Remaining")], rows, 6, "No budgets set."));
+      wrap.appendChild(detail);
+    });
+  }
+  function budgetMonths(id, detail){
+    api("/budgets/"+id+"/monthly").then(function(r){
+      detail.innerHTML="";
+      if(r.status!==200) return toast((r.body||{}).error||"err","err");
+      var buckets=((r.body||{}).buckets)||[];
+      var max=Math.max(1, buckets.reduce(function(m,b){ return Math.max(m, b.budgetedCents, b.actualCents); },0));
+      var bars=buckets.map(function(b){
+        var bh=Math.round((b.budgetedCents/max)*70), ah=Math.round((b.actualCents/max)*70);
+        return h("div",{style:"display:flex;flex-direction:column;align-items:center;gap:4px;min-width:56px"},[
+          h("div",{style:"display:flex;align-items:flex-end;gap:3px;height:74px"},[
+            h("div",{title:"Budget "+fmt(b.budgetedCents),style:"width:12px;border-radius:3px 3px 0 0;background:var(--line);height:"+bh+"px"},[]),
+            h("div",{title:"Actual "+fmt(b.actualCents),style:"width:12px;border-radius:3px 3px 0 0;background:"+(b.overBudget?"var(--bad,#e5484d)":"var(--accent,#6d8bff)")+";height:"+ah+"px"},[])
+          ]),
+          h("div",{class:"muted",style:"font-size:11px"},[b.month.slice(5)])
+        ]);
+      });
+      detail.appendChild(h("div",{class:"panel",style:"margin-top:10px"},[
+        h("div",{class:"muted",style:"font-size:12.5px;margin-bottom:8px"},["Monthly budget (grey) vs actual (accent) — the burn across the period."]),
+        h("div",{style:"display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end"}, bars)
+      ]));
     });
   }
 
