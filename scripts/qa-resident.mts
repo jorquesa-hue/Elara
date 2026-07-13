@@ -41,6 +41,7 @@ const errors: string[] = [];
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', (e) => errors.push(String(e)));
 page.on('response', (r) => { if (r.status() === 404) errors.push('404 ' + r.url()); });
+page.on('dialog', (d) => d.accept());
 
 await page.goto(base + '/resident');
 await page.evaluate((tok) => localStorage.setItem('usos.res.token', tok), 'res-demo');
@@ -67,6 +68,14 @@ await page.waitForTimeout(400);
 const renewToast = await page.evaluate(() => document.body.innerText);
 const renewSignalled = /notified you'd like to renew/.test(renewToast);
 
+// 3C: payments section — the open invoice is listed, and "I've paid this" signals.
+const payText = await page.evaluate(() => document.body.innerText);
+const invoiceListed = /inv-1/.test(payText) && /All paid up/i.test(payText) === false;
+await page.getByRole('button', { name: "I've paid this" }).click();
+await page.waitForTimeout(400);
+const paidToast = await page.evaluate(() => document.body.innerText);
+const paymentSignalled = /reconcile your payment/.test(paidToast);
+
 await page.screenshot({ path: process.argv[2] ?? '/tmp/claude-0/-home-user-Elara/8362700f-e9b3-5f80-9d7c-fe02ed300b4d/scratchpad/resident.png', fullPage: true });
 await browser.close();
 server.close();
@@ -75,5 +84,7 @@ console.log('resident home rendered (lease + renewal):', hasHome);
 console.log('maintenance request listed:', requestListed);
 console.log('lease document shown:', leaseShown);
 console.log('renewal interest signalled:', renewSignalled);
+console.log('open invoice listed:', invoiceListed);
+console.log('payment intent signalled:', paymentSignalled);
 console.log('console errors:', errors.length ? errors : 'NONE');
-if (errors.length || !hasHome || !requestListed || !leaseShown || !renewSignalled) process.exit(1);
+if (errors.length || !hasHome || !requestListed || !leaseShown || !renewSignalled || !invoiceListed || !paymentSignalled) process.exit(1);

@@ -2267,6 +2267,44 @@ export class App {
       return { status: 201, body: { recorded: true, threadId, messageId: msgId, offer } };
     });
 
+    // The resident's own invoices (across the leases they are linked to), so they
+    // can see exactly what is due. Party-scoped read.
+    this.add('GET', '/resident/invoices', null, (ctx) => {
+      if (ctx.partyId === undefined) throw new HttpError(403, 'a resident session is required');
+      const agIds = new Set(this.parties.allLinks().filter((l) => l.partyId === ctx.partyId).map((l) => l.agreementId).filter((id) => this.agreements.get(id)?.tenantId === ctx.tenantId));
+      const invoices = this.billing.allInvoices()
+        .filter((i) => agIds.has(i.agreementId))
+        .map((i) => ({ id: i.id, agreementId: i.agreementId, issuedAt: i.issuedAt, dueAt: i.dueAt, currency: i.currency, totalCents: i.totalCents, paidCents: i.paidCents, outstandingCents: i.totalCents - i.paidCents, status: i.status }))
+        .sort((a, b) => a.dueAt.localeCompare(b.dueAt));
+      return { status: 200, body: { invoices } };
+    });
+
+    // Signal that a payment has been initiated (a bank transfer / PIX the resident
+    // sent). This does NOT move money — no card is charged, nothing posts to the
+    // ledger (invariant: no payment-provider credentials in the kernel). It records
+    // the resident's declared intent on a FINANCE comms thread so the office can
+    // reconcile it against the incoming bank line (the reconciliation module). The
+    // authoritative settlement is still the operator/service recording the payment.
+    this.add('POST', '/resident/payment-intent', null, (ctx, _p, body) => {
+      if (ctx.partyId === undefined) throw new HttpError(403, 'a resident session is required');
+      const invoiceId = this.requireString(body, 'invoiceId');
+      if (this.invoiceTenant.get(invoiceId) !== ctx.tenantId) throw new HttpError(404, 'invoice not found');
+      const inv = this.billing.get(invoiceId);
+      if (!this.callerLinkedToAgreement(ctx.partyId, inv.agreementId)) throw new HttpError(404, 'invoice not found');
+      const amountCents = typeof body['amountCents'] === 'number' ? (body['amountCents'] as number) : (inv.totalCents - inv.paidCents);
+      const method = this.optString(body, 'method') ?? 'transfer';
+      const at = this.now();
+      const threadId = `resident-payments-${inv.agreementId}`;
+      try { this.comms.getThread(threadId); }
+      catch { this.comms.openThread({ id: threadId, tenantId: ctx.tenantId, subject: `Resident payments: ${inv.agreementId}`, kind: 'finance', createdAt: at, agreementId: inv.agreementId }); }
+      const party = this.parties.getParty(ctx.tenantId, ctx.partyId);
+      const msgId = `payintent-${invoiceId}-${at}`;
+      try {
+        this.comms.post({ id: msgId, threadId, at, authorType: 'party', authorId: ctx.partyId, body: `${party?.displayName ?? 'Resident'} reports a ${method} payment of ${amountCents} toward ${invoiceId}. Reconcile against the bank line.`, direction: 'inbound' });
+      } catch { /* duplicate within the same tick — already recorded */ }
+      return { status: 201, body: { recorded: true, invoiceId, amountCents, method, threadId, note: 'This notifies the office to reconcile your payment; it is not a live charge.' } };
+    });
+
     this.add('GET', '/privacy/parties/:id/export', null, (ctx, p) => {
       const id = p['id']!;
       if (ctx.partyId !== undefined) {

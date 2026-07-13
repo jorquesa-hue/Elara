@@ -111,6 +111,11 @@
     cards.appendChild(kpi("Deposit held", fmtMoney(state.home.totalDepositCents)));
     cards.appendChild(kpi("Leases", String((state.home.agreements||[]).length)));
     wrap.appendChild(cards);
+    // Payments — open invoices + a non-charging "I've paid" signal for the office.
+    if(state.home.totalBalanceCents>0){
+      wrap.appendChild(h("h2",{},["Payments"]));
+      var payWrap=h("div",{},[]); wrap.appendChild(payWrap); refreshInvoices(payWrap);
+    }
     // Renewal banner
     (state.home.renewalOffers||[]).forEach(function(o){
       wrap.appendChild(h("div",{class:"banner"},[ h("strong",{},["Renewal available"]), h("div",{class:"sub"},["Your lease can renew at "+fmtMoney(o.proposedRateCents)+"/mo through "+o.proposedEnd+". Contact the office to accept."]) ]));
@@ -165,6 +170,25 @@
       h("button",{class:"btn",type:"submit"},["Submit request"])
     ]);
   }
+  function refreshInvoices(wrap){ api("/resident/invoices").then(function(r){ wrap.innerHTML="";
+    var open=(((r.body||{}).invoices)||[]).filter(function(i){return i.outstandingCents>0;});
+    if(!open.length){ wrap.appendChild(h("div",{class:"muted",style:"font-size:13px"},["You're all paid up."])); return; }
+    var rows=open.map(function(i){
+      return h("tr",{},[
+        h("td",{},[i.id]),
+        h("td",{class:"muted"},[(i.dueAt||"").slice(0,10)]),
+        h("td",{},[fmtMoney(i.outstandingCents)]),
+        h("td",{},[ h("button",{class:"btn ghost sm",onclick:function(){
+          if(!confirm("Only confirm after you've sent the payment. This notifies the office to reconcile it — it is not a live charge.")) return;
+          api("/resident/payment-intent",{method:"POST",body:{invoiceId:i.id,amountCents:i.outstandingCents,method:"transfer"}}).then(function(x){
+            if(x.status===201) toast("Thanks — the office will reconcile your payment","ok"); else toast((x.body||{}).error||"Error","err");
+          });
+        }},["I've paid this"]) ])
+      ]);
+    });
+    wrap.appendChild(h("table",{},[ h("thead",{},[h("tr",{},[th("Invoice"),th("Due"),th("Amount"),th("")])]), h("tbody",{},rows) ]));
+    wrap.appendChild(h("div",{class:"muted",style:"font-size:12px;margin-top:6px"},["Payments are made by bank transfer to the office; use “I've paid this” after you send it so they can reconcile."]));
+  }); }
   function refreshWorkOrders(wrap){ api("/resident/work-orders").then(function(r){ wrap.innerHTML="";
     var list=((r.body||{}).workOrders)||[];
     if(!list.length){ wrap.appendChild(h("div",{class:"muted",style:"font-size:13px"},["No maintenance requests yet."])); return; }

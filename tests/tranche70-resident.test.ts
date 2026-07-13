@@ -153,3 +153,38 @@ test('renewal interest is idempotent within the same tick and rejects an unlinke
   assert.equal(D(app, 'POST', '/resident/renewal-interest', { agreementId: 'ag-1' }, 'bea').status, 201); // no duplicate error
   assert.equal(D(app, 'POST', '/resident/renewal-interest', { agreementId: 'ag-1' }, 'cid').status, 404);
 });
+
+// --- Phase 3C: invoice view + payment intent ------------------------------
+test('a resident sees their own open invoices with the outstanding amount', () => {
+  const app = mkApp();
+  const invs = (D(app, 'GET', '/resident/invoices', undefined, 'bea').body as { invoices: Array<{ id: string; outstandingCents: number; status: string }> }).invoices;
+  assert.equal(invs.length, 1);
+  assert.equal(invs[0]!.id, 'inv-1');
+  assert.equal(invs[0]!.outstandingCents, 300000);
+});
+
+test('a resident with no lease sees no invoices; operator token is 403', () => {
+  const app = mkApp();
+  assert.equal((D(app, 'GET', '/resident/invoices', undefined, 'cid').body as { invoices: unknown[] }).invoices.length, 0);
+  assert.equal(D(app, 'GET', '/resident/invoices', undefined, 'own').status, 403);
+});
+
+test('a payment intent records to a finance thread WITHOUT moving the ledger', () => {
+  const app = mkApp();
+  const before = app.snapshotWorld('mf').journalLines.length;
+  const r = D(app, 'POST', '/resident/payment-intent', { invoiceId: 'inv-1', amountCents: 300000, method: 'pix' }, 'bea');
+  assert.equal(r.status, 201);
+  assert.equal((r.body as { recorded: boolean }).recorded, true);
+  // Nothing settled — the invoice is still open and the ledger is unchanged.
+  assert.equal(app.snapshotWorld('mf').journalLines.length, before);
+  assert.equal((D(app, 'GET', '/resident/invoices', undefined, 'bea').body as { invoices: Array<{ outstandingCents: number }> }).invoices[0]!.outstandingCents, 300000);
+  // The office sees the intent as a finance thread message.
+  const thread = app.dispatch({ method: 'GET', path: '/threads/resident-payments-ag-1', bearer: 'Bearer own', body: {} }).body as { messages: Array<{ body: string }> };
+  assert.ok(thread.messages.some((m) => /reports a pix payment/.test(m.body)));
+});
+
+test('a payment intent for an invoice on an unlinked lease 404s', () => {
+  const app = mkApp();
+  assert.equal(D(app, 'POST', '/resident/payment-intent', { invoiceId: 'inv-1', amountCents: 1000 }, 'cid').status, 404);
+  assert.equal(D(app, 'POST', '/resident/payment-intent', { invoiceId: 'inv-1' }, 'own').status, 403);
+});
