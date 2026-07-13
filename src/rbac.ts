@@ -72,6 +72,10 @@ export const PERMISSIONS = [
   'roommate.manage',
   'crm.read',
   'crm.manage',
+  // Rental applications + the approve/deny decision. The decision is FCRA /
+  // Fair-Housing sensitive, so it is additionally policy-gated + audited.
+  'application.read',
+  'application.manage',
   'esign.read',
   'esign.manage',
   // Recording a signer's COMPLETION is the provider's webhook, relayed by the
@@ -135,6 +139,7 @@ const OPS: Permission[] = [
   'integration.read', 'connector.dispatch', 'revenue.read', 'procurement.read',
   'roommate.read', 'roommate.manage',
   'crm.read', 'crm.manage',
+  'application.read', 'application.manage',
   'esign.read', 'esign.manage',
   'ledger.read', 'exception.read', 'subscription.read',
   'masterdata.read', 'config.read', 'reports.read',

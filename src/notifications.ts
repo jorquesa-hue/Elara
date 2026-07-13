@@ -22,6 +22,7 @@ export const NOTIFICATION_KINDS: readonly NotificationKindSpec[] = [
   { kind: 'payment_receipt', description: 'A receipt for a recorded payment.', data: ['invoiceId', 'amountCents'] },
   { kind: 'esign_request', description: 'A request to sign a document.', data: ['envelopeId', 'documentName'] },
   { kind: 'work_order_update', description: 'A maintenance work-order status update.', data: ['workOrderId'] },
+  { kind: 'adverse_action', description: 'An FCRA adverse-action notice (a denied rental application).', data: ['applicationId', 'reason'] },
   { kind: 'general', description: 'A free-form operator message.', data: ['subject', 'body'] },
 ];
 

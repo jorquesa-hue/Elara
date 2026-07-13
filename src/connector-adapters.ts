@@ -14,13 +14,13 @@
 // the drain edge.)
 
 export type IntegrationKind =
-  | 'lock' | 'access_control' | 'elevator' | 'bank' | 'payment_gateway' | 'website' | 'crm' | 'fiscal';
+  | 'lock' | 'access_control' | 'elevator' | 'bank' | 'payment_gateway' | 'website' | 'crm' | 'fiscal' | 'screening';
 
 /** Kinds the worker may actually dispatch to a vendor (hardware + software). A
  *  `fiscal` command emits a tax document (it does NOT move money — the payment
  *  already settled), so it is dispatchable, not a money rail. */
 export const DISPATCHABLE_KINDS: readonly IntegrationKind[] = [
-  'lock', 'access_control', 'elevator', 'website', 'crm', 'fiscal',
+  'lock', 'access_control', 'elevator', 'website', 'crm', 'fiscal', 'screening',
 ];
 
 /** Kinds that move money and are refused at the drain edge (human-approved only). */

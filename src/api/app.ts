@@ -41,6 +41,7 @@ import { Procurement, computeBudgetStatus, type PurchaseOrderLine, type Budget }
 import { RoommateMatcher, type RoommatePreferences, type Chronotype } from '../roommate.ts';
 import { parseCsv, suggestMapping, planImport, type ImportTarget, type ColumnMapping } from '../onboarding.ts';
 import { Crm, type LeadStage } from '../crm.ts';
+import { Applications, type ScreeningResult } from '../application.ts';
 import { PeriodLock } from '../period-lock.ts';
 import { BankAccounts } from '../bank-account.ts';
 import { gaapViewFromLines } from '../multigaap.ts';
@@ -201,6 +202,7 @@ export class App {
   readonly procurement = new Procurement();
   readonly roommates = new RoommateMatcher();
   readonly crm = new Crm();
+  readonly applications = new Applications();
   readonly signatures = new Signatures();
   readonly periodLock = new PeriodLock();
   readonly bankAccounts = new BankAccounts();
@@ -220,6 +222,7 @@ export class App {
   private readonly siteContent = new SiteContentStore();
   private readonly invoiceTenant = new Map<string, string>();
   private readonly depositTenant = new Map<string, string>();
+  private readonly applicationTenant = new Map<string, string>();
   private readonly flushMarks = new Map<string, FlushMark>();
   /** Per-tenant in-flight flush, so overlapping flushes serialize (see flushWorld). */
   private readonly flushInFlight = new Map<string, Promise<void>>();
@@ -751,6 +754,11 @@ export class App {
     }
     if (l.tenantId !== ctx.tenantId) throw new HttpError(404, 'lead not found');
     return l;
+  }
+
+  private ownedApplication(ctx: AuthContext, id: string) {
+    if (this.applicationTenant.get(id) !== ctx.tenantId) throw new HttpError(404, 'application not found');
+    return this.applications.get(id);
   }
 
   private ownedProspect(ctx: AuthContext, id: string) {
@@ -2344,6 +2352,82 @@ export class App {
 
     this.add('GET', '/crm/summary', 'crm.read', (ctx) => ({ status: 200, body: this.crm.kpis(ctx.tenantId) }));
 
+    // --- rental applications + screening ----------------------------------
+    this.add('GET', '/applications', 'application.read', (ctx) => ({ status: 200, body: { applications: this.applications.list(ctx.tenantId) } }));
+
+    this.add('GET', '/applications/:id', 'application.read', (ctx, p) => {
+      const a = this.ownedApplication(ctx, p['id']!);
+      return { status: 200, body: a };
+    });
+
+    this.add('POST', '/applications', 'application.manage', (ctx, _p, body) => {
+      const leadId = this.optString(body, 'leadId');
+      if (leadId) this.ownedLead(ctx, leadId);
+      const app = this.applications.submit({
+        id: this.requireString(body, 'id'),
+        tenantId: ctx.tenantId,
+        applicantName: this.requireString(body, 'applicantName'),
+        applicantEmail: this.optString(body, 'applicantEmail'),
+        leadId,
+        unitId: this.optString(body, 'unitId'),
+        ...(typeof body['incomeCents'] === 'number' ? { incomeCents: body['incomeCents'] as number } : {}),
+        submittedAt: this.now(),
+      });
+      this.applicationTenant.set(app.id, ctx.tenantId);
+      // Advance the linked lead to 'applied' (best-effort — funnel visibility).
+      if (leadId) { try { this.crm.advance(leadId, 'applied', this.now()); } catch { /* already past */ } }
+      return { status: 201, body: app };
+    });
+
+    // Order a screening report. If the tenant has an active `screening`
+    // integration, enqueue a credential-free connector command (the edge
+    // resolves the vendor secret + calls TransUnion/Checkr/…); the result
+    // returns via POST /integrations/:id/events or is recorded manually.
+    this.add('POST', '/applications/:id/screen', 'application.manage', (ctx, p, _body) => {
+      const app = this.ownedApplication(ctx, p['id']!);
+      const integ = this.integrations.list(ctx.tenantId).find((i) => i.kind === 'screening' && i.status === 'active');
+      if (integ) {
+        this.connectorOutbox.enqueue({ id: `screen-${app.id}`, tenantId: ctx.tenantId, integrationId: integ.id, action: 'order_report', createdAt: this.now(), payload: { applicationId: app.id, applicantName: app.applicantName, applicantEmail: app.applicantEmail } });
+      }
+      return { status: 200, body: { ...this.applications.markScreening(app.id), ordered: !!integ } };
+    });
+
+    // Record a screening result (manual entry, or the inbound event handler routes here).
+    this.add('POST', '/applications/:id/screening-result', 'application.manage', (ctx, p, body) => {
+      this.ownedApplication(ctx, p['id']!);
+      const result: ScreeningResult = {
+        provider: this.optString(body, 'provider'),
+        reference: this.optString(body, 'reference'),
+        recommendation: (['approve', 'review', 'decline'] as const).find((r) => r === this.optString(body, 'recommendation')),
+        ...(typeof body['creditScore'] === 'number' ? { creditScore: body['creditScore'] as number } : {}),
+        completedAt: this.now(),
+      };
+      return { status: 200, body: this.applications.recordScreening(p['id']!, result) };
+    });
+
+    // Approve / deny — FCRA / Fair-Housing sensitive, so policy-gated + audited.
+    // A denial REQUIRES an adverse-action reason and enqueues the notice.
+    this.add('POST', '/applications/:id/decide', 'application.manage', (ctx, p, body) => {
+      const app = this.ownedApplication(ctx, p['id']!);
+      const decision = this.optString(body, 'decision');
+      if (decision !== 'approve' && decision !== 'deny') throw new HttpError(400, "decision must be 'approve' or 'deny'");
+      const reason = this.optString(body, 'reason') ?? '';
+      if (decision === 'deny' && !reason) throw new HttpError(400, 'an adverse-action reason is required to deny');
+      const at = this.now();
+      return this.gated('application.decide', ctx, { applicationId: app.id, decision }, () => {
+        if (decision === 'approve') {
+          const r = this.applications.approve(app.id, at, ctx.actor);
+          if (app.leadId) { try { this.crm.advance(app.leadId, 'approved', at); } catch { /* already past */ } }
+          return r;
+        }
+        const r = this.applications.deny(app.id, at, ctx.actor, reason);
+        if (app.leadId) { try { this.crm.lose(app.leadId, `application denied: ${reason}`, at); } catch { /* already closed */ } }
+        // FCRA adverse-action notice to the applicant.
+        if (app.applicantEmail) this.notify({ id: `notif-adverse-${app.id}`, tenantId: ctx.tenantId, channel: 'email', to: app.applicantEmail, kind: 'adverse_action', data: { applicationId: app.id, reason } });
+        return r;
+      }, (r) => ({ status: 200, body: r }));
+    });
+
     // --- e-signature for lease execution (#17) ----------------------------
     // The CRM → lease → e-sign tail. The provider I/O lives in an edge adapter
     // (secretRef); a fully signed envelope advances the CRM lead but does NOT
@@ -3027,6 +3111,7 @@ export class App {
         id: l.id, tenantId, name: l.name, source: l.source, stage: l.stage, estValueCents: l.estValueCents,
         partyId: l.partyId, createdAt: l.createdAt, updatedAt: l.updatedAt, stageAt: l.stageAt as Record<string, unknown>, lostReason: l.lostReason,
       })),
+      applications: this.applications.list(tenantId),
       // --- full persistence: platform users, custom roles, e-sign, connectors --
       users: this.masterData.users.list(tenantId),
       customRoles: this.roles.customRolesFor(tenantId).map((r) => ({ tenantId, roleId: r.id, name: r.name, description: r.description, permissions: r.permissions === '*' ? [...this.roles.permissionsFor(tenantId, r.id)] : (r.permissions as readonly string[]) })),
@@ -3115,6 +3200,8 @@ export class App {
     this.procurement.hydrate((world.purchaseOrders ?? []) as never, (world.budgets ?? []) as never);
     for (const p of world.prospects ?? []) this.roommates.upsertProspect(p as never);
     this.crm.hydrate((world.leads ?? []) as never);
+    this.applications.hydrate((world.applications ?? []) as never);
+    for (const a of world.applications ?? []) this.applicationTenant.set(a.id, a.tenantId);
     this.signatures.hydrate((world.signatureEnvelopes ?? []) as never);
     this.integrations.hydrate((world.integrations ?? []) as never);
     this.connectorOutbox.hydrate((world.connectorCommands ?? []) as never);

@@ -97,6 +97,7 @@ function buildWorld(): WorldData {
     budgets: [{ id: 'bg-1', tenantId: 't-1', account: 'expenses:repairs', periodStart: '2026-07-01', periodEnd: '2026-08-01', amountCents: 1000000, label: 'July' }],
     prospects: [{ id: 'pros-1', tenantId: 't-1', name: 'Ava', partyId: 'p-1', preferences: { cleanliness: 4, social: 3, chronotype: 'early' } }],
     leads: [{ id: 'ld-1', tenantId: 't-1', name: 'Bea', source: 'website', stage: 'toured', estValueCents: 300000, partyId: 'p-1', createdAt: '2026-07-01T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z', stageAt: { new: '2026-07-01T00:00:00Z', toured: '2026-07-02T00:00:00Z' } }],
+    applications: [{ id: 'app-1', tenantId: 't-1', leadId: 'ld-1', unitId: 'u-1', applicantName: 'Bea', applicantEmail: 'bea@x.com', incomeCents: 900000, status: 'approved', submittedAt: '2026-07-02T00:00:00Z', screening: { provider: 'transunion', reference: 'tu-1', recommendation: 'approve', creditScore: 720, completedAt: '2026-07-02T12:00:00Z' }, decidedAt: '2026-07-03T00:00:00Z', decidedBy: 'mgr' }],
     // full persistence — exercise the config + platform + connector paths.
     users: [{ id: 'usr-1', tenantId: 't-1', code: 'U-1', displayName: 'Manager', roleId: 'manager', active: true }],
     customRoles: [{ tenantId: 't-1', roleId: 'housekeeping_lead', name: 'Housekeeping Lead', description: 'HK', permissions: ['agreement.read', 'maintenance.manage'] }],

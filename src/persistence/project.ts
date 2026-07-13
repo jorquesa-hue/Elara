@@ -22,6 +22,7 @@ import type { ActionLogRecord } from '../agent-runtime.ts';
 import type { ExceptionItem } from '../exception-queue.ts';
 import type { PeriodLockRecord } from '../period-lock.ts';
 import type { BankAccountRecord } from '../bank-account.ts';
+import type { Application as ApplicationRecord } from '../application.ts';
 
 export interface WorldData {
   tenants: Array<{
@@ -137,6 +138,7 @@ export interface WorldData {
     id: string; tenantId: string; name: string; source?: string; stage: string; estValueCents: number;
     partyId?: string; createdAt: string; updatedAt: string; stageAt: Record<string, unknown>; lostReason?: string;
   }>;
+  applications?: readonly ApplicationRecord[];
   // --- full persistence: platform users, custom roles, e-sign, connectors -----
   users?: Array<{ id: string; tenantId: string; code: string; displayName: string; roleId: string; active: boolean }>;
   customRoles?: Array<{ tenantId: string; roleId: string; name: string; description?: string; permissions: readonly string[] }>;
@@ -456,6 +458,14 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       stmt(
         'insert into crm_lead (id, tenant_id, name, source, stage, est_value_cents, party_id, created_at, updated_at, stage_at, lost_reason) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11) on conflict (id) do update set name = excluded.name, source = excluded.source, stage = excluded.stage, est_value_cents = excluded.est_value_cents, party_id = excluded.party_id, updated_at = excluded.updated_at, stage_at = excluded.stage_at, lost_reason = excluded.lost_reason',
         [l.id, l.tenantId, l.name, l.source ?? null, l.stage, l.estValueCents, l.partyId ?? null, l.createdAt, l.updatedAt, JSON.stringify(l.stageAt ?? {}), l.lostReason ?? null],
+      ),
+    );
+  }
+  for (const a of w.applications ?? []) {
+    out.push(
+      stmt(
+        'insert into application (id, tenant_id, lead_id, unit_id, applicant_name, applicant_email, income_cents, status, submitted_at, screening, decided_at, decided_by, adverse_action_reason) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13) on conflict (id) do update set lead_id = excluded.lead_id, unit_id = excluded.unit_id, applicant_name = excluded.applicant_name, applicant_email = excluded.applicant_email, income_cents = excluded.income_cents, status = excluded.status, screening = excluded.screening, decided_at = excluded.decided_at, decided_by = excluded.decided_by, adverse_action_reason = excluded.adverse_action_reason',
+        [a.id, a.tenantId, a.leadId ?? null, a.unitId ?? null, a.applicantName, a.applicantEmail ?? null, a.incomeCents ?? null, a.status, a.submittedAt, a.screening ? JSON.stringify(a.screening) : null, a.decidedAt ?? null, a.decidedBy ?? null, a.adverseActionReason ?? null],
       ),
     );
   }

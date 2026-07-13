@@ -217,6 +217,7 @@
     importer: '<path d="M12 3v11"/><path d="M8 10l4 4 4-4"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/>',
     crm: '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
     esign: '<path d="M4 18c3-6 5-9 7-9s0 6 2 6 3-3 5-3"/><path d="M3 21h18"/>',
+    applications: '<path d="M8 3h8l3 3v15H5V3z"/><path d="M8 10h8M8 14h8M8 18h5"/>',
     reports: '<path d="M4 3v18h16"/><rect x="7" y="12" width="3" height="6" rx="1"/><rect x="12" y="8" width="3" height="10" rx="1"/><rect x="17" y="4" width="3" height="14" rx="1"/>',
     advisor: '<path d="M12 3l1.9 4.3L18 9l-4.1 1.7L12 15l-1.9-4.3L6 9l4.1-1.7z"/><path d="M18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z"/>',
     properties: '<path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M10 21v-6h4v6"/><path d="M9 10h.01M15 10h.01"/>',
@@ -433,6 +434,7 @@
     if (can("reports.read")) items.splice(1, 0, ["reports", "Reports", ICONS.reports]);
     if (can("revenue.read")) items.splice(1, 0, ["pricing", "Revenue", ICONS.pricing]);
     if (can("crm.read")) items.splice(1, 0, ["crm", "Pipeline", ICONS.crm]);
+    if (can("application.read")) items.splice(2, 0, ["applications", "Applications", ICONS.applications]);
     if (can("esign.read")) items.splice(2, 0, ["esign", "E-sign", ICONS.esign]);
     if (can("roommate.read")) items.splice(items.length - 1, 0, ["roommates", "Roommates", ICONS.roommates]);
     if (can("masterdata.read")) items.splice(1, 0, ["properties", "Properties", ICONS.properties]);
@@ -459,7 +461,7 @@
       h("main", { id: "main" }, [])
     ]));
     var main = document.getElementById("main");
-    ({ dashboard: viewDashboard, agreements: viewAgreements, properties: viewProperties, website: viewWebsite, pricing: viewPricing, crm: viewCrm, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
+    ({ dashboard: viewDashboard, agreements: viewAgreements, properties: viewProperties, website: viewWebsite, pricing: viewPricing, crm: viewCrm, applications: viewApplications, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
   }
 
   // ---- views --------------------------------------------------------------
@@ -1236,6 +1238,54 @@
     });
   }
   function handleLead(x, wrap, kpiWrap){ if(x.status===200){ toast(t("msg.saved"),"ok"); refreshLeads(wrap, kpiWrap);} else toast(x.body.error||"err","err"); }
+
+  // ---- Applications (Phase 2A) --------------------------------------------
+  function viewApplications(main){
+    main.appendChild(h("h1",{},["Applications"]));
+    main.appendChild(h("p",{class:"sub"},["The leasing step between a toured lead and an approved resident — capture the applicant, order a screening report (credit/background/income through the connector framework), then approve or deny. The decision is FCRA / Fair-Housing sensitive: it is policy-gated + audited, and a denial requires an adverse-action reason (an adverse-action notice goes to the applicant)."]));
+    var formSlot=h("div",{},[]); main.appendChild(formSlot);
+    var wrap=h("div",{},[]); main.appendChild(wrap);
+    if(can("application.manage")) formSlot.appendChild(applicationForm(wrap));
+    refreshApplications(wrap);
+  }
+  function applicationForm(wrap){
+    var nm=h("input",{placeholder:"Applicant name"}); var em=h("input",{placeholder:"applicant@email.com"}); var inc=h("input",{type:"number",placeholder:"Monthly income (cents)"});
+    var unit=h("select",{},[h("option",{value:""},["— unit (optional) —"])]);
+    var lead=h("select",{},[h("option",{value:""},["— lead (optional) —"])]);
+    if(can("masterdata.read")) api("/master-data").then(function(r){ ((r.body||{}).units||[]).forEach(function(u){ unit.appendChild(h("option",{value:u.id},[u.label||u.code||u.id])); }); });
+    if(can("crm.read")) api("/leads").then(function(r){ ((r.body||{}).leads||[]).forEach(function(l){ if(l.stage!=="lost"&&l.stage!=="signed") lead.appendChild(h("option",{value:l.id},[l.name])); }); });
+    return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
+      if(!nm.value) return toast("Enter an applicant name","err");
+      var body={ id:"app-"+Date.now(), applicantName:nm.value };
+      if(em.value) body.applicantEmail=em.value;
+      if(inc.value) body.incomeCents=Number(inc.value);
+      if(unit.value) body.unitId=unit.value;
+      if(lead.value) body.leadId=lead.value;
+      api("/applications",{method:"POST",body:body}).then(function(r){
+        if(r.status===201){ toast(t("msg.saved"),"ok"); nm.value=em.value=inc.value=""; refreshApplications(wrap); } else toast((r.body||{}).error||"err","err");
+      });
+    }},[ field("Name",nm), field("Email",em), field("Income (cents)",inc), field("Unit",unit), field("Lead",lead), h("div",{},[h("button",{class:"btn",type:"submit"},["Add application"])]) ]);
+  }
+  function refreshApplications(wrap){
+    api("/applications").then(function(r){
+      wrap.innerHTML="";
+      var rows=((r.body||{}).applications||[]).map(function(a){
+        var actions=h("div",{class:"row"},[]);
+        var decided = a.status==="approved"||a.status==="denied"||a.status==="withdrawn";
+        if(can("application.manage") && !decided){
+          if(a.status==="submitted"||a.status==="screening")
+            actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/applications/"+a.id+"/screen",{method:"POST",body:{}}).then(function(x){handleApp(x,wrap);}); }},["Screen"]));
+          actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/applications/"+a.id+"/decide",{method:"POST",body:{decision:"approve"}}).then(function(x){handleApp(x,wrap);}); }},["Approve"]));
+          actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ var reason=prompt("Adverse-action reason (required to deny)"); if(!reason) return; api("/applications/"+a.id+"/decide",{method:"POST",body:{decision:"deny",reason:reason}}).then(function(x){handleApp(x,wrap);}); }},["Deny"]));
+        }
+        var pillCls = a.status==="approved"?"active":(a.status==="denied"||a.status==="withdrawn"?"terminated":"draft");
+        var scr = a.screening ? (a.screening.recommendation||"—")+(a.screening.creditScore?(" · "+a.screening.creditScore):"") : "—";
+        return h("tr",{},[ h("td",{},[a.applicantName]), h("td",{class:"muted"},[a.applicantEmail||"—"]), h("td",{},[a.incomeCents?fmt(a.incomeCents):"—"]), h("td",{class:"muted"},[scr]), h("td",{},[h("span",{class:"pill "+pillCls},[a.status])]), h("td",{},[actions]) ]);
+      });
+      wrap.appendChild(tableEl([th("Applicant"),th("Email"),th("Income"),th("Screening"),th("Status"),th("")], rows, 6, "No applications yet."));
+    });
+  }
+  function handleApp(x, wrap){ if(x.status===200){ toast(t("msg.saved"),"ok"); refreshApplications(wrap);} else toast((x.body||{}).error||"err","err"); }
 
   function viewEsign(main){
     main.appendChild(h("h1",{},["E-signature"]));

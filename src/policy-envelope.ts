@@ -149,6 +149,12 @@ export const POLICY_RULES: readonly PolicyRule[] = [
     description: 'Closing an accounting period at month-end is a routine finance action (audited via the action log).',
   },
   {
+    id: 'pol-application-decide',
+    action: 'application.decide',
+    effect: 'allow',
+    description: 'Approving/denying a rental application is FCRA / Fair-Housing sensitive; allowed but ALWAYS audited (who decided, when, and — on denial — the adverse-action reason). A deployment may switch this to escalate for a second reviewer.',
+  },
+  {
     id: 'pol-ledger-reopen-period',
     action: 'ledger.reopen_period',
     effect: 'escalate',

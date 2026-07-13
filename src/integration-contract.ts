@@ -56,6 +56,10 @@ export const KIND_ACTIONS: Record<IntegrationKind, readonly ActionSpec[]> = {
     { action: 'cancel_invoice', description: 'Cancel a previously authorized fiscal invoice.' },
     { action: 'get_status', description: 'Read the authorization status of a fiscal invoice.' },
   ],
+  screening: [
+    { action: 'order_report', description: 'Order a tenant screening report (credit/background/income) for an applicant.' },
+    { action: 'get_result', description: 'Read the result of a screening report.' },
+  ],
 };
 
 /** INBOUND: the canonical events a vendor of this kind may push back to Elara. */
@@ -68,6 +72,7 @@ export const KIND_EVENTS: Record<IntegrationKind, readonly string[]> = {
   website: ['booking_created', 'booking_cancelled'],
   crm: ['lead_created', 'lead_updated'],
   fiscal: ['invoice_authorized', 'invoice_rejected', 'invoice_cancelled'],
+  screening: ['screening_completed', 'screening_failed'],
 };
 
 export function actionsFor(kind: IntegrationKind): readonly ActionSpec[] {
