@@ -431,6 +431,15 @@ export class App {
     return { typeId };
   }
 
+  /** Resolve an optional propertyId in a unit payload — 404s on an unknown
+   *  property so a unit can never point at a community that doesn't exist. */
+  private unitPropertyLink(tenantId: string, body: Record<string, unknown>): { propertyId?: string } {
+    const propertyId = this.optString(body, 'propertyId');
+    if (propertyId === undefined || propertyId === '') return {};
+    if (!this.masterData.properties.get(tenantId, propertyId)) throw new HttpError(404, `unknown property: ${propertyId}`);
+    return { propertyId };
+  }
+
   /** The optional numeric/description fields of a unit-type payload, validated. */
   private unitTypeFields(body: Record<string, unknown>) {
     const out: { bedrooms?: number; bathrooms?: number; maxGuests?: number; areaSqm?: number; baseRentCents?: number; description?: string } = {};
@@ -923,21 +932,53 @@ export class App {
         label: this.requireString(body, 'label'),
         active: body['active'] !== false,
         ...this.unitTypeLink(ctx.tenantId, body),
+        ...this.unitPropertyLink(ctx.tenantId, body),
       }),
     }));
 
-    // Update a property/unit — rename, activate/deactivate, or re-type.
-    // Deactivating keeps history (reports still reference it) but drops it
-    // from the bookable set.
+    // Update a property/unit — rename, activate/deactivate, re-type, or move to
+    // another property. Deactivating keeps history (reports still reference it)
+    // but drops it from the bookable set.
     this.add('PUT', '/units/:id', 'masterdata.manage', (ctx, p, body) => {
       if (!this.masterData.units.get(ctx.tenantId, p['id']!)) throw new HttpError(404, 'unit not found');
-      const patch: { label?: string; active?: boolean; typeId?: string | undefined } = {};
+      const patch: { label?: string; active?: boolean; typeId?: string | undefined; propertyId?: string | undefined } = {};
       const label = this.optString(body, 'label');
       if (label !== undefined) patch.label = label;
       if (typeof body['active'] === 'boolean') patch.active = body['active'] as boolean;
       if (body['typeId'] === '') patch.typeId = undefined; // '' unlinks the floorplan
       else Object.assign(patch, this.unitTypeLink(ctx.tenantId, body));
+      if (body['propertyId'] === '') patch.propertyId = undefined; // '' unlinks the property
+      else Object.assign(patch, this.unitPropertyLink(ctx.tenantId, body));
       return { status: 200, body: this.masterData.units.update(ctx.tenantId, p['id']!, patch) };
+    });
+
+    // --- properties / communities — the multi-property rollup dimension ------
+    this.add('GET', '/properties', 'masterdata.read', (ctx) => ({ status: 200, body: { properties: this.masterData.properties.list(ctx.tenantId) } }));
+
+    this.add('POST', '/properties', 'masterdata.manage', (ctx, _p, body) => {
+      const code = this.requireString(body, 'code');
+      const entityId = this.optString(body, 'entityId');
+      if (entityId && !this.entities.getEntity(ctx.tenantId, entityId)) throw new HttpError(404, `unknown legal entity: ${entityId}`);
+      return {
+        status: 201,
+        body: this.masterData.properties.add({
+          id: this.optString(body, 'id') ?? `prop-${code.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+          tenantId: ctx.tenantId,
+          code,
+          name: this.requireString(body, 'name'),
+          ...(this.optString(body, 'address') !== undefined ? { address: this.optString(body, 'address') } : {}),
+          ...(entityId ? { entityId } : {}),
+        }),
+      };
+    });
+
+    this.add('PUT', '/properties/:id', 'masterdata.manage', (ctx, p, body) => {
+      if (!this.masterData.properties.get(ctx.tenantId, p['id']!)) throw new HttpError(404, 'property not found');
+      const patch: Record<string, unknown> = {};
+      for (const k of ['name', 'address'] as const) { const v = this.optString(body, k); if (v !== undefined) patch[k] = v; }
+      if (body['entityId'] === '') patch['entityId'] = undefined;
+      else { const e = this.optString(body, 'entityId'); if (e) { if (!this.entities.getEntity(ctx.tenantId, e)) throw new HttpError(404, `unknown legal entity: ${e}`); patch['entityId'] = e; } }
+      return { status: 200, body: this.masterData.properties.update(ctx.tenantId, p['id']!, patch) };
     });
 
     // --- unit types (floorplans) — the multifamily merchandising unit --------
@@ -977,7 +1018,7 @@ export class App {
       if (!(count >= 1 && count <= 500)) throw new HttpError(400, 'count must be an integer between 1 and 500');
       const start = typeof body['startNumber'] === 'number' && Number.isInteger(body['startNumber']) ? (body['startNumber'] as number) : 101;
       const labelPrefix = this.optString(body, 'labelPrefix') ?? codePrefix;
-      const link = this.unitTypeLink(ctx.tenantId, body);
+      const link = { ...this.unitTypeLink(ctx.tenantId, body), ...this.unitPropertyLink(ctx.tenantId, body) };
       const existing = new Set(this.masterData.units.list(ctx.tenantId).map((u) => u.code));
       const created: string[] = [];
       const skipped: string[] = [];
@@ -2194,16 +2235,25 @@ export class App {
         if (target === 'units') {
           // A "type"/floorplan column auto-creates the unit type on first sight
           // and links every unit that names it — 200 rows → a few types.
-          let typeLink: { typeId?: string } = {};
+          const link: { typeId?: string; propertyId?: string } = {};
           const typeCode = (row.record['type'] ?? '').trim();
           if (typeCode) {
             const typeId = `utype-${typeCode.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
             if (!this.masterData.unitTypes.get(ctx.tenantId, typeId)) {
               this.masterData.unitTypes.add({ id: typeId, tenantId: ctx.tenantId, code: typeCode, name: typeCode });
             }
-            typeLink = { typeId };
+            link.typeId = typeId;
           }
-          this.masterData.units.add({ id, tenantId: ctx.tenantId, code, label: row.record['label'] ?? code, active: true, ...typeLink });
+          // A "property"/community column auto-creates the property likewise.
+          const propCode = (row.record['property'] ?? '').trim();
+          if (propCode) {
+            const propertyId = `prop-${propCode.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+            if (!this.masterData.properties.get(ctx.tenantId, propertyId)) {
+              this.masterData.properties.add({ id: propertyId, tenantId: ctx.tenantId, code: propCode, name: propCode });
+            }
+            link.propertyId = propertyId;
+          }
+          this.masterData.units.add({ id, tenantId: ctx.tenantId, code, label: row.record['label'] ?? code, active: true, ...link });
         } else this.masterData.guests.add({ id, tenantId: ctx.tenantId, code, fullName: row.record['fullName']!, email: row.record['email'] });
         existing.add(code);
         created++;
@@ -2403,10 +2453,13 @@ export class App {
 
     this.add('GET', '/reports/:key', 'reports.read', (ctx, p, body) => {
       const w = this.reportWindow(this.optString(body, 'from'), this.optString(body, 'to'));
-      const report = buildReport(p['key']!, this.reportingInput(ctx.tenantId, w.from, w.to));
+      // ?propertyId=<id> scopes operational reports to one community.
+      const propertyId = this.optString(body, 'propertyId');
+      const input = this.reportingInput(ctx.tenantId, w.from, w.to, propertyId);
+      const report = buildReport(p['key']!, input);
       if (!report) throw new HttpError(404, `unknown report '${p['key']}'`);
       // Every report ships with the insight feed so a dashboard shows both at once.
-      return { status: 200, body: { report, insights: computeInsights(this.reportingInput(ctx.tenantId, w.from, w.to)) } };
+      return { status: 200, body: { report, insights: computeInsights(input) } };
     });
 
     // --- access advisor (AI role/permission recommendation) ---------------
@@ -2458,7 +2511,7 @@ export class App {
   }
 
   /** Gather a tenant's data into the reporting engine's input for a window. */
-  private reportingInput(tenantId: string, from: string, to: string): ReportingInput {
+  private reportingInput(tenantId: string, from: string, to: string, propertyId?: string): ReportingInput {
     const entries = [...this.agreements.values()].filter((e) => e.tenantId === tenantId);
     const agIds = new Set(entries.map((e) => e.agreement.id));
     const invoices = this.billing.allInvoices().filter((i) => i.tenantId === tenantId);
@@ -2479,14 +2532,15 @@ export class App {
       // shows an identifier on the rent roll instead of a blank "—".
       return this.masterData.guests.get(tenantId, guestId)?.fullName ?? (guestId || undefined);
     };
-    return {
+    const full: ReportingInput = {
       now: this.now(),
       from,
       to,
       currency: this.config.get(tenantId).currency,
       units: this.masterData.units.list(tenantId).map((u) => {
         const t = u.typeId ? this.masterData.unitTypes.get(tenantId, u.typeId) : null;
-        return { id: u.id, label: u.label, active: u.active !== false, ...(t ? { typeName: t.name } : {}) };
+        const pr = u.propertyId ? this.masterData.properties.get(tenantId, u.propertyId) : null;
+        return { id: u.id, label: u.label, active: u.active !== false, ...(t ? { typeName: t.name } : {}), ...(pr ? { propertyId: pr.id, propertyName: pr.name } : {}) };
       }),
       agreements: entries.map((e) => {
         const rn = residentFor(e.agreement.id, e.agreement.guestId);
@@ -2506,6 +2560,24 @@ export class App {
       ledgerLines: this.ledger.allLines
         .filter((l) => (l.agreementId != null && agIds.has(l.agreementId)) || l.tenantId === tenantId)
         .map((l) => ({ account: l.account, debitCents: l.debitCents, creditCents: l.creditCents, postedAt: l.postedAt })),
+    };
+    if (!propertyId) return full;
+    // Per-property scope: restrict to units of this property and the agreements
+    // (and their invoices/payments/deposits/holds) on those units. Operational
+    // reports (rent roll, occupancy, box score, vacancy, delinquency, lease
+    // expirations) become per-community. (Financial statements over ledgerLines
+    // gain per-property scope in the entity/property journal-line stamp.)
+    const unitIds = new Set(full.units.filter((u) => u.propertyId === propertyId).map((u) => u.id));
+    const propAgIds = new Set(full.agreements.filter((a) => unitIds.has(a.unitId)).map((a) => a.id));
+    const propInvIds = new Set(full.invoices.filter((i) => propAgIds.has(i.agreementId)).map((i) => i.id));
+    return {
+      ...full,
+      units: full.units.filter((u) => unitIds.has(u.id)),
+      agreements: full.agreements.filter((a) => propAgIds.has(a.id)),
+      invoices: full.invoices.filter((i) => propAgIds.has(i.agreementId)),
+      payments: full.payments.filter((p) => propInvIds.has(p.invoiceId)),
+      deposits: full.deposits.filter((d) => propAgIds.has(d.agreementId)),
+      holds: full.holds.filter((h) => unitIds.has(h.unitId)),
     };
   }
 
@@ -2635,7 +2707,9 @@ export class App {
     let payments = 0;
     let billPayments = 0;
 
-    for (const u of w.units) this.masterData.units.add({ id: unitId(u.code), tenantId, code: u.code, label: u.label, active: u.active });
+    const propId = (code: string) => `demo-prop-${code}`;
+    for (const pr of w.properties) this.masterData.properties.add({ id: propId(pr.code), tenantId, code: pr.code, name: pr.name, ...(pr.address ? { address: pr.address } : {}) });
+    for (const u of w.units) this.masterData.units.add({ id: unitId(u.code), tenantId, code: u.code, label: u.label, active: u.active, ...(u.propertyCode ? { propertyId: propId(u.propertyCode) } : {}) });
     for (const g of w.guests) this.masterData.guests.add({ id: guestId(g.code), tenantId, code: g.code, fullName: g.fullName, email: g.email });
     for (const p of w.parties) this.parties.addParty({ id: p.id, tenantId, kind: p.kind, displayName: p.displayName, legalName: p.legalName, taxId: p.taxId, email: p.email, phone: p.phone, attributes: p.attributes });
     for (const pr of w.pricingRules) this.revenue.setRule({ id: pr.id, tenantId, name: pr.name, baseCents: pr.baseCents, minCents: pr.minCents, maxCents: pr.maxCents, weekendFactorBps: pr.weekendFactorBps, occupancyTiers: pr.occupancyTiers, losDiscounts: pr.losDiscounts });
@@ -2786,7 +2860,12 @@ export class App {
     return {
       // The tenant row now carries its full country-environment config.
       tenants: [{ id: tenantId, name: cfg.displayName ?? tenantId, displayName: cfg.displayName, locale: cfg.locale, currency: cfg.currency, timezone: cfg.timezone, businessStructure: cfg.businessStructure, country: cfg.country, jurisdiction: cfg.jurisdiction, brandColor: cfg.brandColor, logoDataUrl: cfg.logoDataUrl, tagline: cfg.tagline, ...(this.siteContent.has(tenantId) ? { siteContent: this.siteContent.get(tenantId) as Record<string, unknown> } : {}) }],
-      units: this.masterData.units.list(tenantId).map((u) => ({ id: u.id, tenantId, label: u.label, code: u.code, active: u.active, ...(u.typeId ? { typeId: u.typeId } : {}) })),
+      units: this.masterData.units.list(tenantId).map((u) => ({ id: u.id, tenantId, label: u.label, code: u.code, active: u.active, ...(u.typeId ? { typeId: u.typeId } : {}), ...(u.propertyId ? { propertyId: u.propertyId } : {}) })),
+      properties: this.masterData.properties.list(tenantId).map((pr) => ({
+        id: pr.id, tenantId, code: pr.code, name: pr.name,
+        ...(pr.address !== undefined ? { address: pr.address } : {}),
+        ...(pr.entityId !== undefined ? { entityId: pr.entityId } : {}),
+      })),
       unitTypes: this.masterData.unitTypes.list(tenantId).map((t) => ({
         id: t.id, tenantId, code: t.code, name: t.name,
         ...(t.bedrooms !== undefined ? { bedrooms: t.bedrooms } : {}),
@@ -2900,7 +2979,12 @@ export class App {
       ...(t.baseRentCents !== undefined ? { baseRentCents: t.baseRentCents } : {}),
       ...(t.description !== undefined ? { description: t.description } : {}),
     });
-    for (const u of world.units) this.masterData.units.add({ id: u.id, tenantId: u.tenantId, code: u.code ?? u.id, label: u.label, active: u.active ?? true, ...(u.typeId ? { typeId: u.typeId } : {}) });
+    for (const pr of world.properties ?? []) this.masterData.properties.add({
+      id: pr.id, tenantId: pr.tenantId, code: pr.code, name: pr.name,
+      ...(pr.address !== undefined ? { address: pr.address } : {}),
+      ...(pr.entityId !== undefined ? { entityId: pr.entityId } : {}),
+    });
+    for (const u of world.units) this.masterData.units.add({ id: u.id, tenantId: u.tenantId, code: u.code ?? u.id, label: u.label, active: u.active ?? true, ...(u.typeId ? { typeId: u.typeId } : {}), ...(u.propertyId ? { propertyId: u.propertyId } : {}) });
     for (const g of world.guests) this.masterData.guests.add({ id: g.id, tenantId: g.tenantId, code: g.code ?? g.id, fullName: g.fullName, email: g.email });
     for (const r of world.ratePlans ?? []) this.masterData.ratePlans.add({ id: r.id, tenantId: r.tenantId, code: r.id, name: r.name, kind: r.kind as 'nightly' | 'monthly' | 'lease', baseMinor: r.baseCents });
     for (const u of world.users ?? []) this.masterData.users.add({ id: u.id, tenantId: u.tenantId, code: u.code, displayName: u.displayName, roleId: u.roleId, active: u.active });

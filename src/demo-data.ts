@@ -14,7 +14,8 @@
 // overdue), deposits, vendor bills, work orders, a sales pipeline and a dynamic
 // pricing rule. Given a fixed `at` it is fully reproducible.
 
-export interface DemoUnit { code: string; label: string; active: boolean }
+export interface DemoUnit { code: string; label: string; active: boolean; propertyCode?: string }
+export interface DemoProperty { code: string; name: string; address?: string }
 export interface DemoGuest { code: string; fullName: string; email: string }
 export interface DemoParty {
   id: string; kind: 'person' | 'organization'; displayName: string;
@@ -62,6 +63,7 @@ export interface DemoPricingRule {
 
 export interface DemoWorld {
   tenantId: string;
+  properties: DemoProperty[];
   units: DemoUnit[];
   guests: DemoGuest[];
   parties: DemoParty[];
@@ -95,16 +97,22 @@ export function buildDemoWorld(tenantId: string, at: string): DemoWorld {
   const d = (offsetDays: number) => isoDate(now + offsetDays * DAY);
   const t = (offsetDays: number) => isoStamp(now + offsetDays * DAY);
 
+  // Two communities so per-property rollups (rent roll, occupancy, financials)
+  // have real data to compare.
+  const properties: DemoProperty[] = [
+    { code: 'CURRAL', name: 'Praia do Curral', address: 'Av. Force, Ilhabela' },
+    { code: 'VILA', name: 'Vila & Perequê', address: 'Perequê, Ilhabela' },
+  ];
   const units: DemoUnit[] = [
-    { code: 'ILH-101', label: 'Praia do Curral — Apto 101 (frente mar)', active: true },
-    { code: 'ILH-102', label: 'Praia do Curral — Apto 102', active: true },
-    { code: 'ILH-CASA', label: 'Casa Feiticeira (4 suítes, piscina)', active: true },
-    { code: 'ILH-LOFT1', label: 'Vila — Loft 201 (temporada)', active: true },
-    { code: 'ILH-LOFT2', label: 'Vila — Loft 202 (temporada)', active: true },
-    { code: 'ILH-RES1', label: 'Residencial Perequê — Apto 33', active: true },
-    { code: 'ILH-REP1', label: 'República Ilhabela — Quarto A', active: true },
-    { code: 'ILH-COM1', label: 'Ponto Comercial Centro (loja)', active: true },
-    { code: 'ILH-102B', label: 'Praia do Curral — Apto 103 (reforma)', active: false },
+    { code: 'ILH-101', label: 'Praia do Curral — Apto 101 (frente mar)', active: true, propertyCode: 'CURRAL' },
+    { code: 'ILH-102', label: 'Praia do Curral — Apto 102', active: true, propertyCode: 'CURRAL' },
+    { code: 'ILH-CASA', label: 'Casa Feiticeira (4 suítes, piscina)', active: true, propertyCode: 'CURRAL' },
+    { code: 'ILH-LOFT1', label: 'Vila — Loft 201 (temporada)', active: true, propertyCode: 'VILA' },
+    { code: 'ILH-LOFT2', label: 'Vila — Loft 202 (temporada)', active: true, propertyCode: 'VILA' },
+    { code: 'ILH-RES1', label: 'Residencial Perequê — Apto 33', active: true, propertyCode: 'VILA' },
+    { code: 'ILH-REP1', label: 'República Ilhabela — Quarto A', active: true, propertyCode: 'VILA' },
+    { code: 'ILH-COM1', label: 'Ponto Comercial Centro (loja)', active: true, propertyCode: 'CURRAL' },
+    { code: 'ILH-102B', label: 'Praia do Curral — Apto 103 (reforma)', active: false, propertyCode: 'CURRAL' },
   ];
 
   const guests: DemoGuest[] = [
@@ -224,5 +232,5 @@ export function buildDemoWorld(tenantId: string, at: string): DemoWorld {
     { id: 'demo-lead-6', name: 'Reserva cancelada — grupo carnaval', source: 'booking', estValueCents: 900_000, createdAt: t(-18), advanceTo: ['toured', 'lost'] },
   ];
 
-  return { tenantId, units, guests, parties, pricingRules, agreements, invoices, deposits, bills, workOrders, leads };
+  return { tenantId, properties, units, guests, parties, pricingRules, agreements, invoices, deposits, bills, workOrders, leads };
 }

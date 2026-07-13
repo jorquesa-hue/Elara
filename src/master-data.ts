@@ -13,6 +13,25 @@ export interface UnitRecord {
   active: boolean;
   /** Optional floorplan/unit-type this unit belongs to (multifamily portfolios). */
   typeId?: string;
+  /** Optional property/community this unit belongs to — the rollup dimension for
+   *  a multi-property operator (per-property rent roll, occupancy, P&L, owner
+   *  statements). Undefined for single-property/legacy tenants. */
+  propertyId?: string;
+}
+
+/** A property / community — the top-level portfolio rollup a multi-property
+ *  operator (e.g. a third-party manager running hundreds of communities)
+ *  reports and compares on. Units belong to a property; a property optionally
+ *  belongs to an owning legal entity (the SPE/landlord), which is how owner
+ *  statements and per-entity books are scoped. */
+export interface PropertyRecord {
+  id: string;
+  tenantId: string;
+  code: string; // e.g. "GREYSTONE"
+  name: string; // e.g. "Greystone at Riverside"
+  address?: string;
+  /** The owning legal entity (EntityCatalog id) — scopes owner statements. */
+  entityId?: string;
 }
 
 /** A floorplan / unit type — the multifamily unit of merchandising. A 200-unit
@@ -99,6 +118,7 @@ class Registry<T extends { id: string; tenantId: string; code: string }> {
 export class MasterData {
   readonly units = new Registry<UnitRecord>('unit');
   readonly unitTypes = new Registry<UnitTypeRecord>('unit_type');
+  readonly properties = new Registry<PropertyRecord>('property');
   readonly guests = new Registry<GuestRecord>('guest');
   readonly users = new Registry<UserRecord>('user');
   readonly ratePlans = new Registry<RatePlanRecord>('rate_plan');
@@ -108,6 +128,7 @@ export class MasterData {
     return {
       units: this.units.list(tenantId),
       unitTypes: this.unitTypes.list(tenantId),
+      properties: this.properties.list(tenantId),
       guests: this.guests.list(tenantId),
       users: this.users.list(tenantId),
       ratePlans: this.ratePlans.list(tenantId),

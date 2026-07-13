@@ -21,6 +21,9 @@ export const TARGET_FIELDS: Record<ImportTarget, FieldSpec[]> = {
     // Floorplan/unit-type code — auto-created on commit if unseen, so a 200-row
     // export with a "type" column lands as a handful of types + typed units.
     { field: 'type', required: false, aliases: ['type', 'unit type', 'unittype', 'floorplan', 'floor plan', 'typology', 'plan'] },
+    // Property/community code — auto-created on commit, so a portfolio export
+    // with a "property" column lands as properties + units linked to them.
+    { field: 'property', required: false, aliases: ['property', 'community', 'building', 'site', 'asset', 'complex'] },
   ],
   guests: [
     { field: 'code', required: true, aliases: ['code', 'ref', 'reference', 'id', 'cpf', 'document', 'doc'] },

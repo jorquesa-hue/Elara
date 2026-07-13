@@ -106,9 +106,13 @@ await page.click('button:has-text("Suggest access")');
 await page.waitForTimeout(600);
 await shot('07-access-advisor-custom');
 
-// Properties: define a floorplan, add a typed unit, then bulk-generate.
+// Properties: define a community, a floorplan, add a typed+located unit, bulk-generate.
 await page.click('nav button:has-text("Properties")');
-await page.waitForSelector('text=Floorplans / unit types');
+await page.waitForSelector('text=Properties / communities');
+await page.fill('input[placeholder="GREYSTONE"]', 'QA-NORTE');
+await page.fill('input[placeholder="Greystone at Riverside"]', 'Ilhabela Norte');
+await page.click('button:has-text("Add property")');
+await page.waitForSelector('td:has-text("Ilhabela Norte")');
 await page.fill('input[placeholder="1BR"]', '1BR');
 await page.fill('input[placeholder="One bedroom — Garden"]', 'One bedroom — Garden');
 await page.fill('input[placeholder="2500.00"]', '2500.00');
@@ -116,12 +120,13 @@ await page.click('button:has-text("Add floorplan")');
 await page.waitForSelector('td:has-text("One bedroom — Garden")');
 await page.fill('input[placeholder="ILH-201"]', 'ILH-999');
 await page.fill('input[placeholder="Praia do Curral — Apto 201"]', 'Casa Nova — Test');
-await page.locator('form:has(input[placeholder="ILH-201"]) select').selectOption({ index: 1 });
-await page.click('button:has-text("Add property")');
+await page.locator('form:has(input[placeholder="ILH-201"]) select').first().selectOption({ index: 1 }); // floorplan
+await page.locator('form:has(input[placeholder="ILH-201"]) select').last().selectOption({ index: 1 }); // property
+await page.click('button:has-text("Add unit")');
 await page.waitForTimeout(400);
 await page.fill('input[placeholder="TOWER-A-"]', 'QA-TWR-');
 await page.fill('input[placeholder="50"]', '3');
-await page.locator('form:has(input[placeholder="TOWER-A-"]) select').selectOption({ index: 1 });
+await page.locator('form:has(input[placeholder="TOWER-A-"]) select').first().selectOption({ index: 1 });
 await page.click('button:has-text("Generate units")');
 await page.waitForSelector('text=Created 3 units');
 await page.waitForTimeout(400);

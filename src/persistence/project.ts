@@ -27,9 +27,11 @@ export interface WorldData {
     displayName?: string; locale?: string; currency?: string; timezone?: string;
     businessStructure?: string; country?: string; jurisdiction?: string; brandColor?: string; logoDataUrl?: string; tagline?: string; siteContent?: Record<string, unknown>;
   }>;
-  units: Array<{ id: string; tenantId: string; label: string; code?: string; active?: boolean; typeId?: string }>;
+  units: Array<{ id: string; tenantId: string; label: string; code?: string; active?: boolean; typeId?: string; propertyId?: string }>;
   /** Floorplans/unit types — parents of typed units, emitted first. */
   unitTypes?: Array<{ id: string; tenantId: string; code: string; name: string; bedrooms?: number; bathrooms?: number; maxGuests?: number; areaSqm?: number; baseRentCents?: number; description?: string }>;
+  /** Properties/communities — parents of units, emitted first. */
+  properties?: Array<{ id: string; tenantId: string; code: string; name: string; address?: string; entityId?: string }>;
   guests: Array<{ id: string; tenantId: string; fullName: string; code?: string; email?: string }>;
   ratePlans?: Array<{
     id: string;
@@ -193,9 +195,17 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       ),
     );
   }
+  for (const pr of w.properties ?? []) {
+    out.push(
+      stmt(
+        'insert into property (id, tenant_id, code, name, address, entity_id) values ($1, $2, $3, $4, $5, $6) on conflict (id) do update set code = excluded.code, name = excluded.name, address = excluded.address, entity_id = excluded.entity_id',
+        [pr.id, pr.tenantId, pr.code, pr.name, pr.address ?? null, pr.entityId ?? null],
+      ),
+    );
+  }
   for (const u of w.units) {
     out.push(
-      stmt('insert into unit (id, tenant_id, label, code, active, type_id) values ($1, $2, $3, $4, $5, $6) on conflict (id) do update set label = excluded.label, code = excluded.code, active = excluded.active, type_id = excluded.type_id', [u.id, u.tenantId, u.label, u.code ?? u.id, u.active ?? true, u.typeId ?? null]),
+      stmt('insert into unit (id, tenant_id, label, code, active, type_id, property_id) values ($1, $2, $3, $4, $5, $6, $7) on conflict (id) do update set label = excluded.label, code = excluded.code, active = excluded.active, type_id = excluded.type_id, property_id = excluded.property_id', [u.id, u.tenantId, u.label, u.code ?? u.id, u.active ?? true, u.typeId ?? null, u.propertyId ?? null]),
     );
   }
   for (const g of w.guests) {
