@@ -44,6 +44,7 @@ import { Crm, type LeadStage } from '../crm.ts';
 import { Applications, type ScreeningResult } from '../application.ts';
 import { Tours } from '../tours.ts';
 import { Turns, turnDays } from '../turns.ts';
+import { PreventiveMaintenance } from '../preventive.ts';
 import { PeriodLock } from '../period-lock.ts';
 import { BankAccounts } from '../bank-account.ts';
 import { gaapViewFromLines } from '../multigaap.ts';
@@ -209,6 +210,7 @@ export class App {
   readonly applications = new Applications();
   readonly tours = new Tours();
   readonly turns = new Turns();
+  readonly pm = new PreventiveMaintenance();
   readonly signatures = new Signatures();
   readonly periodLock = new PeriodLock();
   readonly bankAccounts = new BankAccounts();
@@ -231,6 +233,7 @@ export class App {
   private readonly applicationTenant = new Map<string, string>();
   private readonly tourTenant = new Map<string, string>();
   private readonly turnTenant = new Map<string, string>();
+  private readonly pmTenant = new Map<string, string>();
   private readonly flushMarks = new Map<string, FlushMark>();
   /** Per-tenant in-flight flush, so overlapping flushes serialize (see flushWorld). */
   private readonly flushInFlight = new Map<string, Promise<void>>();
@@ -924,6 +927,11 @@ export class App {
   private ownedTurn(ctx: AuthContext, id: string) {
     if (this.turnTenant.get(id) !== ctx.tenantId) throw new HttpError(404, 'turn not found');
     return this.turns.get(id);
+  }
+
+  private ownedPmSchedule(ctx: AuthContext, id: string) {
+    if (this.pmTenant.get(id) !== ctx.tenantId) throw new HttpError(404, 'PM schedule not found');
+    return this.pm.get(id);
   }
 
   private ownedProspect(ctx: AuthContext, id: string) {
@@ -2896,6 +2904,64 @@ export class App {
       return { status: 200, body: this.turns.cancel(p['id']!, this.optString(body, 'reason')) };
     });
 
+    // --- preventive maintenance schedules (Phase 5C) ----------------------
+    // Recurring upkeep a sweep turns into work orders on a cadence. Reuses the
+    // maintenance perms; the sweep raises WOs through the gated work_order.open path.
+    this.add('GET', '/pm-schedules', 'maintenance.read', (ctx) => {
+      const at = this.now();
+      const schedules = this.pm.list(ctx.tenantId).map((s) => ({ ...s, due: s.active && s.nextDueAt <= at.slice(0, 10) }));
+      return { status: 200, body: { schedules } };
+    });
+
+    this.add('POST', '/pm-schedules', 'maintenance.manage', (ctx, _p, body) => {
+      const spaceId = this.optString(body, 'spaceId');
+      if (spaceId && !this.spaces.get(ctx.tenantId, spaceId)) throw new HttpError(404, 'space not found');
+      const cadenceDays = this.requireInt(body, 'cadenceDays');
+      if (cadenceDays <= 0) throw new HttpError(400, 'cadenceDays must be a positive integer');
+      const s = this.pm.create({
+        id: this.requireString(body, 'id'),
+        tenantId: ctx.tenantId,
+        title: this.requireString(body, 'title'),
+        cadenceDays,
+        nextDueAt: this.optString(body, 'nextDueAt') ?? this.now(),
+        priority: this.optString(body, 'priority'),
+        spaceId,
+        createdAt: this.now(),
+      });
+      this.pmTenant.set(s.id, ctx.tenantId);
+      return { status: 201, body: s };
+    });
+
+    this.add('POST', '/pm-schedules/:id/activate', 'maintenance.manage', (ctx, p, _body) => {
+      this.ownedPmSchedule(ctx, p['id']!);
+      return { status: 200, body: this.pm.setActive(p['id']!, true) };
+    });
+    this.add('POST', '/pm-schedules/:id/deactivate', 'maintenance.manage', (ctx, p, _body) => {
+      this.ownedPmSchedule(ctx, p['id']!);
+      return { status: 200, body: this.pm.setActive(p['id']!, false) };
+    });
+
+    // Sweep: raise a work order for each due schedule and advance its next-due
+    // date by the cadence. Idempotent per (schedule, dueDate) via the WO id, so
+    // re-running never double-raises. Usually a daily cron; `at` is injectable.
+    this.add('POST', '/maintenance/pm-sweep', 'maintenance.manage', (ctx, _p, body) => {
+      const at = this.optString(body, 'at') ?? this.now();
+      const due = this.pm.due(ctx.tenantId, at);
+      const raised: string[] = [];
+      for (const s of due) {
+        const woId = `pm-${s.id}-${s.nextDueAt}`;
+        if (this.maintenance.list(ctx.tenantId).some((w) => w.id === woId)) { this.pm.markRun(s.id, at); continue; }
+        this.gated('work_order.open', ctx, { spaceId: s.spaceId }, () => this.maintenance.open({
+          id: woId, tenantId: ctx.tenantId, title: s.title, spaceId: s.spaceId,
+          description: `Preventive maintenance (every ${s.cadenceDays}d)`,
+          category: 'preventive', priority: s.priority as WorkOrderPriority, openedAt: at,
+        }), (wo) => ({ status: 201, body: wo }));
+        this.pm.markRun(s.id, at);
+        raised.push(woId);
+      }
+      return { status: 200, body: { swept: due.length, raised } };
+    });
+
     // --- e-signature for lease execution (#17) ----------------------------
     // The CRM → lease → e-sign tail. The provider I/O lives in an edge adapter
     // (secretRef); a fully signed envelope advances the CRM lead but does NOT
@@ -3712,6 +3778,7 @@ export class App {
       applications: this.applications.list(tenantId),
       tours: this.tours.list(tenantId),
       unitTurns: this.turns.list(tenantId),
+      pmSchedules: this.pm.list(tenantId),
       // --- full persistence: platform users, custom roles, e-sign, connectors --
       users: this.masterData.users.list(tenantId),
       customRoles: this.roles.customRolesFor(tenantId).map((r) => ({ tenantId, roleId: r.id, name: r.name, description: r.description, permissions: r.permissions === '*' ? [...this.roles.permissionsFor(tenantId, r.id)] : (r.permissions as readonly string[]) })),
@@ -3806,6 +3873,8 @@ export class App {
     for (const t of world.tours ?? []) this.tourTenant.set(t.id, t.tenantId);
     this.turns.hydrate((world.unitTurns ?? []) as never);
     for (const t of world.unitTurns ?? []) this.turnTenant.set(t.id, t.tenantId);
+    this.pm.hydrate((world.pmSchedules ?? []) as never);
+    for (const s of world.pmSchedules ?? []) this.pmTenant.set(s.id, s.tenantId);
     this.signatures.hydrate((world.signatureEnvelopes ?? []) as never);
     this.integrations.hydrate((world.integrations ?? []) as never);
     this.connectorOutbox.hydrate((world.connectorCommands ?? []) as never);

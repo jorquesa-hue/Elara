@@ -922,6 +922,47 @@
       var spaces=((res[0].body||{}).spaces)||[]; var parties=((res[1].body||{}).parties)||[];
       if (can("maintenance.manage")) formSlot.appendChild(workOrderForm(spaces));
       refreshWorkOrders(wrap, parties);
+      // Preventive maintenance schedules (Phase 5C).
+      main.appendChild(h("h2",{style:"margin-top:26px"},["Preventive maintenance"]));
+      main.appendChild(h("p",{class:"sub"},["Recurring upkeep (HVAC service, filter changes, alarm tests) that auto-raises a work order on its cadence. Run the sweep to raise everything due now."]));
+      var pmSlot=h("div",{},[]); main.appendChild(pmSlot);
+      var pmWrap=h("div",{},[]); main.appendChild(pmWrap);
+      if(can("maintenance.manage")) pmSlot.appendChild(pmForm(spaces, pmWrap));
+      refreshPm(pmWrap);
+    });
+  }
+  function pmForm(spaces, wrap){
+    var title=h("input",{placeholder:"HVAC service"});
+    var cadence=h("input",{type:"number",value:"90"});
+    var due=h("input",{type:"date"});
+    var pri=selectFrom([["low","Low"],["normal","Normal"],["high","High"],["urgent","Urgent"]],"normal");
+    var space=selectFrom([["","— none —"]].concat(spaces.map(function(s){return [s.id, s.code+" — "+s.label];})),"");
+    var bar=h("div",{class:"row",style:"gap:8px;align-items:end;flex-wrap:wrap"},[]);
+    var form=h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
+      if(!title.value) return toast("Enter a title","err");
+      if(!due.value) return toast("Pick a first-due date","err");
+      var body={ id:"pm-"+Date.now(), title:title.value, cadenceDays:parseInt(cadence.value,10), nextDueAt:due.value, priority:pri.value };
+      if(space.value) body.spaceId=space.value;
+      api("/pm-schedules",{method:"POST",body:body}).then(function(r){ if(r.status===201){ toast(t("msg.saved"),"ok"); title.value=""; refreshPm(wrap);} else toast((r.body||{}).error||"err","err"); });
+    }},[ field("Task",title), field("Every (days)",cadence), field("First due",due), field("Priority",pri), field("Space",space), h("div",{},[h("button",{class:"btn",type:"submit"},["Add schedule"])]) ]);
+    if(can("maintenance.manage")) bar.appendChild(h("button",{class:"btn sm",onclick:function(){ api("/maintenance/pm-sweep",{method:"POST",body:{}}).then(function(r){ if(r.status===200){ toast("Raised "+((r.body||{}).raised||[]).length+" work order(s)","ok"); refreshPm(wrap);} else toast((r.body||{}).error||"err","err"); }); }},["Run PM sweep"]));
+    return h("div",{},[form, bar]);
+  }
+  function refreshPm(wrap){
+    api("/pm-schedules").then(function(r){
+      wrap.innerHTML="";
+      var rows=((r.body||{}).schedules||[]).map(function(s){
+        var act=h("div",{class:"row"},[]);
+        if(can("maintenance.manage")) act.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/pm-schedules/"+s.id+"/"+(s.active?"deactivate":"activate"),{method:"POST",body:{}}).then(function(){ refreshPm(wrap); }); }},[s.active?"Pause":"Resume"]));
+        return h("tr",{},[
+          h("td",{},[s.title]),
+          h("td",{class:"muted"},["every "+s.cadenceDays+"d"]),
+          h("td",{},[h("span",{class:"pill "+(s.due?"terminated":"draft")},[s.nextDueAt])]),
+          h("td",{},[h("span",{class:"pill "+(s.active?"active":"")},[s.active?"active":"paused"])]),
+          h("td",{},[act])
+        ]);
+      });
+      wrap.appendChild(tableEl([th("Task"),th("Cadence"),th("Next due"),th("Status"),th("")], rows, 5, "No preventive-maintenance schedules."));
     });
   }
   function workOrderForm(spaces){

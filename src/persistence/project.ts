@@ -25,6 +25,7 @@ import type { BankAccountRecord } from '../bank-account.ts';
 import type { Application as ApplicationRecord } from '../application.ts';
 import type { Tour as TourRecord } from '../tours.ts';
 import type { Turn as TurnRecord } from '../turns.ts';
+import type { PmSchedule as PmScheduleRecord } from '../preventive.ts';
 
 export interface WorldData {
   tenants: Array<{
@@ -143,6 +144,7 @@ export interface WorldData {
   applications?: readonly ApplicationRecord[];
   tours?: readonly TourRecord[];
   unitTurns?: readonly TurnRecord[];
+  pmSchedules?: readonly PmScheduleRecord[];
   // --- full persistence: platform users, custom roles, e-sign, connectors -----
   users?: Array<{ id: string; tenantId: string; code: string; displayName: string; roleId: string; active: boolean }>;
   customRoles?: Array<{ tenantId: string; roleId: string; name: string; description?: string; permissions: readonly string[] }>;
@@ -486,6 +488,14 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       stmt(
         'insert into unit_turn (id, tenant_id, unit_id, status, vacated_at, ready_at, tasks, agent_id, notes, created_at, cancel_reason) values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11) on conflict (id) do update set status = excluded.status, ready_at = excluded.ready_at, tasks = excluded.tasks, agent_id = excluded.agent_id, notes = excluded.notes, cancel_reason = excluded.cancel_reason',
         [t.id, t.tenantId, t.unitId, t.status, t.vacatedAt, t.readyAt ?? null, JSON.stringify(t.tasks ?? []), t.agentId ?? null, t.notes ?? null, t.createdAt, t.cancelReason ?? null],
+      ),
+    );
+  }
+  for (const s of w.pmSchedules ?? []) {
+    out.push(
+      stmt(
+        'insert into pm_schedule (id, tenant_id, title, space_id, cadence_days, priority, next_due_at, last_run_at, active, created_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) on conflict (id) do update set title = excluded.title, space_id = excluded.space_id, cadence_days = excluded.cadence_days, priority = excluded.priority, next_due_at = excluded.next_due_at, last_run_at = excluded.last_run_at, active = excluded.active',
+        [s.id, s.tenantId, s.title, s.spaceId ?? null, s.cadenceDays, s.priority, s.nextDueAt, s.lastRunAt ?? null, s.active, s.createdAt],
       ),
     );
   }
