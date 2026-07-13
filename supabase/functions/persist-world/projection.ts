@@ -213,6 +213,11 @@ export interface WorldData {
     incomeCents?: number; status: string; submittedAt: string; screening?: Record<string, unknown>;
     decidedAt?: string; decidedBy?: string; adverseActionReason?: string;
   }>;
+  tours?: ReadonlyArray<{
+    id: string; tenantId: string; leadId?: string; unitId?: string; prospectName: string; prospectEmail?: string;
+    scheduledAt: string; status: string; agentId?: string; notes?: string; createdAt: string;
+    completedAt?: string; cancelReason?: string;
+  }>;
   users?: Array<{ id: string; tenantId: string; code: string; displayName: string; roleId: string; active: boolean }>;
   customRoles?: Array<{ tenantId: string; roleId: string; name: string; description?: string; permissions: readonly string[] }>;
   integrations?: Array<{
@@ -536,6 +541,14 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       stmt(
         'insert into application (id, tenant_id, lead_id, unit_id, applicant_name, applicant_email, income_cents, status, submitted_at, screening, decided_at, decided_by, adverse_action_reason) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13) on conflict (id) do update set lead_id = excluded.lead_id, unit_id = excluded.unit_id, applicant_name = excluded.applicant_name, applicant_email = excluded.applicant_email, income_cents = excluded.income_cents, status = excluded.status, screening = excluded.screening, decided_at = excluded.decided_at, decided_by = excluded.decided_by, adverse_action_reason = excluded.adverse_action_reason',
         [a.id, a.tenantId, a.leadId ?? null, a.unitId ?? null, a.applicantName, a.applicantEmail ?? null, a.incomeCents ?? null, a.status, a.submittedAt, a.screening ? JSON.stringify(a.screening) : null, a.decidedAt ?? null, a.decidedBy ?? null, a.adverseActionReason ?? null],
+      ),
+    );
+  }
+  for (const t of w.tours ?? []) {
+    out.push(
+      stmt(
+        'insert into tour (id, tenant_id, lead_id, unit_id, prospect_name, prospect_email, scheduled_at, status, agent_id, notes, created_at, completed_at, cancel_reason) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) on conflict (id) do update set lead_id = excluded.lead_id, unit_id = excluded.unit_id, prospect_name = excluded.prospect_name, prospect_email = excluded.prospect_email, scheduled_at = excluded.scheduled_at, status = excluded.status, agent_id = excluded.agent_id, notes = excluded.notes, completed_at = excluded.completed_at, cancel_reason = excluded.cancel_reason',
+        [t.id, t.tenantId, t.leadId ?? null, t.unitId ?? null, t.prospectName, t.prospectEmail ?? null, t.scheduledAt, t.status, t.agentId ?? null, t.notes ?? null, t.createdAt, t.completedAt ?? null, t.cancelReason ?? null],
       ),
     );
   }

@@ -76,6 +76,9 @@ export const PERMISSIONS = [
   // Fair-Housing sensitive, so it is additionally policy-gated + audited.
   'application.read',
   'application.manage',
+  // Tour scheduling — the top of the leasing funnel (a prospect walking a unit).
+  'tour.read',
+  'tour.manage',
   'esign.read',
   'esign.manage',
   // Recording a signer's COMPLETION is the provider's webhook, relayed by the
@@ -145,6 +148,7 @@ const OPS: Permission[] = [
   'roommate.read', 'roommate.manage',
   'crm.read', 'crm.manage',
   'application.read', 'application.manage',
+  'tour.read', 'tour.manage',
   'esign.read', 'esign.manage',
   'renewal.read',
   'ledger.read', 'exception.read', 'subscription.read',

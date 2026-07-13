@@ -465,6 +465,27 @@ const TOOLS: ToolDef[] = [
       return { method: 'POST', path: `/agreements/${id}/renew`, body };
     },
   },
+  {
+    spec: {
+      name: 'schedule_tour',
+      description: 'Schedule a unit tour for a prospect at a time. Optionally link a CRM lead + unit. Confirm/complete it separately — completing a linked tour advances the lead to toured.',
+      input_schema: schema(
+        { id: str('Client-chosen tour id.'), prospectName: str('Prospect name.'), scheduledAt: str('When the tour is booked for (ISO datetime).'), prospectEmail: str('Prospect email. Optional.'), leadId: str('CRM lead this tours for. Optional.'), unitId: str('Unit being toured. Optional.') },
+        ['id', 'prospectName', 'scheduledAt'],
+      ),
+      strict: true,
+    },
+    toRequest: (i) => ({ method: 'POST', path: '/tours', body: i }),
+  },
+  {
+    spec: {
+      name: 'complete_tour',
+      description: 'Mark a scheduled tour as completed. If it links a CRM lead, the lead advances to toured.',
+      input_schema: schema({ id: str('Tour id to complete.') }, ['id']),
+      strict: true,
+    },
+    toRequest: (i) => ({ method: 'POST', path: `/tours/${i['id']}/complete`, body: {} }),
+  },
   // --- maintenance / reservations / comms ---------------------------------
   {
     spec: {

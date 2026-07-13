@@ -42,6 +42,7 @@ import { RoommateMatcher, type RoommatePreferences, type Chronotype } from '../r
 import { parseCsv, suggestMapping, planImport, type ImportTarget, type ColumnMapping } from '../onboarding.ts';
 import { Crm, type LeadStage } from '../crm.ts';
 import { Applications, type ScreeningResult } from '../application.ts';
+import { Tours } from '../tours.ts';
 import { PeriodLock } from '../period-lock.ts';
 import { BankAccounts } from '../bank-account.ts';
 import { gaapViewFromLines } from '../multigaap.ts';
@@ -205,6 +206,7 @@ export class App {
   readonly roommates = new RoommateMatcher();
   readonly crm = new Crm();
   readonly applications = new Applications();
+  readonly tours = new Tours();
   readonly signatures = new Signatures();
   readonly periodLock = new PeriodLock();
   readonly bankAccounts = new BankAccounts();
@@ -225,6 +227,7 @@ export class App {
   private readonly invoiceTenant = new Map<string, string>();
   private readonly depositTenant = new Map<string, string>();
   private readonly applicationTenant = new Map<string, string>();
+  private readonly tourTenant = new Map<string, string>();
   private readonly flushMarks = new Map<string, FlushMark>();
   /** Per-tenant in-flight flush, so overlapping flushes serialize (see flushWorld). */
   private readonly flushInFlight = new Map<string, Promise<void>>();
@@ -848,6 +851,11 @@ export class App {
   private ownedApplication(ctx: AuthContext, id: string) {
     if (this.applicationTenant.get(id) !== ctx.tenantId) throw new HttpError(404, 'application not found');
     return this.applications.get(id);
+  }
+
+  private ownedTour(ctx: AuthContext, id: string) {
+    if (this.tourTenant.get(id) !== ctx.tenantId) throw new HttpError(404, 'tour not found');
+    return this.tours.get(id);
   }
 
   private ownedProspect(ctx: AuthContext, id: string) {
@@ -2558,6 +2566,58 @@ export class App {
       }, (r) => ({ status: 200, body: r }));
     });
 
+    // --- tour scheduling (Phase 2E) ---------------------------------------
+    // The top of the leasing funnel: a prospect requests a tour of a unit at a
+    // time; the office confirms, then completes it (advancing the linked lead to
+    // 'toured'), marks a no-show, or cancels. Links a lead + unit.
+    this.add('GET', '/tours', 'tour.read', (ctx) => ({ status: 200, body: { tours: this.tours.list(ctx.tenantId) } }));
+
+    this.add('GET', '/tours/:id', 'tour.read', (ctx, p) => ({ status: 200, body: this.ownedTour(ctx, p['id']!) }));
+
+    this.add('POST', '/tours', 'tour.manage', (ctx, _p, body) => {
+      const leadId = this.optString(body, 'leadId');
+      if (leadId) this.ownedLead(ctx, leadId);
+      const unitId = this.optString(body, 'unitId');
+      if (unitId && this.tenantHasUnits(ctx.tenantId) && !this.masterData.units.get(ctx.tenantId, unitId)) throw new HttpError(404, 'unit not found');
+      const tour = this.tours.request({
+        id: this.requireString(body, 'id'),
+        tenantId: ctx.tenantId,
+        prospectName: this.requireString(body, 'prospectName'),
+        scheduledAt: this.requireString(body, 'scheduledAt'),
+        prospectEmail: this.optString(body, 'prospectEmail'),
+        leadId, unitId,
+        agentId: this.optString(body, 'agentId'),
+        notes: this.optString(body, 'notes'),
+        createdAt: this.now(),
+      });
+      this.tourTenant.set(tour.id, ctx.tenantId);
+      return { status: 201, body: tour };
+    });
+
+    this.add('POST', '/tours/:id/confirm', 'tour.manage', (ctx, p, body) => {
+      this.ownedTour(ctx, p['id']!);
+      return { status: 200, body: this.tours.confirm(p['id']!, this.optString(body, 'agentId') ?? ctx.actor) };
+    });
+
+    // Completing a tour advances the linked lead to 'toured' (the funnel step).
+    this.add('POST', '/tours/:id/complete', 'tour.manage', (ctx, p, body) => {
+      const tour = this.ownedTour(ctx, p['id']!);
+      const at = this.now();
+      const done = this.tours.complete(tour.id, at, this.optString(body, 'notes'));
+      if (tour.leadId) { try { this.crm.advance(tour.leadId, 'toured', at); } catch { /* already past 'toured' */ } }
+      return { status: 200, body: done };
+    });
+
+    this.add('POST', '/tours/:id/no-show', 'tour.manage', (ctx, p, _body) => {
+      this.ownedTour(ctx, p['id']!);
+      return { status: 200, body: this.tours.noShow(p['id']!, this.now()) };
+    });
+
+    this.add('POST', '/tours/:id/cancel', 'tour.manage', (ctx, p, body) => {
+      this.ownedTour(ctx, p['id']!);
+      return { status: 200, body: this.tours.cancel(p['id']!, this.optString(body, 'reason')) };
+    });
+
     // --- e-signature for lease execution (#17) ----------------------------
     // The CRM → lease → e-sign tail. The provider I/O lives in an edge adapter
     // (secretRef); a fully signed envelope advances the CRM lead but does NOT
@@ -3358,6 +3418,7 @@ export class App {
         partyId: l.partyId, createdAt: l.createdAt, updatedAt: l.updatedAt, stageAt: l.stageAt as Record<string, unknown>, lostReason: l.lostReason,
       })),
       applications: this.applications.list(tenantId),
+      tours: this.tours.list(tenantId),
       // --- full persistence: platform users, custom roles, e-sign, connectors --
       users: this.masterData.users.list(tenantId),
       customRoles: this.roles.customRolesFor(tenantId).map((r) => ({ tenantId, roleId: r.id, name: r.name, description: r.description, permissions: r.permissions === '*' ? [...this.roles.permissionsFor(tenantId, r.id)] : (r.permissions as readonly string[]) })),
@@ -3448,6 +3509,8 @@ export class App {
     this.crm.hydrate((world.leads ?? []) as never);
     this.applications.hydrate((world.applications ?? []) as never);
     for (const a of world.applications ?? []) this.applicationTenant.set(a.id, a.tenantId);
+    this.tours.hydrate((world.tours ?? []) as never);
+    for (const t of world.tours ?? []) this.tourTenant.set(t.id, t.tenantId);
     this.signatures.hydrate((world.signatureEnvelopes ?? []) as never);
     this.integrations.hydrate((world.integrations ?? []) as never);
     this.connectorOutbox.hydrate((world.connectorCommands ?? []) as never);
