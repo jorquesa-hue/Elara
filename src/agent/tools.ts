@@ -415,6 +415,22 @@ const TOOLS: ToolDef[] = [
     },
     toRequest: (i) => ({ method: 'POST', path: `/signature-envelopes/${i['id']}/send`, body: {} }),
   },
+  {
+    spec: {
+      name: 'draft_lease_envelope',
+      description:
+        'Generate the lease document from an agreement\'s deal terms (jurisdiction-aware) and open a draft e-sign envelope, auto-rostering signers from the agreement\'s party links that carry an email (resident, guarantor, cosigner). Call send_signature to dispatch it. Does NOT execute the lease.',
+      input_schema: schema(
+        { agreementId: str('Agreement to draft the lease for.'), provider: str('E-sign provider, e.g. docusign. Optional (defaults docusign).'), id: str('Client-chosen envelope id. Optional.') },
+        ['agreementId'],
+      ),
+      strict: true,
+    },
+    toRequest: (i) => {
+      const { agreementId, ...body } = i as { agreementId: string };
+      return { method: 'POST', path: `/agreements/${agreementId}/lease-envelope`, body };
+    },
+  },
   // --- maintenance / reservations / comms ---------------------------------
   {
     spec: {

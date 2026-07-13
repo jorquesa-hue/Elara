@@ -46,6 +46,7 @@ import { PeriodLock } from '../period-lock.ts';
 import { BankAccounts } from '../bank-account.ts';
 import { gaapViewFromLines } from '../multigaap.ts';
 import { Signatures } from '../esign.ts';
+import { buildLeaseDocument, renderLeaseText, type LeaseTerms } from '../lease-doc.ts';
 import { meterSubscription, type SubscriptionPlan } from '../subscription.ts';
 import {
   ConfigStore,
@@ -462,6 +463,46 @@ export class App {
     if (!e || e.tenantId !== tenantId) return undefined;
     const unit = this.masterData.units.get(tenantId, e.agreement.currentUnitId);
     return unit?.propertyId;
+  }
+
+  /** Assemble the lease terms for an agreement from the deal state — resident /
+   *  guarantor / cosigner from the party roster, the unit + community, the rent,
+   *  term, deposit, and the tenant's jurisdiction. Feeds the pure lease-doc
+   *  generator (src/lease-doc.ts) and, in turn, the e-sign envelope roster. */
+  private assembleLeaseTerms(tenantId: string, a: Agreement): LeaseTerms {
+    const cfg = this.config.get(tenantId);
+    const partyName = (role: 'resident' | 'financial_responsible' | 'guarantor' | 'cosigner'): string | undefined => {
+      const link = this.parties.partiesFor(a.id, role)[0];
+      if (!link) return undefined;
+      return this.parties.getParty(tenantId, link.partyId)?.displayName;
+    };
+    const residentName = partyName('resident') ?? partyName('financial_responsible')
+      ?? this.masterData.guests.get(tenantId, a.guestId)?.fullName ?? a.guestId;
+    const unit = this.masterData.units.get(tenantId, a.currentUnitId);
+    const propertyId = unit?.propertyId;
+    const propertyName = propertyId ? this.masterData.properties.get(tenantId, propertyId)?.name : undefined;
+    // The active deposit held for the agreement, if any.
+    const dep = this.deposits.all().find((d) => d.agreementId === a.id && d.status === 'held');
+    let taxIdLabel: string | undefined;
+    try { taxIdLabel = cfg.country ? countryProfile(cfg.country).taxIdLabel : undefined; } catch { taxIdLabel = undefined; }
+    return {
+      agreementId: a.id,
+      landlordName: cfg.displayName || 'Landlord',
+      residentName,
+      ...(partyName('guarantor') ? { guarantorName: partyName('guarantor') } : {}),
+      ...(partyName('cosigner') ? { cosignerName: partyName('cosigner') } : {}),
+      unitLabel: unit?.label ?? a.currentUnitId,
+      ...(propertyName ? { propertyName } : {}),
+      kind: a.kind,
+      rateCents: a.rateCents,
+      currency: cfg.currency,
+      start: a.period.start,
+      end: a.period.end,
+      ...(dep ? { depositCents: dep.amountCents } : {}),
+      jurisdiction: cfg.jurisdiction,
+      ...(taxIdLabel ? { taxIdLabel } : {}),
+      generatedAt: this.now(),
+    };
   }
 
   /** The optional numeric/description fields of a unit-type payload, validated. */
@@ -2498,6 +2539,49 @@ export class App {
     this.add('GET', '/signature-envelopes', 'esign.read', (ctx) => ({ status: 200, body: { envelopes: this.signatures.list(ctx.tenantId) } }));
 
     this.add('GET', '/signature-envelopes/:id', 'esign.read', (ctx, p) => ({ status: 200, body: this.ownedEnvelope(ctx, p['id']!) }));
+
+    // --- lease-document generation (Phase 2B) -----------------------------
+    // Draft the lease from the agreement's deal terms — deterministic, so it is
+    // regenerated on demand (no storage of its own). Preview it, then send it
+    // out for signature (the roster is drawn from the same party links).
+    this.add('GET', '/agreements/:id/lease-document', 'esign.read', (ctx, p) => {
+      const a = this.ownedAgreement(ctx, p['id']!);
+      const doc = buildLeaseDocument(this.assembleLeaseTerms(ctx.tenantId, a));
+      return { status: 200, body: { document: doc, text: renderLeaseText(doc) } };
+    });
+
+    // Generate the lease + open an e-sign envelope in one step. Signers are
+    // auto-rostered from the party roles that carry an email (resident, then
+    // guarantor/cosigner); a signer without an email is skipped, and if none
+    // remain the request 400s (there is no one to sign). The envelope is a
+    // DRAFT — POST /signature-envelopes/:id/send dispatches it as usual.
+    this.add('POST', '/agreements/:id/lease-envelope', 'esign.manage', (ctx, p, body) => {
+      const a = this.ownedAgreement(ctx, p['id']!);
+      const doc = buildLeaseDocument(this.assembleLeaseTerms(ctx.tenantId, a));
+      const rosterRoles: Array<'resident' | 'financial_responsible' | 'guarantor' | 'cosigner'> = ['resident', 'financial_responsible', 'guarantor', 'cosigner'];
+      const seen = new Set<string>();
+      const signers: Array<{ name: string; email: string; role: string; partyId?: string; order?: number }> = [];
+      for (const role of rosterRoles) {
+        for (const link of this.parties.partiesFor(a.id, role)) {
+          const party = this.parties.getParty(ctx.tenantId, link.partyId);
+          if (!party?.email || seen.has(party.id)) continue;
+          seen.add(party.id);
+          signers.push({ name: party.displayName, email: party.email, role: role === 'financial_responsible' ? 'resident' : role, partyId: party.id, order: signers.length + 1 });
+        }
+      }
+      if (!signers.length) throw new HttpError(400, 'no party with an email is linked to this agreement to sign the lease');
+      const env = this.signatures.create({
+        id: this.optString(body, 'id') ?? `env-${a.id}`,
+        tenantId: ctx.tenantId,
+        documentName: doc.title,
+        provider: this.optString(body, 'provider') ?? 'docusign',
+        agreementId: a.id,
+        leadId: this.optString(body, 'leadId'),
+        signers,
+        createdAt: this.now(),
+      });
+      return { status: 201, body: { envelope: env, document: doc } };
+    });
 
     // --- ledger (tenant-scoped) -------------------------------------------
     this.add('GET', '/ledger/trial-balance', 'ledger.read', (ctx) => ({ status: 200, body: this.trialBalance(ctx.tenantId) }));

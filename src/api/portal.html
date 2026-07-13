@@ -631,7 +631,25 @@
     if (can("agreement.adjust")) forms.push(adjustRentForm(id));
     if (can("agreement.transfer")) forms.push(transferForm(id));
     if (can("agreement.move")) forms.push(moveForm(id));
+    if (can("esign.read")) forms.push(leaseDocForm(id));
     return forms.length ? h("div",{class:"detail-actions"}, forms) : null;
+  }
+  function leaseDocForm(id){
+    var out=h("div",{},[]);
+    var btns=[ h("button",{class:"btn ghost sm",onclick:function(){
+        api("/agreements/"+id+"/lease-document").then(function(r){
+          out.innerHTML="";
+          if(r.status!==200) return toast((r.body||{}).error||"err","err");
+          out.appendChild(h("pre",{style:"white-space:pre-wrap;font-size:12px;max-height:240px;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:8px"},[r.body.text]));
+        });
+      }},["Preview lease"]) ];
+    if(can("esign.manage")) btns.push(h("button",{class:"btn sm",onclick:function(){
+        api("/agreements/"+id+"/lease-envelope",{method:"POST",body:{provider:"docusign"}}).then(function(r){
+          if(r.status!==201) return toast((r.body||{}).error||("Error "+r.status),"err");
+          toast("Lease envelope drafted — go to E-sign to send","ok");
+        });
+      }},["Draft e-sign envelope"]));
+    return mini("Lease document",[ h("div",{class:"row"}, btns), out ]);
   }
   function moveForm(id){
     return mini("Move in / out",[
