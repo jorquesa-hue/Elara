@@ -17,6 +17,8 @@ export interface SiteUnit { id: string; label: string; active: boolean }
 export interface SiteHold { unitId: string; start: string; end: string; status: string }
 export interface SiteAgreementRate { unitId: string; rateCents: number; start: string }
 
+export interface SiteBrand { color?: string; logoDataUrl?: string; tagline?: string; locale?: string }
+
 export interface BookingSiteInput {
   tenantId: string;
   displayName: string;
@@ -25,12 +27,14 @@ export interface BookingSiteInput {
   holds: readonly SiteHold[];
   agreements: readonly SiteAgreementRate[]; // used only to derive a per-unit base rate
   rule?: PricingRule; // the tenant's primary dynamic-pricing rule, if any
+  brand?: SiteBrand;
 }
 
 export interface SiteListing {
   tenantId: string;
   displayName: string;
   currency: string;
+  brand: SiteBrand;
   units: Array<{ id: string; label: string; fromCents: number | null }>;
 }
 
@@ -69,6 +73,7 @@ export function siteListing(inp: BookingSiteInput): SiteListing {
     tenantId: inp.tenantId,
     displayName: inp.displayName,
     currency: inp.currency,
+    brand: inp.brand ?? {},
     units: inp.units
       .filter((u) => u.active)
       .map((u) => ({ id: u.id, label: u.label, fromCents: unitBaseCents(u.id, inp) }))

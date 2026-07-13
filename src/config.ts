@@ -59,6 +59,13 @@ export interface TenantConfig {
   country: string;
   /** Legal jurisdiction the policy envelope reasons about (derived from country). */
   jurisdiction: string;
+  // --- brand (optional; drives the portal accent + the public booking site) ---
+  /** Hex accent color, e.g. '#6d8bff'. */
+  brandColor?: string;
+  /** A small logo as a data: URL (base64) or a hosted URL. */
+  logoDataUrl?: string;
+  /** A short marketing tagline shown on the booking site hero. */
+  tagline?: string;
 }
 
 export class ConfigError extends Error {}
@@ -71,6 +78,16 @@ const DEFAULTS: Omit<TenantConfig, 'tenantId' | 'displayName'> = {
   country: 'US',
   jurisdiction: 'US',
 };
+
+/** A logo data URL must be a small image (≤256 KB) to keep the tenant row + flush
+ *  payload sane. Returns a validated value or throws. */
+export function assertBrandLogo(dataUrl: string): string {
+  if (!/^data:image\/(png|jpeg|jpg|svg\+xml|webp|gif);base64,/.test(dataUrl) && !/^https:\/\//.test(dataUrl)) {
+    throw new ConfigError('logo must be an https URL or a data:image/* base64 URL');
+  }
+  if (dataUrl.length > 256 * 1024) throw new ConfigError('logo is too large (max ~256 KB)');
+  return dataUrl;
+}
 
 export function currencyDef(code: string): CurrencyDef {
   const c = SUPPORTED_CURRENCIES.find((x) => x.code === code);

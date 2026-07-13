@@ -83,6 +83,11 @@ export function bookingSiteHtml(): string {
     if(r.status!==200){ document.getElementById("heroTitle").textContent="This site isn't published yet."; document.getElementById("brandName").textContent="Booking"; return; }
     cfg = r.body; document.getElementById("brandName").textContent = cfg.displayName; document.title = "Book your stay · "+cfg.displayName;
     document.getElementById("foot").textContent = cfg.displayName;
+    // Apply the operator's brand: accent color, logo, tagline.
+    var b = cfg.brand || {};
+    if(b.color && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(b.color)){ document.documentElement.style.setProperty("--accent", b.color); document.documentElement.style.setProperty("--accent2", b.color); }
+    if(b.logoDataUrl){ var l=document.querySelector(".logo"); if(l){ var img=document.createElement("img"); img.src=b.logoDataUrl; img.alt=cfg.displayName; img.style.cssText="height:34px;width:auto;border-radius:6px"; l.replaceWith(img); } }
+    if(b.tagline){ document.querySelector(".sub").textContent = b.tagline; }
     renderUnits(cfg.units.map(function(u){ return { unitId:u.id, label:u.label, available:true, nightlyCents:u.fromCents, from:true }; }));
   });
 

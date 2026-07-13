@@ -127,6 +127,26 @@ await pub.click('button:has-text("Check availability")');
 await pub.waitForTimeout(900);
 await pub.screenshot({ path: './qa-shots/11-public-availability.png', fullPage: true });
 console.log('shot: 11-public-availability');
+
+// Branding: set a brand color + tagline in Settings, save.
+await page.click('nav button:has-text("Settings")');
+await page.waitForSelector('text=Branding');
+await page.evaluate(() => { const c = document.querySelector('input[type="color"]') as HTMLInputElement; if (c) c.value = '#e0533a'; });
+await page.fill('input[placeholder="Your beachfront home away from home"]', 'Your island escape on Ilhabela');
+await page.click('button:has-text("Save branding")');
+await page.waitForTimeout(700);
+await shot('12-branding-settings');
+// The sidebar accent should now be the brand color.
+await page.click('nav button:has-text("Dashboard")');
+await page.waitForTimeout(500);
+await shot('13-portal-rebranded');
+// The public site should reflect the brand (reload it).
+await pub.goto(base + '/site/jq');
+await pub.waitForSelector('text=Your island escape');
+await pub.waitForTimeout(600);
+await pub.screenshot({ path: './qa-shots/14-public-branded.png', fullPage: true });
+console.log('shot: 14-public-branded');
+
 if (pubErrors.length) errors.push(...pubErrors.map((e) => 'PUBLIC: ' + e));
 
 console.log(errors.length ? `\nCONSOLE ERRORS (${errors.length}):\n` + errors.join('\n') : '\nNO CONSOLE ERRORS');

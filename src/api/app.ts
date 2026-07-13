@@ -48,6 +48,7 @@ import {
   SUPPORTED_LOCALES,
   SUPPORTED_CURRENCIES,
   BUSINESS_STRUCTURES,
+  assertBrandLogo,
   type TenantConfig,
 } from '../config.ts';
 import { COUNTRY_PROFILES, countryProfile } from '../country.ts';
@@ -795,6 +796,20 @@ export class App {
     // and, when currency/locale/timezone are omitted, seeds them from the
     // country profile — but the master-data structure is identical for all.
     this.add('PUT', '/config', 'config.manage', (ctx, _p, body) => {
+      // Brand fields are orthogonal to country/jurisdiction — collect them once
+      // and apply after whichever config path runs. A logo is validated + size-capped.
+      const brand: Partial<Pick<TenantConfig, 'brandColor' | 'logoDataUrl' | 'tagline'>> = {};
+      const brandColor = this.optString(body, 'brandColor');
+      if (brandColor !== undefined) brand.brandColor = brandColor || undefined;
+      const tagline = this.optString(body, 'tagline');
+      if (tagline !== undefined) brand.tagline = tagline || undefined;
+      const logo = this.optString(body, 'logoDataUrl');
+      if (logo !== undefined) {
+        try { brand.logoDataUrl = logo ? assertBrandLogo(logo) : undefined; }
+        catch (e) { throw new HttpError(400, e instanceof Error ? e.message : 'invalid logo'); }
+      }
+      const applyBrand = (cfg: TenantConfig) => (Object.keys(brand).length ? this.config.update(ctx.tenantId, brand) : cfg);
+
       const country = this.optString(body, 'country');
       if (country !== undefined) {
         const overrides: Partial<Omit<TenantConfig, 'tenantId' | 'displayName' | 'country' | 'jurisdiction'>> = {};
@@ -811,13 +826,13 @@ export class App {
         const established = this.config.has(ctx.tenantId);
         const current = this.config.get(ctx.tenantId).jurisdiction;
         const next = countryProfile(country).jurisdiction;
-        const apply = () => this.config.setupForCountry(ctx.tenantId, displayName, country, overrides);
+        const apply = () => applyBrand(this.config.setupForCountry(ctx.tenantId, displayName, country, overrides));
         if (established && next !== current) {
           return this.gated('config.change_jurisdiction', ctx, { from: current, to: next }, apply, (cfg) => ({ status: 200, body: cfg }));
         }
         return { status: 200, body: apply() };
       }
-      const patch: Partial<Omit<TenantConfig, 'tenantId'>> = {};
+      const patch: Partial<Omit<TenantConfig, 'tenantId'>> = { ...brand };
       for (const k of ['displayName', 'locale', 'currency', 'timezone', 'businessStructure'] as const) {
         const v = this.optString(body, k);
         if (v !== undefined) patch[k] = v;
@@ -2377,6 +2392,7 @@ export class App {
       holds: this.calendar.allHolds().filter((h) => agIds.has(h.holderId)).map((h) => ({ unitId: h.unitId, start: h.start, end: h.end, status: h.status })),
       agreements: entries.map((e) => ({ unitId: e.agreement.currentUnitId, rateCents: e.agreement.rateCents, start: e.agreement.period.start })),
       rule: this.revenue.listRules(tenantId)[0],
+      brand: { color: cfg.brandColor, logoDataUrl: cfg.logoDataUrl, tagline: cfg.tagline, locale: cfg.locale },
     };
   }
 
@@ -2604,7 +2620,7 @@ export class App {
 
     return {
       // The tenant row now carries its full country-environment config.
-      tenants: [{ id: tenantId, name: cfg.displayName ?? tenantId, displayName: cfg.displayName, locale: cfg.locale, currency: cfg.currency, timezone: cfg.timezone, businessStructure: cfg.businessStructure, country: cfg.country, jurisdiction: cfg.jurisdiction }],
+      tenants: [{ id: tenantId, name: cfg.displayName ?? tenantId, displayName: cfg.displayName, locale: cfg.locale, currency: cfg.currency, timezone: cfg.timezone, businessStructure: cfg.businessStructure, country: cfg.country, jurisdiction: cfg.jurisdiction, brandColor: cfg.brandColor, logoDataUrl: cfg.logoDataUrl, tagline: cfg.tagline }],
       units: this.masterData.units.list(tenantId).map((u) => ({ id: u.id, tenantId, label: u.label, code: u.code, active: u.active })),
       guests: this.masterData.guests.list(tenantId).map((g) => ({ id: g.id, tenantId, fullName: g.fullName, code: g.code, email: g.email })),
       ratePlans: this.masterData.ratePlans.list(tenantId).map((r) => ({
@@ -2696,6 +2712,7 @@ export class App {
         tenantId: t.id, displayName: t.displayName ?? t.name,
         locale: t.locale ?? 'en', currency: t.currency ?? 'USD', timezone: t.timezone ?? 'UTC',
         businessStructure: t.businessStructure ?? 'mixed_portfolio', country: t.country ?? 'US', jurisdiction: t.jurisdiction ?? 'US',
+        ...(t.brandColor ? { brandColor: t.brandColor } : {}), ...(t.logoDataUrl ? { logoDataUrl: t.logoDataUrl } : {}), ...(t.tagline ? { tagline: t.tagline } : {}),
       });
     }
     // Master data (unit code/active + guest code/email are all persisted now).

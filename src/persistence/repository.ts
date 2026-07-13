@@ -157,9 +157,10 @@ export class Repositories {
     const obj = (v: unknown) => asObject(v);
     const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : typeof v === 'string' ? JSON.parse(v) : []);
 
-    const tenants = (await one('select id, name, display_name, locale, currency, timezone, business_structure, country, jurisdiction from tenant where id = $1')).map((r) => ({
+    const tenants = (await one('select id, name, display_name, locale, currency, timezone, business_structure, country, jurisdiction, brand_color, logo_data_url, tagline from tenant where id = $1')).map((r) => ({
       id: String(r['id']), name: String(r['name']), displayName: s(r['display_name']), locale: s(r['locale']), currency: s(r['currency']),
       timezone: s(r['timezone']), businessStructure: s(r['business_structure']), country: s(r['country']), jurisdiction: s(r['jurisdiction']),
+      brandColor: s(r['brand_color']), logoDataUrl: s(r['logo_data_url']), tagline: s(r['tagline']),
     }));
     const units = (await one('select id, tenant_id, label, code, active from unit where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, label: String(r['label']), code: s(r['code']), active: r['active'] == null ? undefined : Boolean(r['active']) }));
     const guests = (await one('select id, tenant_id, full_name, code, email from guest where tenant_id = $1')).map((r) => ({ id: String(r['id']), tenantId: tid, fullName: String(r['full_name']), code: s(r['code']), email: s(r['email']) }));
