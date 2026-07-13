@@ -22,8 +22,13 @@ const REVENUE_PREFIX = 'revenue:';
  * agreement. Both read the one ledger; neither writes.
  */
 export function gaapView(ledger: Ledger, basis: Basis): GaapView {
+  return gaapViewFromLines(ledger.allLines, basis);
+}
+
+/** Same as gaapView but over an explicit (e.g. tenant-scoped) line set — the
+ *  API surface for a single tenant's GAAP view. */
+export function gaapViewFromLines(lines: readonly JournalLine[], basis: Basis): GaapView {
   const revenue = new Map<string, number>();
-  const lines = ledger.allLines;
 
   if (basis === 'accrual') {
     for (const l of lines) {

@@ -769,8 +769,22 @@
       wrap.appendChild(h("p",{class:"sub"},[t("ledger.trialBalance")+": ", h("span",{class:"pill "+(b.balanced?"ok":"bad")},[b.balanced?t("ledger.balanced"):t("ledger.unbalanced")])]));
       wrap.appendChild(tableEl([th(t("field.account")),th(t("field.balance"))], rows, 2, t("ledger.noPostings")));
     });
+    if (can("reports.read")) { var gw=h("div",{style:"margin-top:22px"},[]); main.appendChild(gw); gaapPanel(gw); }
     if (can("entity.manage")) { var bw=h("div",{style:"margin-top:22px"},[]); main.appendChild(bw); bankAccountsPanel(bw); }
     if (can("period.manage")) { var pw=h("div",{style:"margin-top:22px"},[]); main.appendChild(pw); periodClosePanel(pw); }
+  }
+  // Multi-GAAP: recognized revenue under accrual (at invoice) vs cash (at
+  // collection) — the same ledger, two bases.
+  function gaapPanel(wrap){
+    Promise.all([api("/gaap/accrual"),api("/gaap/cash")]).then(function(rs){
+      if(rs[0].status!==200) return;
+      var a=rs[0].body, c=rs[1].body;
+      wrap.appendChild(h("div",{class:"panel"},[
+        h("strong",{},["Revenue recognition (multi-GAAP)"]),
+        h("p",{class:"sub",style:"margin:6px 0 10px"},["The same ledger under two bases: accrual recognizes at invoice, cash at collection."]),
+        h("div",{class:"cards"},[ mkCard("Accrual revenue", fmt(a.totalRevenueCents)), mkCard("Cash-basis revenue", fmt(c.totalRevenueCents)) ])
+      ]));
+    });
   }
   // Bank accounts: an operating vs TRUST distinction. Deposit cash books into a
   // trust account (its own GL cash account) so it doesn't commingle with

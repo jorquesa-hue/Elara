@@ -43,6 +43,7 @@ import { parseCsv, suggestMapping, planImport, type ImportTarget, type ColumnMap
 import { Crm, type LeadStage } from '../crm.ts';
 import { PeriodLock } from '../period-lock.ts';
 import { BankAccounts } from '../bank-account.ts';
+import { gaapViewFromLines } from '../multigaap.ts';
 import { Signatures } from '../esign.ts';
 import { meterSubscription, type SubscriptionPlan } from '../subscription.ts';
 import {
@@ -2457,6 +2458,18 @@ export class App {
     this.add('POST', '/collections/sweep', 'collections.run', (ctx, _p, body) => {
       const at = this.optString(body, 'at') ?? this.now();
       return { status: 200, body: this.runCollectionsSweep(ctx, at) };
+    });
+
+    // --- multi-GAAP revenue view (accrual vs cash) ------------------------
+    // The same ledger, recognized under different bases: accrual books revenue
+    // at invoice issue, cash proportionally to collection. Read-only projection.
+    this.add('GET', '/gaap/:basis', 'reports.read', (ctx, p) => {
+      const basis = p['basis'] === 'cash' ? 'cash' : p['basis'] === 'accrual' ? 'accrual' : null;
+      if (!basis) throw new HttpError(400, "basis must be 'accrual' or 'cash'");
+      const agIds = new Set([...this.agreements.values()].filter((e) => e.tenantId === ctx.tenantId).map((e) => e.agreement.id));
+      const lines = this.ledger.allLines.filter((l) => (l.agreementId != null && agIds.has(l.agreementId)) || l.tenantId === ctx.tenantId);
+      const view = gaapViewFromLines(lines, basis);
+      return { status: 200, body: { basis, totalRevenueCents: view.totalRevenueCents, revenue: Object.fromEntries(view.revenue) } };
     });
 
     // --- period close (month-end posting locks) ---------------------------
