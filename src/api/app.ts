@@ -48,7 +48,7 @@ import { BankAccounts } from '../bank-account.ts';
 import { gaapViewFromLines } from '../multigaap.ts';
 import { Signatures } from '../esign.ts';
 import { buildLeaseDocument, renderLeaseText, type LeaseTerms } from '../lease-doc.ts';
-import { renewalsDue, proposedRate, addMonths, DEFAULT_RENEWAL_POLICY, type RenewalPolicy, type RenewalOffer } from '../renewals.ts';
+import { renewalsDue, proposedRate, addMonths, daysUntil, DEFAULT_RENEWAL_POLICY, type RenewalPolicy, type RenewalOffer } from '../renewals.ts';
 import { meterSubscription, type SubscriptionPlan } from '../subscription.ts';
 import {
   ConfigStore,
@@ -607,6 +607,66 @@ export class App {
     const leads = this.crm.list(tenantId).filter((l) => l.partyId === partyId).map((l) => ({ id: l.id, stage: l.stage }));
     const prospects = this.roommates.list(tenantId).filter((r) => r.partyId === partyId).map((r) => ({ id: r.id, name: r.name }));
     return buildSubjectAccessReport({ generatedAt: this.now(), party, roles, invoices, bills, notifications, leads, prospects });
+  }
+
+  /** Assemble a resident's self-service home from the tenant-scoped slices,
+   *  scoped to the agreements the party is linked to. Party-scoped read: a
+   *  resident sees only their own lease(s), balance, invoices and deposits. */
+  private residentHome(tenantId: string, partyId: string) {
+    const party = this.parties.getParty(tenantId, partyId);
+    if (!party) throw new HttpError(404, 'party not found');
+    const at = this.now();
+    // The agreements this party is linked to (any role), in this tenant.
+    const links = this.parties.allLinks().filter((l) => l.partyId === partyId);
+    const seen = new Set<string>();
+    const agreements: Array<Record<string, unknown>> = [];
+    let totalBalanceCents = 0;
+    let totalDepositCents = 0;
+    for (const link of links) {
+      const entry = this.agreements.get(link.agreementId);
+      if (!entry || entry.tenantId !== tenantId || seen.has(link.agreementId)) continue;
+      seen.add(link.agreementId);
+      const a = entry.agreement;
+      const invoices = this.billing.allInvoices().filter((i) => i.agreementId === a.id);
+      const balanceCents = invoices.reduce((n, i) => n + (i.totalCents - i.paidCents), 0);
+      const depositHeldCents = this.deposits.all().filter((d) => d.agreementId === a.id && d.status === 'held').reduce((n, d) => n + d.amountCents, 0);
+      totalBalanceCents += balanceCents;
+      totalDepositCents += depositHeldCents;
+      const unit = this.masterData.units.get(tenantId, a.currentUnitId);
+      agreements.push({
+        id: a.id,
+        role: link.role,
+        kind: a.kind,
+        status: a.status,
+        unitId: a.currentUnitId,
+        unitLabel: unit?.label ?? a.currentUnitId,
+        rateCents: a.rateCents,
+        start: a.period.start,
+        end: a.period.end,
+        daysToExpiry: daysUntil(at, a.period.end),
+        balanceCents,
+        openInvoiceCount: invoices.filter((i) => i.status !== 'paid').length,
+        depositHeldCents,
+      });
+    }
+    // Renewal offers due on the resident's own leases (informational — accepting
+    // stays an operator action).
+    const renewalOffers = renewalsDue(
+      agreements
+        .filter((ag) => ag.status === 'active')
+        .map((ag) => ({ id: String(ag.id), kind: String(ag.kind), status: String(ag.status), rateCents: Number(ag.rateCents), end: String(ag.end), residentName: party.displayName })),
+      at,
+      DEFAULT_RENEWAL_POLICY,
+    );
+    const currency = this.config.get(tenantId).currency;
+    return {
+      profile: { partyId, name: party.displayName, email: party.email },
+      currency,
+      totalBalanceCents,
+      totalDepositCents,
+      agreements,
+      renewalOffers,
+    };
   }
 
   /** Execute an erasure: redact the party's PII + its notification recipients,
@@ -2122,6 +2182,54 @@ export class App {
     // party. Operator-gated (privacy.export = DPO/manager); a party-scoped token
     // (a guest) may export ONLY its own party. The route permission is null so the
     // handler can allow either path — a guest lacks privacy.export by design.
+    // --- resident self-service (Phase 3A) ---------------------------------
+    // The tenant-facing home: a party-scoped token (a resident, carrying partyId)
+    // sees ONLY their own lease(s), balance, invoices and deposits. permission is
+    // null and the handler requires a partyId — an operator token (no partyId)
+    // has no "home" and is refused, so this can never leak another party's data.
+    this.add('GET', '/resident/home', null, (ctx) => {
+      if (ctx.partyId === undefined) throw new HttpError(403, 'a resident session is required');
+      return { status: 200, body: this.residentHome(ctx.tenantId, ctx.partyId) };
+    });
+
+    // A resident's own maintenance requests (the work orders they raised).
+    this.add('GET', '/resident/work-orders', null, (ctx) => {
+      if (ctx.partyId === undefined) throw new HttpError(403, 'a resident session is required');
+      const mine = this.maintenance.list(ctx.tenantId).filter((w) => w.requestedByPartyId === ctx.partyId);
+      return { status: 200, body: { workOrders: mine } };
+    });
+
+    // Submit a maintenance request against a lease the resident is linked to. It
+    // stamps requestedByPartyId so the resident (and the office) can track it,
+    // and still passes the work_order.open policy gate — no bypass. permission is
+    // null; the handler requires a partyId AND that the party is linked to the
+    // agreement (else 404), so a resident can only file against their own unit.
+    this.add('POST', '/resident/work-orders', null, (ctx, _p, body) => {
+      if (ctx.partyId === undefined) throw new HttpError(403, 'a resident session is required');
+      const agreementId = this.requireString(body, 'agreementId');
+      const entry = this.agreements.get(agreementId);
+      if (!entry || entry.tenantId !== ctx.tenantId || !this.callerLinkedToAgreement(ctx.partyId, agreementId)) throw new HttpError(404, 'agreement not found');
+      const unit = this.masterData.units.get(ctx.tenantId, entry.agreement.currentUnitId);
+      const title = this.requireString(body, 'title');
+      const id = this.optString(body, 'id') ?? `wo-res-${agreementId}-${this.now()}`;
+      const priority = this.optString(body, 'priority') as WorkOrderPriority | undefined;
+      const unitNote = unit ? `Unit ${unit.label}. ` : '';
+      return this.gated(
+        'work_order.open',
+        ctx,
+        { agreementId },
+        () => this.maintenance.open({
+          id, tenantId: ctx.tenantId, title,
+          description: `${unitNote}${this.optString(body, 'description') ?? ''}`.trim(),
+          category: 'resident_request',
+          priority,
+          requestedByPartyId: ctx.partyId,
+          openedAt: this.now(),
+        }),
+        (wo) => ({ status: 201, body: wo }),
+      );
+    });
+
     this.add('GET', '/privacy/parties/:id/export', null, (ctx, p) => {
       const id = p['id']!;
       if (ctx.partyId !== undefined) {
