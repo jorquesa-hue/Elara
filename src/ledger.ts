@@ -45,11 +45,21 @@ export class LedgerError extends Error {}
 export class Ledger {
   private lines: JournalLine[] = [];
   private entryIds = new Set<string>();
+  /** Optional guard run before every post — used to enforce closed accounting
+   *  periods (a closed month rejects new entries). Injected by the App. The
+   *  tenant is resolved from tenantId OR (for agreement-linked entries that carry
+   *  no tenantId) the agreementId, so the guard can find the right tenant. */
+  private postingGuard?: (entry: { tenantId?: string; agreementId?: string; postedAt: string }) => void;
+
+  setPostingGuard(guard: (entry: { tenantId?: string; agreementId?: string; postedAt: string }) => void): void {
+    this.postingGuard = guard;
+  }
 
   post(input: JournalEntryInput): readonly JournalLine[] {
     if (this.entryIds.has(input.entryId)) {
       throw new LedgerError(`duplicate entry id: ${input.entryId}`);
     }
+    if (this.postingGuard) this.postingGuard({ tenantId: input.tenantId, agreementId: input.agreementId, postedAt: input.postedAt });
     if (input.lines.length < 2) {
       throw new LedgerError(`entry ${input.entryId} needs at least two lines`);
     }

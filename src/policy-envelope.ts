@@ -142,6 +142,18 @@ export const POLICY_RULES: readonly PolicyRule[] = [
     effect: 'escalate',
     description: 'Changing an ESTABLISHED tenant jurisdiction can weaken a regulated control (e.g. move BR→US to escape the deposit cap): a human confirms. Initial setup (no prior jurisdiction) is not this action.',
   },
+  {
+    id: 'pol-ledger-close-period',
+    action: 'ledger.close_period',
+    effect: 'allow',
+    description: 'Closing an accounting period at month-end is a routine finance action (audited via the action log).',
+  },
+  {
+    id: 'pol-ledger-reopen-period',
+    action: 'ledger.reopen_period',
+    effect: 'escalate',
+    description: 'Re-opening a CLOSED accounting period restates books a fund/owner may already have received: a human confirms the restatement. Closing a period is routine (allow).',
+  },
   { id: 'pol-collections-remind', action: 'collections.remind', effect: 'allow', description: 'Payment reminders are routine.' },
   { id: 'pol-collections-latefee', action: 'collections.late_fee', effect: 'allow', description: 'Contractual late fees are routine.' },
   { id: 'pol-collections-suspend', action: 'collections.suspend', effect: 'escalate', description: 'Service suspension is guest-impacting: human confirms.' },

@@ -128,6 +128,10 @@ export interface WorldData {
     id: string; action: string; ctx: Record<string, unknown>; reason: string;
     status: string; createdAt: string; resolvedAt?: string; resolvedBy?: string; note?: string;
   }>;
+  periodLocks?: ReadonlyArray<{
+    tenantId: string; period: string; status: string;
+    closedAt?: string; closedBy?: string; reopenedAt?: string; reopenedBy?: string;
+  }>;
   legalEntities?: Array<{ id: string; tenantId: string; role: string; name: string; taxId?: string }>;
   parties?: Array<{
     id: string; tenantId: string; kind: string; displayName: string;
@@ -564,6 +568,14 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       stmt(
         'insert into exception_item (id, action, ctx, reason, status, created_at, resolved_at, resolved_by, note) values ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9) on conflict (id) do update set status = excluded.status, resolved_at = excluded.resolved_at, resolved_by = excluded.resolved_by, note = excluded.note',
         [x.id, x.action, JSON.stringify(x.ctx ?? {}), x.reason, x.status, x.createdAt, x.resolvedAt ?? null, x.resolvedBy ?? null, x.note ?? null],
+      ),
+    );
+  }
+  for (const pl of w.periodLocks ?? []) {
+    out.push(
+      stmt(
+        'insert into period_lock (tenant_id, period, status, closed_at, closed_by, reopened_at, reopened_by) values ($1, $2, $3, $4, $5, $6, $7) on conflict (tenant_id, period) do update set status = excluded.status, closed_at = excluded.closed_at, closed_by = excluded.closed_by, reopened_at = excluded.reopened_at, reopened_by = excluded.reopened_by',
+        [pl.tenantId, pl.period, pl.status, pl.closedAt ?? null, pl.closedBy ?? null, pl.reopenedAt ?? null, pl.reopenedBy ?? null],
       ),
     );
   }

@@ -227,7 +227,8 @@ export class Repositories {
     // filter by tenant_id or a cold-start would rehydrate every tenant's audit.
     const actionLog = (await one('select seq, tenant_id, at, actor, action, effect, rule_id, outcome, reason, exception_id from action_log where tenant_id = $1 order by seq')).map((r) => ({ seq: Number(r['seq']), tenantId: tid, at: toIso(r['at']), actor: String(r['actor']), action: String(r['action']), effect: String(r['effect']), ruleId: s(r['rule_id']) ?? null, outcome: String(r['outcome']), reason: String(r['reason']), exceptionId: s(r['exception_id']) ?? null }));
 
-    return { tenants, units, unitTypes, properties, guests, ratePlans, users, customRoles, legalEntities, parties, spaces, chargeTypes, agreements, holds, journalLines, invoices, payments, deposits, bills, apPayments, agreementParties, pricingRules, purchaseOrders, budgets, prospects, leads, integrations, connectorCommands, signatureEnvelopes, workOrders, notifications, exceptions, actionLog } as unknown as WorldData;
+    const periodLocks = (await one('select tenant_id, period, status, closed_at, closed_by, reopened_at, reopened_by from period_lock where tenant_id = $1')).map((r) => ({ tenantId: tid, period: String(r['period']), status: String(r['status']), closedAt: s(r['closed_at']) ? toIso(r['closed_at']) : undefined, closedBy: s(r['closed_by']), reopenedAt: s(r['reopened_at']) ? toIso(r['reopened_at']) : undefined, reopenedBy: s(r['reopened_by']) }));
+    return { tenants, units, unitTypes, properties, guests, ratePlans, users, customRoles, legalEntities, parties, spaces, chargeTypes, agreements, holds, journalLines, invoices, payments, deposits, bills, apPayments, agreementParties, pricingRules, purchaseOrders, budgets, prospects, leads, integrations, connectorCommands, signatureEnvelopes, workOrders, notifications, exceptions, periodLocks, actionLog } as unknown as WorldData;
   }
 
   private async activeHoldsAll(): Promise<CalendarHold[]> {

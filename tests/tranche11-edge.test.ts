@@ -104,6 +104,7 @@ function buildWorld(): WorldData {
     connectorCommands: [{ id: 'cmd-1', tenantId: 't-1', integrationId: 'int-1', action: 'lock.unlock', payload: { spaceId: 's-u' }, status: 'succeeded', createdAt: '2026-07-01T00:00:00Z', dispatchedAt: '2026-07-01T00:01:00Z', resolvedAt: '2026-07-01T00:02:00Z', result: { code: 200 } }],
     notifications: [{ id: 'notif-1', tenantId: 't-1', channel: 'email', to: 'ana@x.com', kind: 'collections_reminder', data: { invoiceId: 'inv-1', amountCents: 100000 }, status: 'pending', createdAt: '2026-07-01T00:00:00Z' }],
     signatureEnvelopes: [{ id: 'env-1', tenantId: 't-1', documentName: 'Lease', provider: 'docusign', providerRef: 'ext-1', leadId: 'ld-1', agreementId: 'ag-1', signers: [{ name: 'Ana', email: 'ana@x.com', role: 'resident', signedAt: '2026-07-03T00:00:00Z' }], status: 'signed', createdAt: '2026-07-01T00:00:00Z', sentAt: '2026-07-01T00:05:00Z', completedAt: '2026-07-03T00:00:00Z' }],
+    periodLocks: [{ tenantId: 't-1', period: '2026-06', status: 'closed', closedAt: '2026-07-01T00:00:00Z', closedBy: 'mgr' }],
   };
 }
 

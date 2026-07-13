@@ -81,6 +81,9 @@ export const PERMISSIONS = [
   // Running the overdue-collections sweep (usually a scheduled service-role cron,
   // or a manager on demand). Each stage action it takes is still policy-gated.
   'collections.run',
+  // Closing / re-opening accounting periods (month-end). Finance function;
+  // re-opening a closed period is additionally policy-gated (escalate).
+  'period.manage',
   // Receiving a vendor-initiated integration event (the inbound webhook, relayed by
   // the service role) — deliberately NOT in OPS, like esign.complete.
   'integration.events',
@@ -143,7 +146,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'manager',
     name: 'Manager',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'agreement.execute', 'collections.run', 'metrics.scrape', 'privacy.export', 'privacy.manage'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'agreement.execute', 'collections.run', 'period.manage', 'metrics.scrape', 'privacy.export', 'privacy.manage'],
     builtin: true,
     description: 'Runs the property: all operations, approvals, staff and master data.',
   },
@@ -151,7 +154,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'staff',
     name: 'Staff',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'masterdata.manage', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'agreement.execute', 'collections.run', 'metrics.scrape', 'privacy.export', 'privacy.manage'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'masterdata.manage', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'agreement.execute', 'collections.run', 'period.manage', 'metrics.scrape', 'privacy.export', 'privacy.manage'],
     builtin: true,
     description: 'Approvals and day-to-day management.',
   },
@@ -159,7 +162,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'accountant',
     name: 'Accountant',
-    permissions: ['invoice.read', 'invoice.issue', 'payment.record', 'deposit.read', 'deposit.refund', 'ledger.read', 'reports.read', 'collections.run', 'subscription.read', 'masterdata.read', 'config.read', 'party.read', 'entity.read', 'entity.manage', 'bill.read', 'bill.issue', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'procurement.read', 'procurement.manage'],
+    permissions: ['invoice.read', 'invoice.issue', 'payment.record', 'deposit.read', 'deposit.refund', 'ledger.read', 'reports.read', 'collections.run', 'period.manage', 'subscription.read', 'masterdata.read', 'config.read', 'party.read', 'entity.read', 'entity.manage', 'bill.read', 'bill.issue', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'procurement.read', 'procurement.manage'],
     builtin: true,
     description: 'Finance: bills rent, ledger, payments, deposit refunds, accounts payable, collections, reporting.',
   },

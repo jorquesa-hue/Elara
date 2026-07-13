@@ -41,6 +41,7 @@ import { Procurement, computeBudgetStatus, type PurchaseOrderLine, type Budget }
 import { RoommateMatcher, type RoommatePreferences, type Chronotype } from '../roommate.ts';
 import { parseCsv, suggestMapping, planImport, type ImportTarget, type ColumnMapping } from '../onboarding.ts';
 import { Crm, type LeadStage } from '../crm.ts';
+import { PeriodLock } from '../period-lock.ts';
 import { Signatures } from '../esign.ts';
 import { meterSubscription, type SubscriptionPlan } from '../subscription.ts';
 import {
@@ -199,6 +200,7 @@ export class App {
   readonly roommates = new RoommateMatcher();
   readonly crm = new Crm();
   readonly signatures = new Signatures();
+  readonly periodLock = new PeriodLock();
 
   readonly config: ConfigStore;
   readonly roles: RoleRegistry;
@@ -221,6 +223,13 @@ export class App {
   private readonly routes: Route[] = [];
 
   constructor(config: AppConfig = {}) {
+    // Enforce closed accounting periods at the single ledger chokepoint: no entry
+    // may post into a closed month. The tenant is resolved from the entry's
+    // tenantId or (agreement-linked entries) via the agreement.
+    this.ledger.setPostingGuard(({ tenantId, agreementId, postedAt }) => {
+      const tid = tenantId ?? (agreementId ? this.agreements.get(agreementId)?.tenantId : undefined);
+      if (tid) this.periodLock.assertOpen(tid, postedAt);
+    });
     this.runtime = new AgentRuntime(new PolicyEnvelope(), this.exceptions);
     this.billing = new Billing(this.ledger);
     this.payables = new Payables(this.ledger);
@@ -2423,6 +2432,26 @@ export class App {
       return { status: 200, body: this.runCollectionsSweep(ctx, at) };
     });
 
+    // --- period close (month-end posting locks) ---------------------------
+    this.add('GET', '/periods', 'ledger.read', (ctx) => ({ status: 200, body: { periods: this.periodLock.list(ctx.tenantId) } }));
+
+    // Close a period — no journal entry may post into it afterward. Routine
+    // finance action (RBAC only). Recorded in the tenant action log via gated().
+    this.add('POST', '/periods/close', 'period.manage', (ctx, _p, body) => {
+      const period = this.requireString(body, 'period');
+      const at = this.now();
+      return this.gated('ledger.close_period', ctx, { period }, () => this.periodLock.close(ctx.tenantId, period, at, ctx.actor), (r) => ({ status: 200, body: r }));
+    });
+
+    // Re-open a closed period — a regulated RESTATEMENT, so it ESCALATES (202)
+    // for a human, then runs only on approve. Books a fund already received
+    // can't be silently reworked.
+    this.add('POST', '/periods/reopen', 'period.manage', (ctx, _p, body) => {
+      const period = this.requireString(body, 'period');
+      const at = this.now();
+      return this.gated('ledger.reopen_period', ctx, { period }, () => this.periodLock.reopen(ctx.tenantId, period, at, ctx.actor), (r) => ({ status: 200, body: r }));
+    });
+
     // --- billing / reporting ----------------------------------------------
     this.add('GET', '/billing/subscription', 'subscription.read', (ctx) => ({
       status: 200,
@@ -2928,6 +2957,7 @@ export class App {
       // Policy escalations (pending + resolved) — always sent (upserted for the
       // status change) so a restart never silently drops a parked human decision.
       exceptions: this.exceptions.all().filter((i) => (i.ctx as { tenantId?: string }).tenantId === tenantId),
+      periodLocks: this.periodLock.list(tenantId),
       // --- master-data reshape v2 (all upserted, so always safe to resend) ----
       legalEntities: this.entities.listEntities(tenantId),
       parties: this.parties.listParties(tenantId),
@@ -3049,6 +3079,7 @@ export class App {
     this.connectorOutbox.hydrate((world.connectorCommands ?? []) as never);
     this.notifications.hydrate((world.notifications ?? []) as never);
     this.exceptions.hydrate((world.exceptions ?? []) as never);
+    this.periodLock.hydrate((world.periodLocks ?? []) as never);
     this.runtime.hydrateLog(world.actionLog);
   }
 

@@ -67,12 +67,14 @@ insert into policy_rule (id, action, effect, description, condition_note, ordina
   ('pol-esign-send', 'esign.send', 'allow', 'Sending a lease document out for e-signature is routine and audited; it does not execute the lease (lease.execute stays human-gated).', null, 42),
   ('pol-privacy-erase', 'privacy.erase', 'allow', 'Honoring a data-subject erasure request (LGPD/GDPR) is a compliance obligation: it redacts a party PII while the append-only financial events are retained by opaque id. Restricted to the DPO permission (privacy.manage, not an agent) and fully recorded in the action log, so the initiating human IS the control; no second approval is parked.', null, 43),
   ('pol-config-change-jurisdiction', 'config.change_jurisdiction', 'escalate', 'Changing an ESTABLISHED tenant jurisdiction can weaken a regulated control (e.g. move BR→US to escape the deposit cap): a human confirms. Initial setup (no prior jurisdiction) is not this action.', null, 44),
-  ('pol-collections-remind', 'collections.remind', 'allow', 'Payment reminders are routine.', null, 45),
-  ('pol-collections-latefee', 'collections.late_fee', 'allow', 'Contractual late fees are routine.', null, 46),
-  ('pol-collections-suspend', 'collections.suspend', 'escalate', 'Service suspension is guest-impacting: human confirms.', null, 47),
-  ('pol-collections-evict', 'collections.evict', 'escalate', 'Eviction is irreversible and regulated: propose to human, never execute.', null, 48),
-  ('pol-groupblock-create', 'group_block.create', 'allow', 'Agents may place group blocks.', null, 49),
-  ('pol-groupblock-pickup', 'group_block.pickup', 'allow', 'Agents may convert block holds into agreements.', null, 50);
+  ('pol-ledger-close-period', 'ledger.close_period', 'allow', 'Closing an accounting period at month-end is a routine finance action (audited via the action log).', null, 45),
+  ('pol-ledger-reopen-period', 'ledger.reopen_period', 'escalate', 'Re-opening a CLOSED accounting period restates books a fund/owner may already have received: a human confirms the restatement. Closing a period is routine (allow).', null, 46),
+  ('pol-collections-remind', 'collections.remind', 'allow', 'Payment reminders are routine.', null, 47),
+  ('pol-collections-latefee', 'collections.late_fee', 'allow', 'Contractual late fees are routine.', null, 48),
+  ('pol-collections-suspend', 'collections.suspend', 'escalate', 'Service suspension is guest-impacting: human confirms.', null, 49),
+  ('pol-collections-evict', 'collections.evict', 'escalate', 'Eviction is irreversible and regulated: propose to human, never execute.', null, 50),
+  ('pol-groupblock-create', 'group_block.create', 'allow', 'Agents may place group blocks.', null, 51),
+  ('pol-groupblock-pickup', 'group_block.pickup', 'allow', 'Agents may convert block holds into agreements.', null, 52);
 
 delete from collection_stage;
 insert into collection_stage (id, min_days_overdue, action, policy_action, description, fee_bps, ordinal) values
