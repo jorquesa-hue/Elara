@@ -26,6 +26,8 @@ export interface ReportingInput {
   apPayments: ReadonlyArray<{ id: string; billId: string; amountCents: number; paidAt: string; status: string }>;
   leads: ReadonlyArray<{ id: string; stage: string; estValueCents: number; createdAt: string; updatedAt: string; source?: string }>;
   workOrders: ReadonlyArray<{ id: string; status: string; priority: string; openedAt: string; title?: string }>;
+  /** Unit turns (make-ready) — for the turn-time report + insight. days = vacate→ready (or →now). */
+  turns?: ReadonlyArray<{ id: string; unitLabel: string; status: string; days: number; openTasks: number }>;
   holds: ReadonlyArray<{ unitId: string; start: string; end: string; status: string }>;
   ledgerBalanced: boolean;
   /** Tenant-scoped journal lines — the raw material for the FINANCIAL reports
@@ -75,6 +77,7 @@ export const REPORT_CATALOG: readonly ReportSpec[] = [
   { key: 'deposits', title: 'Security deposits', description: 'Held vs refunded, and current exposure.' },
   { key: 'payables', title: 'Accounts payable', description: 'Vendor bills outstanding, aged by due date.' },
   { key: 'wo_aging', title: 'Work-order aging', description: 'Open work orders by age and priority.' },
+  { key: 'make_ready', title: 'Make-ready (turn time)', description: 'Unit turns with days-in-turn and the turn-time KPIs — how fast vacant units get rent-ready.' },
   { key: 'pipeline', title: 'Sales pipeline', description: 'Leads by stage, pipeline value and conversion.' },
   { key: 'portfolio', title: 'Portfolio mix', description: 'Agreements by kind and status; unit occupancy mix.' },
   { key: 'cashflow', title: 'Cash flow', description: 'Money in (payments) vs money out (vendor payouts) for the window.' },
@@ -504,6 +507,35 @@ function woAging(inp: ReportingInput): Report {
   };
 }
 
+/** Make-ready aging: every unit turn with its days-in-turn + open-task count, and
+ *  the portfolio turn-time KPIs (units in turn, average days-to-ready of the
+ *  turns that finished, longest open turn). The ops director's turn scorecard. */
+function makeReady(inp: ReportingInput): Report {
+  const turns = inp.turns ?? [];
+  const rows = turns
+    .map((t) => ({ unit: t.unitLabel, status: t.status.replace('_', ' '), days: t.days, openTasks: t.openTasks }))
+    .sort((x, y) => y.days - x.days);
+  const inTurn = turns.filter((t) => t.status === 'open' || t.status === 'in_progress');
+  const ready = turns.filter((t) => t.status === 'ready');
+  const avgReady = ready.length ? Math.round(ready.reduce((n, t) => n + t.days, 0) / ready.length) : 0;
+  const longestOpen = inTurn.reduce((m, t) => Math.max(m, t.days), 0);
+  return {
+    key: 'make_ready', title: 'Make-ready (turn time)', window: { from: inp.from, to: inp.to },
+    subtitle: 'Every unit turn with days-in-turn; turn time (vacate → rent-ready) is the operations KPI.',
+    columns: [
+      { key: 'unit', label: 'Unit', kind: 'text' }, { key: 'status', label: 'Status', kind: 'text' },
+      { key: 'days', label: 'Days in turn', kind: 'number' }, { key: 'openTasks', label: 'Open tasks', kind: 'number' },
+    ],
+    rows,
+    kpis: [
+      { label: 'In turn', value: inTurn.length, kind: 'number' },
+      { label: 'Avg days to ready', value: avgReady, kind: 'number' },
+      { label: 'Longest open (days)', value: longestOpen, kind: 'number' },
+      { label: 'Made ready', value: ready.length, kind: 'number' },
+    ],
+  };
+}
+
 // --- financial statements (GL-based) -----------------------------------------
 
 /** P&L for the window: revenue accounts are credit-normal, expenses debit-normal.
@@ -735,7 +767,7 @@ const BUILDERS: Record<string, (inp: ReportingInput) => Report> = {
   occupancy, revenue, ar_aging: arAging, collections, deposits: depositsReport, payables, pipeline, portfolio, cashflow,
   rent_roll: rentRoll, delinquency, lease_expirations: leaseExpirations, box_score: boxScore, vacancy, wo_aging: woAging,
   income_statement: incomeStatement, general_ledger: generalLedger, billing_collections: billingCollections, occupancy_trend: occupancyTrend,
-  owner_statement: ownerStatement, cash_flow_statement: cashFlowStatement,
+  owner_statement: ownerStatement, cash_flow_statement: cashFlowStatement, make_ready: makeReady,
 };
 
 export function buildReport(key: string, inp: ReportingInput): Report | null {
@@ -801,6 +833,10 @@ export function computeInsights(inp: ReportingInput): Insight[] {
   // High-priority open work orders.
   const urgentWo = inp.workOrders.filter((w) => !['completed', 'cancelled'].includes(w.status) && (w.priority === 'high' || w.priority === 'urgent'));
   if (urgentWo.length > 0) out.push({ severity: 'warning', title: `${urgentWo.length} high-priority work order(s) open`, detail: 'Urgent maintenance is unresolved.', metric: { value: urgentWo.length, kind: 'number' }, action: 'Assign/complete in Maintenance.' });
+
+  // Operations: units stuck in make-ready — every idle day past a week is lost rent.
+  const stuckTurns = (inp.turns ?? []).filter((t) => (t.status === 'open' || t.status === 'in_progress') && t.days >= 7);
+  if (stuckTurns.length > 0) out.push({ severity: 'warning', title: `${stuckTurns.length} unit(s) stuck in make-ready 7+ days`, detail: 'A slow turn is lost rent — every idle day is vacancy loss.', metric: { value: Math.max(...stuckTurns.map((t) => t.days)), kind: 'number' }, action: 'Push the checklist in Make-ready.' });
 
   // Profitability: NOI for the window from the ledger (when lines are provided).
   if (inp.ledgerLines?.length) {

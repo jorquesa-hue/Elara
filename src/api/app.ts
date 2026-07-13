@@ -3275,6 +3275,7 @@ export class App {
       apPayments: this.payables.allPayments().filter((p) => billIds.has(p.billId)).map((p) => ({ id: p.id, billId: p.billId, amountCents: p.amountCents, paidAt: p.paidAt, status: p.status })),
       leads: this.crm.list(tenantId).map((l) => ({ id: l.id, stage: l.stage, estValueCents: l.estValueCents, createdAt: l.createdAt, updatedAt: l.updatedAt, ...(l.source ? { source: l.source } : {}) })),
       workOrders: this.maintenance.all().filter((w) => w.tenantId === tenantId).map((w) => ({ id: w.id, status: w.status, priority: w.priority, openedAt: w.openedAt, title: w.title })),
+      turns: this.turns.list(tenantId).map((t) => ({ id: t.id, unitLabel: this.masterData.units.get(tenantId, t.unitId)?.label ?? t.unitId, status: t.status, days: turnDays(t, this.now()), openTasks: t.tasks.filter((x) => !x.done).length })),
       holds: this.calendar.allHolds().filter((h) => agIds.has(h.holderId)).map((h) => ({ unitId: h.unitId, start: h.start, end: h.end, status: h.status })),
       ledgerBalanced: this.trialBalance(tenantId).balanced,
       // Tenant-scoped GL lines (same predicate as the trial balance) — the raw
