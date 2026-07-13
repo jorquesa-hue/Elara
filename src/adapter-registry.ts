@@ -171,6 +171,29 @@ export const genericFiscal: Adapter = {
   },
 };
 
+// An ILS syndication port (Zillow / Apartments.com / Zumper / ILS aggregators).
+// NOT a money rail — it publishes a marketing listing feed — so it ships ENABLED.
+// A real ILS is a copy of this with the real endpoints; the feed API key is
+// resolved by the edge from the secret store (never in the kernel). Prospects
+// generated on the ILS come back via the inbound events port (ils.lead_created →
+// a CRM lead source='ils').
+export const genericIls: Adapter = {
+  kind: 'ils',
+  provider: 'generic_rest',
+  actions: ['push_listings', 'remove_listing'],
+  enabled: true,
+  buildRequest(action, payload, config) {
+    const base = baseUrl(config, 'generic_rest ils');
+    switch (action) {
+      // Snapshot the body — the caller assigns the built request back onto the same
+      // payload object (payload._request = req), so `body: payload` would make a cycle.
+      case 'push_listings': return { method: 'POST', url: `${base}/listings`, auth: { scheme: 'bearer' }, body: { ...payload } };
+      case 'remove_listing': return { method: 'DELETE', url: `${base}/listings/${enc(payload['listingId'] ?? payload['unitId'])}`, auth: { scheme: 'bearer' } };
+      default: throw new AdapterError(`generic_rest ils: unsupported action '${action}'`);
+    }
+  },
+};
+
 /** The default registry: the generic reference adapters. A deployment adds its
  *  real vendor adapters on top (or swaps a generic one for a vendor-specific one). */
 export function defaultAdapterRegistry(): AdapterRegistry {
@@ -179,5 +202,6 @@ export function defaultAdapterRegistry(): AdapterRegistry {
     .register(genericRestAccessControl)
     .register(genericWebhookWebsite)
     .register(genericRestBank)
-    .register(genericFiscal);
+    .register(genericFiscal)
+    .register(genericIls);
 }

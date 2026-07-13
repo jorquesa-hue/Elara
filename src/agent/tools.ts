@@ -431,6 +431,16 @@ const TOOLS: ToolDef[] = [
       return { method: 'POST', path: `/agreements/${agreementId}/lease-envelope`, body };
     },
   },
+  {
+    spec: {
+      name: 'syndicate_listings',
+      description:
+        'Syndicate the published listing feed (the same inventory the booking site serves — units, floorplans, from-prices) to an active internet listing service (ILS) integration. Prospects generated on the ILS return as pipeline leads. The vendor credential is resolved at the edge, never here.',
+      input_schema: schema({ integrationId: str('The active ILS integration to syndicate to.') }, ['integrationId']),
+      strict: true,
+    },
+    toRequest: (i) => ({ method: 'POST', path: `/ils/${i['integrationId']}/syndicate`, body: {} }),
+  },
   // --- maintenance / reservations / comms ---------------------------------
   {
     spec: {

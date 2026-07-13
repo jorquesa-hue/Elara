@@ -1922,12 +1922,14 @@ export class App {
           });
           return { status: 201, body: { routed: 'bank_transaction', id: txn.id } };
         }
-        if (integ.kind === 'crm' && event === 'lead_created') {
+        if ((integ.kind === 'crm' || integ.kind === 'ils') && event === 'lead_created') {
+          // A prospect from a CRM or an ILS syndication (Zillow/Apartments.com…)
+          // lands in the leasing pipeline, tagged with its channel.
           const lead = this.crm.createLead({
             id: `evt-${eventId}`,
             tenantId: ctx.tenantId,
             name: this.optString(payload, 'name') ?? 'Lead',
-            source: integ.provider,
+            source: integ.kind === 'ils' ? 'ils' : integ.provider,
             estValueCents: typeof payload['estValueCents'] === 'number' ? (payload['estValueCents'] as number) : 0,
             createdAt: at,
           });
@@ -1987,6 +1989,45 @@ export class App {
         { integrationId: integ.id, action: 'emit_invoice', integrationKind: integ.kind },
         () => this.connectorOutbox.enqueue({ id: `nfe-${invoiceId}`, tenantId: ctx.tenantId, integrationId: integ.id, action: 'emit_invoice', payload, createdAt: this.now() }),
         (cmd) => ({ status: 202, body: { status: 'queued', command: cmd } }),
+      );
+    });
+
+    // --- ILS syndication (Phase 2C) ---------------------------------------
+    // Syndicate the published listing feed (the SAME inventory the booking site
+    // serves — units, floorplans, from-prices) to an internet listing service
+    // (Zillow/Apartments.com/Zumper…) via the connector framework. A credential-
+    // free push_listings command is enqueued to the tenant's active `ils`
+    // integration; the edge resolves the feed key + posts. Prospects generated on
+    // the ILS come back via POST /integrations/:id/events (ils.lead_created → a
+    // pipeline lead source='ils'). Gated connector.dispatch (ils is dispatchable,
+    // not a money rail). GET previews the feed the syndication would push.
+    this.add('GET', '/ils/feed', 'connector.dispatch', (ctx) => {
+      const feed = this.ilsFeed(ctx.tenantId);
+      if (!feed) throw new HttpError(409, 'no published inventory to syndicate');
+      return { status: 200, body: feed };
+    });
+
+    this.add('POST', '/ils/:id/syndicate', 'connector.dispatch', (ctx, p, _body) => {
+      const integ = this.ownedIntegration(ctx, p['id']!);
+      if (integ.kind !== 'ils') throw new HttpError(400, `integration ${integ.id} is not an ILS integration`);
+      if (integ.status !== 'active') throw new HttpError(409, 'the ILS integration is not active');
+      const feed = this.ilsFeed(ctx.tenantId);
+      if (!feed) throw new HttpError(409, 'no published inventory to syndicate');
+      const payload: Record<string, unknown> = { ...feed };
+      const adapter = this.adapters.resolve(integ.kind, integ.provider);
+      if (adapter) {
+        if (!adapter.actions.includes('push_listings')) throw new HttpError(400, `${integ.provider} does not support push_listings`);
+        if (adapter.enabled) {
+          try { payload['_request'] = adapter.buildRequest('push_listings', payload, integ.config); }
+          catch (e) { throw new HttpError(400, e instanceof AdapterError ? e.message : 'adapter could not build the request'); }
+        }
+      }
+      return this.gated(
+        'connector.dispatch',
+        ctx,
+        { integrationId: integ.id, action: 'push_listings', integrationKind: integ.kind },
+        () => this.connectorOutbox.enqueue({ id: `ils-${integ.id}-${this.now()}`, tenantId: ctx.tenantId, integrationId: integ.id, action: 'push_listings', payload, createdAt: this.now() }),
+        (cmd) => ({ status: 202, body: { status: 'queued', listingCount: (feed.listings as unknown[]).length, command: cmd } }),
       );
     });
 
@@ -2866,6 +2907,36 @@ export class App {
       brand: { color: cfg.brandColor, logoDataUrl: cfg.logoDataUrl, tagline: cfg.tagline, locale: cfg.locale },
       content: this.siteContent.get(tenantId),
     };
+  }
+
+  /** The ILS syndication feed — the published listings (units + floorplan detail
+   *  + from-price) an internet listing service ingests. Built from the SAME
+   *  siteListing the booking site serves, so what syndicates matches what shows.
+   *  Returns null if there is no publishable inventory. */
+  private ilsFeed(tenantId: string): { tenantId: string; operator: string; currency: string; listings: Array<Record<string, unknown>> } | null {
+    const inp = this.bookingSiteInput(tenantId);
+    if (!inp) return null;
+    const listing = siteListing(inp);
+    const typeById = new Map(listing.floorplans.map((f) => [f.id, f]));
+    const listings = listing.units.map((u) => {
+      const t = u.typeId ? typeById.get(u.typeId) : undefined;
+      const d = u.details;
+      return {
+        unitId: u.id,
+        label: u.label,
+        fromCents: u.fromCents,
+        currency: listing.currency,
+        ...(u.typeId ? { floorplan: t?.name ?? u.typeId } : {}),
+        ...(d?.headline ? { headline: d.headline } : {}),
+        ...(d?.description ? { description: d.description } : {}),
+        ...(d?.bedrooms ?? t?.bedrooms) !== undefined ? { bedrooms: d?.bedrooms ?? t?.bedrooms } : {},
+        ...(d?.bathrooms ?? t?.bathrooms) !== undefined ? { bathrooms: d?.bathrooms ?? t?.bathrooms } : {},
+        ...(d?.maxGuests ?? t?.maxGuests) !== undefined ? { maxGuests: d?.maxGuests ?? t?.maxGuests } : {},
+        ...(d?.amenities?.length ? { amenities: d.amenities } : {}),
+      };
+    });
+    if (!listings.length) return null;
+    return { tenantId, operator: listing.displayName, currency: listing.currency, listings };
   }
 
   /** The public booking-website surface (pre-auth). Returns null for an unknown

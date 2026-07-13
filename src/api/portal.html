@@ -1847,12 +1847,36 @@
       ]),
       h("div",{class:"muted",style:"font-size:12.5px;margin-top:8px"},["Logo, brand color and tagline come from Settings → Branding. Point elarapms.com (or any domain) at this path to make it your own."])
     ]));
+    if(can("connector.dispatch")) main.appendChild(ilsPanel());
     var slot=h("div",{},[h("div",{class:"muted",style:"margin-top:14px"},["Loading site content…"])]); main.appendChild(slot);
     Promise.all([api("/site-content"), api("/master-data"), api("/site-templates")]).then(function(rs){
       slot.innerHTML="";
       if(rs[0].status!==200||rs[1].status!==200){ slot.appendChild(h("p",{class:"muted"},[t("msg.denied")])); return; }
       buildSiteEditor(slot, rs[0].body.content||{}, (rs[1].body.units||[]).slice().sort(function(a,b){return a.label.localeCompare(b.label);}), (rs[2].body&&rs[2].body.templates)||[]);
     });
+  }
+  function ilsPanel(){
+    var wrap=h("div",{class:"panel",style:"margin-top:14px"},[
+      h("label",{},["Listing syndication (ILS)"]),
+      h("div",{class:"muted",style:"font-size:12.5px;margin:6px 0 10px"},["Push this portfolio's published listings to an internet listing service (Zillow / Apartments.com / Zumper…). Connect an ILS provider in Integrations first; prospects come back into your Pipeline tagged source=ils."])
+    ]);
+    var body=h("div",{},[h("span",{class:"muted"},["Loading…"])]); wrap.appendChild(body);
+    Promise.all([api("/integrations"),api("/ils/feed")]).then(function(rs){
+      body.innerHTML="";
+      var ils=((rs[0].body||{}).integrations||[]).filter(function(i){return i.kind==="ils";});
+      var count=(rs[1].status===200)?((rs[1].body||{}).listings||[]).length:0;
+      body.appendChild(h("div",{class:"muted",style:"font-size:12.5px;margin-bottom:8px"},[count+" listing"+(count===1?"":"s")+" ready to syndicate."]));
+      if(!ils.length){ body.appendChild(h("div",{class:"muted"},["No ILS connected — add one in Integrations (kind: ils)."])); return; }
+      body.appendChild(h("div",{class:"row",style:"gap:8px;flex-wrap:wrap"}, ils.map(function(i){
+        return h("button",{class:"btn sm"+(i.status!=="active"?" ghost":""),disabled:i.status!=="active"?"disabled":null,onclick:function(){
+          api("/ils/"+i.id+"/syndicate",{method:"POST",body:{}}).then(function(r){
+            if(r.status===202) toast("Syndicated "+((r.body||{}).listingCount||count)+" listings to "+i.provider,"ok");
+            else toast((r.body||{}).error||("Error "+r.status),"err");
+          });
+        }},["Syndicate to "+i.provider+(i.status!=="active"?" (inactive)":"")]);
+      })));
+    });
+    return wrap;
   }
   function buildSiteEditor(slot, content, units, templates){
     var editable = can("masterdata.manage");

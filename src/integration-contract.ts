@@ -60,6 +60,10 @@ export const KIND_ACTIONS: Record<IntegrationKind, readonly ActionSpec[]> = {
     { action: 'order_report', description: 'Order a tenant screening report (credit/background/income) for an applicant.' },
     { action: 'get_result', description: 'Read the result of a screening report.' },
   ],
+  ils: [
+    { action: 'push_listings', description: 'Syndicate the published listing feed to an internet listing service (Zillow/Apartments.com/Zumper…).' },
+    { action: 'remove_listing', description: 'Remove a syndicated listing.' },
+  ],
 };
 
 /** INBOUND: the canonical events a vendor of this kind may push back to Elara. */
@@ -73,6 +77,7 @@ export const KIND_EVENTS: Record<IntegrationKind, readonly string[]> = {
   crm: ['lead_created', 'lead_updated'],
   fiscal: ['invoice_authorized', 'invoice_rejected', 'invoice_cancelled'],
   screening: ['screening_completed', 'screening_failed'],
+  ils: ['listing_published', 'listing_rejected', 'lead_created'],
 };
 
 export function actionsFor(kind: IntegrationKind): readonly ActionSpec[] {
