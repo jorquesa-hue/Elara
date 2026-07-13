@@ -14,6 +14,11 @@ export interface JournalLine {
    *  so without this tag they would be invisible to every tenant-scoped read
    *  (trial balance, reporting, persistence snapshot). */
   tenantId?: string;
+  /** Owning legal entity these lines book to (charge routing / property owner) —
+   *  the dimension for per-entity books + owner statements. */
+  entityId?: string;
+  /** Property/community these lines belong to — the per-community P&L dimension. */
+  propertyId?: string;
   memo?: string;
   postedAt: string; // ISO-8601
 }
@@ -24,6 +29,8 @@ export interface JournalEntryInput {
   currency?: string;
   agreementId?: string;
   tenantId?: string;
+  entityId?: string;
+  propertyId?: string;
   memo?: string;
   lines: Array<{
     account: string;
@@ -73,6 +80,8 @@ export class Ledger {
         currency,
         agreementId: input.agreementId,
         tenantId: input.tenantId,
+        entityId: input.entityId,
+        propertyId: input.propertyId,
         memo: l.memo ?? input.memo,
         postedAt: input.postedAt,
       });

@@ -135,6 +135,8 @@ const SOURCES: Source[] = [
     dimensions: [
       { key: 'account', label: 'Account', get: (r) => String(r['account']) },
       { key: 'category', label: 'Account category', get: (r) => String(r['account']).split(':')[0] ?? '—' },
+      { key: 'property', label: 'Property', get: (r) => String(r['propertyId'] || 'unassigned') },
+      { key: 'entity', label: 'Legal entity', get: (r) => String(r['entityId'] || 'unassigned') },
       { key: 'month', label: 'Month posted', get: (r) => monthKey(r['postedAt']), time: true },
     ],
     measures: [

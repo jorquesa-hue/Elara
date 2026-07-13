@@ -64,6 +64,8 @@ export class Billing {
     lines: InvoiceLine[];
     receivingEntityId?: string;
     billToPartyId?: string;
+    /** The property/community these charges belong to (per-property P&L). */
+    propertyId?: string;
   }): Invoice {
     if (this.invoices.has(input.id)) throw new BillingError(`duplicate invoice: ${input.id}`);
     if (input.lines.length === 0) throw new BillingError(`invoice ${input.id} has no lines`);
@@ -90,6 +92,8 @@ export class Billing {
       postedAt: input.issuedAt,
       currency: invoice.currency,
       agreementId: input.agreementId,
+      ...(input.receivingEntityId ? { entityId: input.receivingEntityId } : {}),
+      ...(input.propertyId ? { propertyId: input.propertyId } : {}),
       memo: `invoice ${input.id}`,
       lines: [
         { account: ACCOUNTS.accountsReceivable, debitCents: totalCents },

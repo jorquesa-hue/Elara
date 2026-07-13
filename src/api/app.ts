@@ -440,6 +440,15 @@ export class App {
     return { propertyId };
   }
 
+  /** The property an agreement's money belongs to: its current unit's property.
+   *  Used to stamp per-community P&L onto journal lines at posting time. */
+  private propertyForAgreement(tenantId: string, agreementId: string): string | undefined {
+    const e = this.agreements.get(agreementId);
+    if (!e || e.tenantId !== tenantId) return undefined;
+    const unit = this.masterData.units.get(tenantId, e.agreement.currentUnitId);
+    return unit?.propertyId;
+  }
+
   /** The optional numeric/description fields of a unit-type payload, validated. */
   private unitTypeFields(body: Record<string, unknown>) {
     const out: { bedrooms?: number; bathrooms?: number; maxGuests?: number; areaSqm?: number; baseRentCents?: number; description?: string } = {};
@@ -1177,12 +1186,13 @@ export class App {
         return { description: String(o['description'] ?? ''), account, amountCents: Number(o['amountCents']), ...(chargeType ? { chargeType } : {}) };
       });
       const billToPartyId = this.parties.billTo(agreementId) ?? undefined;
+      const propertyId = this.propertyForAgreement(ctx.tenantId, agreementId);
       return this.gated(
         'invoice.issue',
         ctx,
         { agreementId },
         () => {
-          const inv = this.billing.issue({ id, agreementId, tenantId: ctx.tenantId, issuedAt, dueAt, currency, lines, receivingEntityId, billToPartyId });
+          const inv = this.billing.issue({ id, agreementId, tenantId: ctx.tenantId, issuedAt, dueAt, currency, lines, receivingEntityId, billToPartyId, propertyId });
           this.invoiceTenant.set(id, ctx.tenantId);
           return inv;
         },
@@ -1208,11 +1218,12 @@ export class App {
       const amountCents = this.requireInt(body, 'amountCents');
       const method = this.requireString(body, 'method') as PaymentMethod;
       const receivedAt = this.optString(body, 'receivedAt') ?? this.now();
+      const propertyId = this.propertyForAgreement(ctx.tenantId, this.billing.get(invoiceId).agreementId);
       return this.gated(
         'payment.record',
         ctx,
         { amountCents, invoiceId },
-        () => this.payments.record({ id, invoiceId, amountCents, method, receivedAt }),
+        () => this.payments.record({ id, invoiceId, amountCents, method, receivedAt, propertyId }),
         (pay) => {
           // Email the payer a receipt (best-effort) via the invoice's agreement.
           const agreementId = this.billing.get(invoiceId).agreementId;
@@ -2542,6 +2553,10 @@ export class App {
         const pr = u.propertyId ? this.masterData.properties.get(tenantId, u.propertyId) : null;
         return { id: u.id, label: u.label, active: u.active !== false, ...(t ? { typeName: t.name } : {}), ...(pr ? { propertyId: pr.id, propertyName: pr.name } : {}) };
       }),
+      properties: this.masterData.properties.list(tenantId).map((pr) => {
+        const owner = pr.entityId ? this.entities.getEntity(tenantId, pr.entityId) : null;
+        return { id: pr.id, name: pr.name, ...(owner ? { entityName: owner.name } : {}) };
+      }),
       agreements: entries.map((e) => {
         const rn = residentFor(e.agreement.id, e.agreement.guestId);
         return { id: e.agreement.id, kind: e.agreement.kind, status: e.agreement.status, unitId: e.agreement.currentUnitId, start: e.agreement.period.start, end: e.agreement.period.end, rateCents: e.agreement.rateCents, ...(rn ? { residentName: rn } : {}) };
@@ -2559,7 +2574,7 @@ export class App {
       // material for the income statement / general-ledger reports + builder.
       ledgerLines: this.ledger.allLines
         .filter((l) => (l.agreementId != null && agIds.has(l.agreementId)) || l.tenantId === tenantId)
-        .map((l) => ({ account: l.account, debitCents: l.debitCents, creditCents: l.creditCents, postedAt: l.postedAt })),
+        .map((l) => ({ account: l.account, debitCents: l.debitCents, creditCents: l.creditCents, postedAt: l.postedAt, ...(l.entityId ? { entityId: l.entityId } : {}), ...(l.propertyId ? { propertyId: l.propertyId } : {}) })),
     };
     if (!propertyId) return full;
     // Per-property scope: restrict to units of this property and the agreements
@@ -2578,6 +2593,8 @@ export class App {
       payments: full.payments.filter((p) => propInvIds.has(p.invoiceId)),
       deposits: full.deposits.filter((d) => propAgIds.has(d.agreementId)),
       holds: full.holds.filter((h) => unitIds.has(h.unitId)),
+      // Financial statements now scope too: keep only lines stamped for this property.
+      ledgerLines: (full.ledgerLines ?? []).filter((l) => l.propertyId === propertyId),
     };
   }
 
@@ -2728,10 +2745,11 @@ export class App {
 
     for (const inv of w.invoices) {
       const billToPartyId = this.parties.billTo(inv.agreementId) ?? undefined;
-      this.billing.issue({ id: inv.id, agreementId: inv.agreementId, tenantId, issuedAt: inv.issuedAt, dueAt: inv.dueAt, currency, lines: inv.lines, billToPartyId });
+      const propertyId = this.propertyForAgreement(tenantId, inv.agreementId);
+      this.billing.issue({ id: inv.id, agreementId: inv.agreementId, tenantId, issuedAt: inv.issuedAt, dueAt: inv.dueAt, currency, lines: inv.lines, billToPartyId, propertyId });
       this.invoiceTenant.set(inv.id, tenantId);
       if (inv.payCents && inv.payCents > 0) {
-        this.payments.record({ id: `pay-${inv.id}`, invoiceId: inv.id, amountCents: inv.payCents, method: inv.payMethod ?? 'pix', receivedAt: inv.paidAt ?? inv.issuedAt });
+        this.payments.record({ id: `pay-${inv.id}`, invoiceId: inv.id, amountCents: inv.payCents, method: inv.payMethod ?? 'pix', receivedAt: inv.paidAt ?? inv.issuedAt, propertyId });
         payments++;
       }
     }

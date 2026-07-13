@@ -38,6 +38,8 @@ export class Payments {
     amountCents: number;
     method: PaymentMethod;
     receivedAt: string;
+    /** Property/community the payment belongs to (per-property P&L). */
+    propertyId?: string;
   }): Payment {
     if (this.payments.has(input.id)) throw new PaymentError(`duplicate payment: ${input.id}`);
     if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
@@ -65,6 +67,9 @@ export class Payments {
       postedAt: input.receivedAt,
       currency: invoice.currency,
       agreementId: invoice.agreementId,
+      // The cash/AR movement books to the same entity + property as the invoice.
+      ...(invoice.receivingEntityId ? { entityId: invoice.receivingEntityId } : {}),
+      ...(input.propertyId ? { propertyId: input.propertyId } : {}),
       memo: `payment ${input.id} on invoice ${input.invoiceId}`,
       lines: [
         { account: ACCOUNTS.cash, debitCents: input.amountCents },
@@ -72,7 +77,8 @@ export class Payments {
       ],
     });
 
-    const payment: Payment = { ...input, status: 'settled' };
+    const { propertyId: _pid, ...rest } = input;
+    const payment: Payment = { ...rest, status: 'settled' };
     this.payments.set(payment.id, payment);
     return { ...payment };
   }

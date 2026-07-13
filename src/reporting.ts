@@ -15,6 +15,8 @@ export interface ReportingInput {
   to: string; // window end, ISO date (exclusive)
   currency: string;
   units: ReadonlyArray<{ id: string; label: string; active: boolean; typeName?: string; propertyId?: string; propertyName?: string }>;
+  /** Properties/communities for owner statements (labels + owning entity). */
+  properties?: ReadonlyArray<{ id: string; name: string; entityName?: string }>;
   /** residentName: resolved by the App (party role link, else master-data guest). */
   agreements: ReadonlyArray<{ id: string; kind: string; status: string; unitId: string; start: string; end: string; rateCents: number; residentName?: string }>;
   invoices: ReadonlyArray<{ id: string; agreementId: string; issuedAt: string; dueAt: string; totalCents: number; paidCents: number; status: string }>;
@@ -28,7 +30,7 @@ export interface ReportingInput {
   ledgerBalanced: boolean;
   /** Tenant-scoped journal lines — the raw material for the FINANCIAL reports
    *  (income statement, general ledger). Optional for backward compatibility. */
-  ledgerLines?: ReadonlyArray<{ account: string; debitCents: number; creditCents: number; postedAt: string }>;
+  ledgerLines?: ReadonlyArray<{ account: string; debitCents: number; creditCents: number; postedAt: string; entityId?: string; propertyId?: string }>;
 }
 
 export interface ReportColumn { key: string; label: string; kind?: 'money' | 'number' | 'percent' | 'text' | 'date' }
@@ -60,6 +62,7 @@ export const REPORT_CATALOG: readonly ReportSpec[] = [
   { key: 'rent_roll', title: 'Rent roll', description: 'Every unit with its resident, lease dates, scheduled rent, deposit held and outstanding balance — plus occupancy and scheduled-rent totals.' },
   { key: 'delinquency', title: 'Delinquency (aged)', description: 'Aged receivables by resident: current, 1–30, 31–60, 61–90 and 90+ day buckets per account.' },
   { key: 'income_statement', title: 'Income statement', description: 'Revenue and expenses from the ledger for the window — the P&L, with net operating income.' },
+  { key: 'owner_statement', title: 'Owner statement', description: 'Net operating income by property/community with the owning legal entity — the fund/owner report.' },
   { key: 'billing_collections', title: 'Billed vs collected', description: 'Invoiced vs cash collected by month, with the collection rate.' },
   { key: 'lease_expirations', title: 'Lease expirations', description: 'Active leases bucketed by expiration month — the renewal-exposure schedule.' },
   { key: 'box_score', title: 'Box score', description: 'Leasing activity for the window: move-ins, move-outs, funnel counts and occupancy.' },
@@ -533,6 +536,51 @@ function incomeStatement(inp: ReportingInput): Report {
   };
 }
 
+/** Owner statement — a P&L per property/community for the window: revenue,
+ *  expenses and net operating income by community, each labelled with its
+ *  owning legal entity. The core artifact an institutional owner or fund
+ *  receives. Lines with no property stamp fold into "Unassigned". */
+function ownerStatement(inp: ReportingInput): Report {
+  const lines = (inp.ledgerLines ?? []).filter((l) => inWindow(l.postedAt, inp.from, inp.to));
+  const meta = new Map((inp.properties ?? []).map((p) => [p.id, p]));
+  const byProp = new Map<string, { revenue: number; expense: number }>();
+  for (const l of lines) {
+    const key = l.propertyId ?? '—';
+    const g = byProp.get(key) ?? { revenue: 0, expense: 0 };
+    if (l.account.startsWith('revenue')) g.revenue += l.creditCents - l.debitCents;
+    else if (l.account.startsWith('expense')) g.expense += l.debitCents - l.creditCents;
+    byProp.set(key, g);
+  }
+  const rows = [...byProp.entries()].map(([id, g]) => {
+    const m = meta.get(id);
+    return {
+      property: m?.name ?? (id === '—' ? 'Unassigned' : id),
+      owner: m?.entityName ?? '—',
+      revenue: g.revenue,
+      expenses: g.expense,
+      noi: g.revenue - g.expense,
+    };
+  }).sort((x, y) => y.noi - x.noi);
+  const revenueTotal = sum(rows.map((r) => r.revenue));
+  const expenseTotal = sum(rows.map((r) => r.expenses));
+  return {
+    key: 'owner_statement', title: 'Owner statement', window: { from: inp.from, to: inp.to },
+    subtitle: 'Net operating income by property for the window, with the owning legal entity — the fund/owner report.',
+    columns: [
+      { key: 'property', label: 'Property', kind: 'text' }, { key: 'owner', label: 'Owning entity', kind: 'text' },
+      { key: 'revenue', label: 'Revenue', kind: 'money' }, { key: 'expenses', label: 'Expenses', kind: 'money' },
+      { key: 'noi', label: 'NOI', kind: 'money' },
+    ],
+    rows,
+    kpis: [
+      { label: 'Communities', value: rows.length, kind: 'number' },
+      { label: 'Revenue', value: revenueTotal, kind: 'money' },
+      { label: 'Expenses', value: expenseTotal, kind: 'money' },
+      { label: 'Net operating income', value: revenueTotal - expenseTotal, kind: 'money' },
+    ],
+  };
+}
+
 /** All-time balances per account: the books, netting to zero when balanced. */
 function generalLedger(inp: ReportingInput): Report {
   const acc = new Map<string, { debits: number; credits: number }>();
@@ -626,6 +674,7 @@ const BUILDERS: Record<string, (inp: ReportingInput) => Report> = {
   occupancy, revenue, ar_aging: arAging, collections, deposits: depositsReport, payables, pipeline, portfolio, cashflow,
   rent_roll: rentRoll, delinquency, lease_expirations: leaseExpirations, box_score: boxScore, vacancy, wo_aging: woAging,
   income_statement: incomeStatement, general_ledger: generalLedger, billing_collections: billingCollections, occupancy_trend: occupancyTrend,
+  owner_statement: ownerStatement,
 };
 
 export function buildReport(key: string, inp: ReportingInput): Report | null {

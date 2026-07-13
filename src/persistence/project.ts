@@ -297,8 +297,8 @@ export function projectWorld(w: WorldData): SqlStatement[] {
   for (const l of w.journalLines) {
     out.push(
       stmt(
-        'insert into journal_line (entry_id, account, debit_cents, credit_cents, currency, agreement_id, tenant_id, memo, posted_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-        [l.entryId, l.account, l.debitCents, l.creditCents, l.currency, l.agreementId ?? null, l.tenantId ?? null, l.memo ?? null, l.postedAt],
+        'insert into journal_line (entry_id, account, debit_cents, credit_cents, currency, agreement_id, tenant_id, entity_id, property_id, memo, posted_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)',
+        [l.entryId, l.account, l.debitCents, l.creditCents, l.currency, l.agreementId ?? null, l.tenantId ?? null, l.entityId ?? null, l.propertyId ?? null, l.memo ?? null, l.postedAt],
       ),
     );
   }
