@@ -67,6 +67,7 @@ import { buildReport, computeInsights, REPORT_CATALOG, type ReportingInput } fro
 import { buildCustomReport, dataSources, type CustomReportSpec } from '../report-builder.ts';
 import { siteListing, checkAvailability, isValidDate, type BookingSiteInput } from '../booking-site.ts';
 import { SiteContentStore, SiteContentError } from '../site-content.ts';
+import { templateGallery } from '../site-templates.ts';
 import { buildDemoWorld, DEMO_MARKER_UNIT_ID } from '../demo-data.ts';
 
 export interface ApiRequest {
@@ -913,6 +914,9 @@ export class App {
     // The operator-authored page: hero/about/contact plus per-unit marketing
     // details and publish switches. Marketing data only — validated + size-capped.
     this.add('GET', '/site-content', 'masterdata.read', (ctx) => ({ status: 200, body: { content: this.siteContent.get(ctx.tenantId) } }));
+
+    // The 20-template design gallery the Website builder's picker renders.
+    this.add('GET', '/site-templates', 'masterdata.read', () => ({ status: 200, body: { templates: templateGallery() } }));
 
     this.add('PUT', '/site-content', 'masterdata.manage', (ctx, _p, body) => {
       try {

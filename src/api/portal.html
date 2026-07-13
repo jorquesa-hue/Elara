@@ -1615,15 +1615,64 @@
       h("div",{class:"muted",style:"font-size:12.5px;margin-top:8px"},["Logo, brand color and tagline come from Settings → Branding. Point elarapms.com (or any domain) at this path to make it your own."])
     ]));
     var slot=h("div",{},[h("div",{class:"muted",style:"margin-top:14px"},["Loading site content…"])]); main.appendChild(slot);
-    Promise.all([api("/site-content"), api("/master-data")]).then(function(rs){
+    Promise.all([api("/site-content"), api("/master-data"), api("/site-templates")]).then(function(rs){
       slot.innerHTML="";
       if(rs[0].status!==200||rs[1].status!==200){ slot.appendChild(h("p",{class:"muted"},[t("msg.denied")])); return; }
-      buildSiteEditor(slot, rs[0].body.content||{}, (rs[1].body.units||[]).slice().sort(function(a,b){return a.label.localeCompare(b.label);}));
+      buildSiteEditor(slot, rs[0].body.content||{}, (rs[1].body.units||[]).slice().sort(function(a,b){return a.label.localeCompare(b.label);}), (rs[2].body&&rs[2].body.templates)||[]);
     });
   }
-  function buildSiteEditor(slot, content, units){
+  function buildSiteEditor(slot, content, units, templates){
     var editable = can("masterdata.manage");
     var w = JSON.parse(JSON.stringify(content||{})); w.units = w.units||{};
+    // --- design: template gallery + adjustments -----------------------------
+    var pickedTemplate = w.template || "classic";
+    var opts = w.templateOptions || {};
+    var heroPhotoData = w.heroPhotoDataUrl || "";
+    var adjRadius=null, adjFont=null, adjHero=null, adjCards=null;
+    if(templates && templates.length){
+      slot.appendChild(h("h2",{},["Design — pick a template"]));
+      slot.appendChild(h("p",{class:"sub"},["20 designs modeled on the best property-marketing sites. Pick one, then fine-tune corners, typography and layout below — your brand color from Settings → Branding is applied automatically."]));
+      var gallery=h("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px"},[]);
+      var cardEls={};
+      function highlight(){ Object.keys(cardEls).forEach(function(id){ cardEls[id].style.borderColor = id===pickedTemplate ? "var(--accent)" : "var(--border)"; cardEls[id].style.boxShadow = id===pickedTemplate ? "0 0 0 2px var(--accent-soft)" : "none"; }); }
+      templates.forEach(function(tp){
+        var sw=h("div",{class:"row",style:"gap:4px;margin:8px 0 6px"}, (tp.swatch||[]).map(function(c){ return h("span",{style:"width:20px;height:20px;border-radius:6px;border:1px solid rgba(0,0,0,.12);background:"+c},[]) ; }));
+        var cardEl=h("div",{class:"panel",style:"cursor:pointer;padding:13px;border:2px solid var(--border)",onclick:function(){ pickedTemplate=tp.id; highlight(); }},[
+          h("strong",{style:"font-size:14px"},[tp.name]), sw,
+          h("div",{class:"muted",style:"font-size:12px;line-height:1.35"},[tp.description]),
+          h("div",{class:"muted",style:"font-size:11px;margin-top:6px;opacity:.8"},["Inspired by "+tp.inspiration+" · "+tp.hero+" hero · "+tp.cards+" cards"])
+        ]);
+        cardEls[tp.id]=cardEl; gallery.appendChild(cardEl);
+      });
+      highlight();
+      slot.appendChild(gallery);
+      // Adjustments — every template stays flexible.
+      adjRadius=selectFrom([["","Template default"],["sharp","Sharp corners"],["soft","Soft corners"],["round","Round corners"]], opts.radius||"");
+      adjFont=selectFrom([["","Template default"],["system","System sans"],["inter","Inter"],["space","Space Grotesk"],["playfair","Playfair Display (serif)"],["fraunces","Fraunces (serif)"],["libre","Libre Baskerville (serif)"]], opts.font||"");
+      adjHero=selectFrom([["","Template default"],["classic","Classic hero"],["banner","Photo banner hero"],["split","Split hero"],["minimal","Minimal hero"],["editorial","Editorial hero"]], opts.hero||"");
+      adjCards=selectFrom([["","Template default"],["grid","Grid cards"],["wide","Wide cards"],["list","List cards"]], opts.cards||"");
+      var heroPrev=h("div",{class:"row",style:"gap:10px;align-items:center"},[]);
+      function drawHero(){ heroPrev.innerHTML=""; if(heroPhotoData){ var im=document.createElement("img"); im.src=heroPhotoData; im.style.cssText="height:54px;width:120px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"; heroPrev.appendChild(im); var rm=h("button",{class:"btn ghost sm"},["Remove"]); rm.addEventListener("click",function(e){e.preventDefault(); heroPhotoData=""; drawHero();}); heroPrev.appendChild(rm); } else heroPrev.appendChild(h("span",{class:"muted",style:"font-size:12.5px"},["No hero photo (banner/split heroes use your colors)"])); }
+      drawHero();
+      var heroFile=h("input",{type:"file",accept:"image/png,image/jpeg,image/webp"});
+      heroFile.addEventListener("change",function(){ var f=heroFile.files&&heroFile.files[0]; if(!f) return; if(f.size>256*1024) return toast("Hero photo too large (max 256 KB)","err"); var rd=new FileReader(); rd.onload=function(){ heroPhotoData=String(rd.result); drawHero(); }; rd.readAsDataURL(f); });
+      slot.appendChild(h("div",{class:"panel",style:"margin-top:12px"},[
+        h("strong",{},["Fine-tune the design"]),
+        h("div",{class:"grid",style:"margin-top:10px"},[ field("Corners",adjRadius), field("Typography",adjFont), field("Hero layout",adjHero), field("Unit cards",adjCards), field("Hero photo (≤256 KB)",heroFile) ]),
+        h("div",{style:"margin-top:6px"},[heroPrev])
+      ]));
+    }
+    function readDesign(body){
+      body.template = pickedTemplate;
+      var o={};
+      if(adjRadius && adjRadius.value) o.radius=adjRadius.value;
+      if(adjFont && adjFont.value) o.font=adjFont.value;
+      if(adjHero && adjHero.value) o.hero=adjHero.value;
+      if(adjCards && adjCards.value) o.cards=adjCards.value;
+      if(Object.keys(o).length) body.templateOptions=o;
+      if(heroPhotoData) body.heroPhotoDataUrl=heroPhotoData;
+      return body;
+    }
     // --- page content -----------------------------------------------------
     var heroTitle=h("input",{value:w.heroTitle||"",placeholder:"Find your stay on Ilhabela"});
     var about=h("textarea",{rows:"4",style:"width:100%;resize:vertical;font:inherit;padding:9px 11px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2);color:var(--text)"},[]);
@@ -1683,7 +1732,7 @@
     // --- save ----------------------------------------------------------------
     if(editable){
       slot.appendChild(h("div",{style:"margin:6px 0 30px"},[ h("button",{class:"btn",onclick:function(){
-        var body={ heroTitle:heroTitle.value, about:about.value, contactEmail:cEmail.value, contactPhone:cPhone.value, whatsapp:cWhats.value, instagram:cInsta.value, facebook:cFace.value, units:{} };
+        var body=readDesign({ heroTitle:heroTitle.value, about:about.value, contactEmail:cEmail.value, contactPhone:cPhone.value, whatsapp:cWhats.value, instagram:cInsta.value, facebook:cFace.value, units:{} });
         unitEls.forEach(function(ue){ body.units[ue.unit.id]=ue.read(); });
         api("/site-content",{method:"PUT",body:{content:body}}).then(function(r){
           if(r.status!==200) return toast((r.body&&r.body.error)||t("msg.denied"),"err");

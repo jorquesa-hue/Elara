@@ -28,8 +28,16 @@ export interface SiteContent {
   whatsapp?: string;
   instagram?: string;
   facebook?: string;
+  /** Which of the 20 site templates to render (default: 'classic'). */
+  template?: string;
+  /** Per-template adjustments — corners, font, hero layout, card layout. */
+  templateOptions?: TemplateOptions;
+  /** A hero background photo for banner/split heroes (data:image ≤256 KB or https). */
+  heroPhotoDataUrl?: string;
   units?: Record<string, UnitSiteDetails>;
 }
+
+import { isKnownTemplate, FONT_KEYS, RADIUS_KEYS, HERO_STYLES, CARD_STYLES, type TemplateOptions, type FontKey, type RadiusKey, type HeroStyle, type CardStyle } from './site-templates.ts';
 
 export class SiteContentError extends Error {}
 
@@ -66,6 +74,21 @@ export function sanitizeSiteContent(input: unknown): SiteContent {
   for (const k of ['contactEmail', 'contactPhone', 'whatsapp', 'instagram', 'facebook'] as const) {
     const v = str(raw[k]); if (v) out[k] = v;
   }
+  // Template + adjustments: unknown ids/values are dropped, never stored.
+  const template = str(raw['template'], 40);
+  if (template && isKnownTemplate(template)) out.template = template;
+  const optsRaw = raw['templateOptions'];
+  if (optsRaw && typeof optsRaw === 'object') {
+    const o = optsRaw as Record<string, unknown>;
+    const opts: TemplateOptions = {};
+    if (typeof o['radius'] === 'string' && RADIUS_KEYS.includes(o['radius'] as RadiusKey)) opts.radius = o['radius'] as RadiusKey;
+    if (typeof o['font'] === 'string' && FONT_KEYS.includes(o['font'] as FontKey)) opts.font = o['font'] as FontKey;
+    if (typeof o['hero'] === 'string' && HERO_STYLES.includes(o['hero'] as HeroStyle)) opts.hero = o['hero'] as HeroStyle;
+    if (typeof o['cards'] === 'string' && CARD_STYLES.includes(o['cards'] as CardStyle)) opts.cards = o['cards'] as CardStyle;
+    if (Object.keys(opts).length) out.templateOptions = opts;
+  }
+  const heroPhoto = str(raw['heroPhotoDataUrl'], 300 * 1024);
+  if (heroPhoto) out.heroPhotoDataUrl = assertSitePhoto(heroPhoto);
   const unitsRaw = raw['units'];
   if (unitsRaw && typeof unitsRaw === 'object') {
     const units: Record<string, UnitSiteDetails> = {};

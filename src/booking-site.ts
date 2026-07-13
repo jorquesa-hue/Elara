@@ -13,6 +13,7 @@
 
 import { computeQuote, type PricingRule } from './revenue.ts';
 import type { SiteContent, UnitSiteDetails } from './site-content.ts';
+import { resolveTheme, type ResolvedTheme } from './site-templates.ts';
 
 export interface SiteUnit { id: string; label: string; active: boolean }
 export interface SiteHold { unitId: string; start: string; end: string; status: string }
@@ -39,6 +40,8 @@ export interface SiteListing {
   currency: string;
   brand: SiteBrand;
   content: Omit<SiteContent, 'units'>;
+  /** The picked template + adjustments + brand accent, flattened for the page. */
+  theme: ResolvedTheme;
   units: Array<{ id: string; label: string; fromCents: number | null; details?: UnitSiteDetails }>;
 }
 
@@ -86,6 +89,7 @@ export function siteListing(inp: BookingSiteInput): SiteListing {
     currency: inp.currency,
     brand: inp.brand ?? {},
     content: page,
+    theme: resolveTheme(page.template, page.templateOptions, inp.brand?.color),
     units: inp.units
       .filter((u) => isPublished(u, inp))
       .map((u) => {

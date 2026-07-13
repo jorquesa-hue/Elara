@@ -115,8 +115,12 @@ await page.click('button:has-text("Add property")');
 await page.waitForTimeout(500);
 await shot('08-properties');
 
-// Website builder: page content + per-unit editor; save and verify live.
+// Website builder: pick a template from the design gallery, then fill content.
 await page.click('nav button:has-text("Website")');
+await page.waitForSelector('text=Design — pick a template');
+await page.waitForSelector('text=Tropicália');
+await shot('08b-template-gallery');
+await page.click('strong:has-text("Tropicália")'); // island-lodge template (banner hero, dark green)
 await page.waitForSelector('text=Page content');
 await page.fill('input[placeholder="Find your stay on Ilhabela"]', 'Sua ilha te espera');
 await page.fill('input[placeholder="reservas@example.com"]', 'reservas@ilhabelastays.com');

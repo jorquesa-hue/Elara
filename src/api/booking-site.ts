@@ -12,10 +12,11 @@ export function bookingSiteHtml(): string {
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Book your stay</title>
 <style>
-  :root{ --bg:#0f1220; --card:#181c2e; --line:#282d44; --text:#eef1f8; --muted:#9aa3bd; --accent:#6d8bff; --accent2:#8b6cff; --ok:#3aa76d; }
-  @media (prefers-color-scheme: light){ :root{ --bg:#f5f6fb; --card:#fff; --line:#e6e8f0; --text:#151a2e; --muted:#5b6480; } }
+  :root{ --bg:#f5f6fb; --card:#fff; --line:#e6e8f0; --text:#151a2e; --muted:#5b6480; --accent:#6d8bff; --accent2:#8b6cff; --ok:#3aa76d; --radius:12px; --herobg:linear-gradient(135deg,#6d8bff,#8b6cff); }
   *{ box-sizing:border-box; } html,body{ margin:0; }
   body{ background:var(--bg); color:var(--text); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  body.font-all, body.font-all input, body.font-all .btn{ font-family:var(--font-body,inherit); }
+  body.font-display h1, body.font-display h2, body.font-display h3, body.font-display .price{ font-family:var(--font-display,inherit); }
   .wrap{ max-width:1040px; margin:0 auto; padding:24px 18px 60px; }
   header.hero{ padding:40px 0 26px; }
   .brand{ display:flex; align-items:center; gap:12px; }
@@ -23,16 +24,38 @@ export function bookingSiteHtml(): string {
   h1{ font-size:30px; margin:14px 0 6px; letter-spacing:-.02em; }
   h2{ font-size:20px; margin:34px 0 12px; letter-spacing:-.01em; }
   .sub{ color:var(--muted); margin:0; }
-  .searchbar{ display:flex; gap:12px; flex-wrap:wrap; align-items:end; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px; margin:22px 0 8px; }
+  .searchbar{ display:flex; gap:12px; flex-wrap:wrap; align-items:end; background:var(--card); border:1px solid var(--line); border-radius:calc(var(--radius) + 4px); padding:16px; margin:22px 0 8px; }
   .field{ display:flex; flex-direction:column; gap:5px; } label{ font-size:12px; color:var(--muted); font-weight:600; }
-  input{ font:inherit; padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); }
-  .btn{ font:inherit; font-weight:600; padding:11px 18px; border-radius:10px; border:0; cursor:pointer; color:#fff;
+  input{ font:inherit; padding:10px 12px; border-radius:var(--radius); border:1px solid var(--line); background:var(--bg); color:var(--text); }
+  .btn{ font:inherit; font-weight:600; padding:11px 18px; border-radius:var(--radius); border:0; cursor:pointer; color:#fff;
         background:linear-gradient(135deg,var(--accent),var(--accent2)); }
   .btn.ghost{ background:transparent; border:1px solid var(--line); color:var(--text); }
   .grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:16px; margin-top:20px; }
-  .card{ background:var(--card); border:1px solid var(--line); border-radius:16px; overflow:hidden; display:flex; flex-direction:column; }
-  .photo{ height:150px; background:linear-gradient(135deg,var(--accent),var(--accent2)); opacity:.9; display:flex; align-items:center; justify-content:center; color:#fff; font-size:34px; }
+  body[data-cards="wide"] .grid{ grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:20px; }
+  body[data-cards="list"] .grid{ grid-template-columns:1fr; gap:14px; }
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:calc(var(--radius) + 4px); overflow:hidden; display:flex; flex-direction:column; }
+  body[data-cards="list"] .card{ flex-direction:row; }
+  body[data-cards="list"] .photo{ width:36%; min-width:200px; height:auto; min-height:170px; }
+  @media (max-width:640px){ body[data-cards="list"] .card{ flex-direction:column; } body[data-cards="list"] .photo{ width:100%; height:150px; } }
+  .photo{ height:150px; background:linear-gradient(135deg,var(--accent),var(--accent2)); opacity:.92; display:flex; align-items:center; justify-content:center; color:#fff; font-size:34px; flex:none; }
+  body[data-cards="wide"] .photo{ height:190px; }
   .photo img{ width:100%; height:100%; object-fit:cover; display:block; }
+  /* --- hero layout variants ------------------------------------------------ */
+  body[data-hero="banner"] header.hero{ background:var(--heroimg,var(--herobg)); background-size:cover; background-position:center; border-radius:calc(var(--radius) + 6px); padding:56px 28px 30px; margin-top:14px; position:relative; overflow:hidden; }
+  body[data-hero="banner"] header.hero::before{ content:""; position:absolute; inset:0; background:rgba(10,12,18,.38); border-radius:inherit; }
+  body[data-hero="banner"] header.hero > *{ position:relative; }
+  body[data-hero="banner"] h1, body[data-hero="banner"] .sub, body[data-hero="banner"] .brand{ color:#fff; }
+  body[data-hero="banner"] .sub{ opacity:.92; }
+  body[data-hero="split"] header.hero{ display:grid; grid-template-columns:1.1fr .9fr; gap:26px; align-items:center; }
+  body[data-hero="split"] .hero-visual{ background:var(--heroimg,var(--herobg)); background-size:cover; background-position:center; border-radius:calc(var(--radius) + 6px); min-height:250px; }
+  body[data-hero="split"] .searchbar{ grid-column:1 / -1; }
+  @media (max-width:760px){ body[data-hero="split"] header.hero{ grid-template-columns:1fr; } body[data-hero="split"] .hero-visual{ min-height:150px; } }
+  body[data-hero="minimal"] header.hero{ padding:26px 0 10px; border-bottom:1px solid var(--line); margin-bottom:6px; }
+  body[data-hero="minimal"] h1{ font-size:23px; margin:16px 0 4px; }
+  body[data-hero="minimal"] .searchbar{ background:transparent; border:0; padding:14px 0 4px; }
+  body[data-hero="editorial"] header.hero{ border-top:3px solid var(--text); border-bottom:1px solid var(--line); padding:34px 0 26px; }
+  body[data-hero="editorial"] h1{ font-size:clamp(38px,6vw,58px); line-height:1.05; margin:18px 0 10px; }
+  body[data-hero="editorial"] .brand strong{ text-transform:uppercase; letter-spacing:.14em; font-size:13px; }
   .card .body{ padding:14px; flex:1; display:flex; flex-direction:column; gap:7px; }
   .card h3{ margin:0; font-size:16px; }
   .headline{ color:var(--muted); font-size:13px; margin:-2px 0 0; }
@@ -44,14 +67,14 @@ export function bookingSiteHtml(): string {
   .pill{ align-self:flex-start; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; padding:3px 8px; border-radius:999px; }
   .pill.ok{ background:rgba(58,167,109,.16); color:var(--ok); } .pill.no{ background:rgba(224,90,90,.16); color:#e05a5a; }
   .muted{ color:var(--muted); } .center{ text-align:center; }
-  .panel{ background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px; }
+  .panel{ background:var(--card); border:1px solid var(--line); border-radius:calc(var(--radius) + 4px); padding:18px; }
   .contact{ display:flex; gap:18px; flex-wrap:wrap; }
   .contact a{ color:var(--accent); text-decoration:none; font-weight:600; }
-  dialog{ border:1px solid var(--line); border-radius:16px; background:var(--card); color:var(--text); max-width:420px; width:92%; padding:22px; }
+  dialog{ border:1px solid var(--line); border-radius:calc(var(--radius) + 4px); background:var(--card); color:var(--text); max-width:420px; width:92%; padding:22px; }
   dialog::backdrop{ background:rgba(0,0,0,.5); }
   .row{ display:flex; gap:10px; align-items:center; } .stack{ display:flex; flex-direction:column; gap:12px; }
   footer{ margin-top:44px; color:var(--muted); font-size:12.5px; text-align:center; }
-  .toast{ position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 18px; box-shadow:0 10px 30px rgba(0,0,0,.3); }
+  .toast{ position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:12px 18px; box-shadow:0 10px 30px rgba(0,0,0,.3); }
 </style></head><body>
 <div class="wrap">
   <header class="hero">
@@ -98,8 +121,22 @@ export function bookingSiteHtml(): string {
     document.getElementById("foot").textContent = cfg.displayName;
     var content = cfg.content || {};
     var b = cfg.brand || {};
-    // Brand: accent color, logo, tagline. Content: hero title, about, contact.
-    if(b.color && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(b.color)){ document.documentElement.style.setProperty("--accent", b.color); document.documentElement.style.setProperty("--accent2", b.color); }
+    // THEME: the picked template (palette, typography, radius, layouts), already
+    // resolved server-side with the operator's brand accent + adjustments.
+    var th = cfg.theme;
+    if(th){
+      var rs=document.documentElement.style, p=th.palette||{};
+      ["bg","card","line","text","muted","accent","accent2"].forEach(function(k){ if(p[k]) rs.setProperty("--"+k, p[k]); });
+      rs.setProperty("--radius", (th.radiusPx||12)+"px");
+      rs.setProperty("--herobg", th.heroBg||"linear-gradient(135deg,var(--accent),var(--accent2))");
+      if(th.font && th.font.import){ var lk=document.createElement("link"); lk.rel="stylesheet"; lk.href=th.font.import; document.head.appendChild(lk); }
+      if(th.font){ if(th.font.displayOnly){ rs.setProperty("--font-display", th.font.family); document.body.classList.add("font-display"); } else { rs.setProperty("--font-body", th.font.family); document.body.classList.add("font-all"); } }
+      document.body.setAttribute("data-hero", th.hero||"classic");
+      document.body.setAttribute("data-cards", th.cards||"grid");
+      if(content.heroPhotoDataUrl){ rs.setProperty("--heroimg", "url("+JSON.stringify(content.heroPhotoDataUrl)+")"); }
+      if(th.hero==="split"){ var hv=document.createElement("div"); hv.className="hero-visual"; var hd=document.querySelector("header.hero"); hd.insertBefore(hv, hd.querySelector(".searchbar")); }
+    }
+    // Brand: logo + tagline (accent already folded into the theme server-side).
     if(b.logoDataUrl){ var l=document.querySelector(".logo"); if(l){ var img=document.createElement("img"); img.src=b.logoDataUrl; img.alt=cfg.displayName; img.style.cssText="height:34px;width:auto;border-radius:6px"; l.replaceWith(img); } }
     if(b.tagline){ document.querySelector(".sub").textContent = b.tagline; }
     if(content.heroTitle){ document.getElementById("heroTitle").textContent = content.heroTitle; }
