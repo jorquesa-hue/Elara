@@ -2305,6 +2305,33 @@ export class App {
       return { status: 201, body: { recorded: true, invoiceId, amountCents, method, threadId, note: 'This notifies the office to reconcile your payment; it is not a live charge.' } };
     });
 
+    // Documents awaiting the resident's signature. Read-only: the actual signing
+    // happens at the e-sign provider (DocuSign/Clicksign), whose webhook records
+    // completion via esign.complete — a resident cannot forge a signature through
+    // this API. Matches envelopes where a signer is this party (by partyId or
+    // email) and surfaces this resident's own signer status.
+    this.add('GET', '/resident/envelopes', null, (ctx) => {
+      if (ctx.partyId === undefined) throw new HttpError(403, 'a resident session is required');
+      const party = this.parties.getParty(ctx.tenantId, ctx.partyId);
+      const myEmail = party?.email ? party.email.trim().toLowerCase() : undefined;
+      const mine = this.signatures.list(ctx.tenantId)
+        .map((e) => {
+          const me = e.signers.find((s) => s.partyId === ctx.partyId || (myEmail !== undefined && s.email.trim().toLowerCase() === myEmail));
+          if (!me) return null;
+          return {
+            id: e.id,
+            documentName: e.documentName,
+            status: e.status,
+            provider: e.provider,
+            mySignerStatus: me.signedAt ? 'signed' : me.declinedAt ? 'declined' : (e.status === 'sent' ? 'awaiting' : 'draft'),
+            signers: e.signers.map((s) => ({ name: s.name, role: s.role, signed: !!s.signedAt })),
+            createdAt: e.createdAt,
+          };
+        })
+        .filter((e): e is NonNullable<typeof e> => e !== null);
+      return { status: 200, body: { envelopes: mine } };
+    });
+
     this.add('GET', '/privacy/parties/:id/export', null, (ctx, p) => {
       const id = p['id']!;
       if (ctx.partyId !== undefined) {

@@ -29,6 +29,9 @@ app.dispatch({ method: 'POST', path: '/parties', bearer: bear, body: { id: 'pty-
 app.dispatch({ method: 'POST', path: '/agreements/ag-1/parties', bearer: bear, body: { partyId: 'pty-bea', role: 'resident' } });
 app.dispatch({ method: 'POST', path: '/invoices', bearer: bear, body: { id: 'inv-1', agreementId: 'ag-1', issuedAt: NOW, dueAt: '2026-07-20', lines: [{ description: 'rent', account: 'revenue:room', amountCents: 300000 }] } });
 app.dispatch({ method: 'POST', path: '/deposits', bearer: bear, body: { id: 'dep-1', agreementId: 'ag-1', amountCents: 300000 } });
+// A lease envelope out for the resident's signature (3D).
+app.dispatch({ method: 'POST', path: '/agreements/ag-1/lease-envelope', bearer: bear, body: { id: 'env-1', provider: 'docusign' } });
+app.dispatch({ method: 'POST', path: '/signature-envelopes/env-1/send', bearer: bear, body: {} });
 
 const server = createHttpServer(app);
 await new Promise<void>((r) => server.listen(0, () => r()));
@@ -50,6 +53,7 @@ await page.waitForTimeout(600);
 
 const homeText = await page.evaluate(() => document.body.innerText);
 const hasHome = /Hi, Bea Lima/.test(homeText) && /Apt 101/.test(homeText) && /Renewal available/.test(homeText);
+const hasDocs = /Documents/.test(homeText) && /Awaiting your signature/.test(homeText);
 
 // Submit a maintenance request.
 await page.getByPlaceholder('What needs fixing? e.g. Leaky faucet').fill('Leaky faucet');
@@ -81,10 +85,11 @@ await browser.close();
 server.close();
 
 console.log('resident home rendered (lease + renewal):', hasHome);
+console.log('documents awaiting signature shown:', hasDocs);
 console.log('maintenance request listed:', requestListed);
 console.log('lease document shown:', leaseShown);
 console.log('renewal interest signalled:', renewSignalled);
 console.log('open invoice listed:', invoiceListed);
 console.log('payment intent signalled:', paymentSignalled);
 console.log('console errors:', errors.length ? errors : 'NONE');
-if (errors.length || !hasHome || !requestListed || !leaseShown || !renewSignalled || !invoiceListed || !paymentSignalled) process.exit(1);
+if (errors.length || !hasHome || !hasDocs || !requestListed || !leaseShown || !renewSignalled || !invoiceListed || !paymentSignalled) process.exit(1);

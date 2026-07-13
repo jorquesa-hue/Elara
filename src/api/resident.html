@@ -142,6 +142,8 @@
         actions, docBox
       ]));
     });
+    // Documents awaiting signature
+    var docsWrap=h("div",{},[]); wrap.appendChild(docsWrap); refreshEnvelopes(docsWrap);
     // Maintenance
     wrap.appendChild(h("h2",{},["Maintenance"]));
     wrap.appendChild(maintenanceForm());
@@ -170,6 +172,18 @@
       h("button",{class:"btn",type:"submit"},["Submit request"])
     ]);
   }
+  function refreshEnvelopes(wrap){ api("/resident/envelopes").then(function(r){ wrap.innerHTML="";
+    var list=((r.body||{}).envelopes)||[];
+    if(!list.length) return;
+    wrap.appendChild(h("h2",{},["Documents"]));
+    var rows=list.map(function(e){
+      var st=e.mySignerStatus, cls = st==="signed"?"ok":(st==="declined"?"warn":"");
+      var label = st==="awaiting"?"Awaiting your signature":(st==="signed"?"You signed":(st==="declined"?"Declined":"Being prepared"));
+      return h("tr",{},[ h("td",{},[e.documentName]), h("td",{class:"muted"},[e.provider]), h("td",{},[h("span",{class:"pill "+cls},[label])]) ]);
+    });
+    wrap.appendChild(h("table",{},[ h("thead",{},[h("tr",{},[th("Document"),th("Provider"),th("Status")])]), h("tbody",{},rows) ]));
+    wrap.appendChild(h("div",{class:"muted",style:"font-size:12px;margin-top:6px"},["When a document is awaiting your signature, sign it via the email the provider sends you."]));
+  }); }
   function refreshInvoices(wrap){ api("/resident/invoices").then(function(r){ wrap.innerHTML="";
     var open=(((r.body||{}).invoices)||[]).filter(function(i){return i.outstandingCents>0;});
     if(!open.length){ wrap.appendChild(h("div",{class:"muted",style:"font-size:13px"},["You're all paid up."])); return; }
