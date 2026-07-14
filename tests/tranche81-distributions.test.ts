@@ -26,6 +26,12 @@ function mkApp() {
   D(app, 'PUT', '/config', { displayName: 'Greyline', country: 'BR' });
   D(app, 'POST', '/legal-entities', { id: 'ent-spe', name: 'Curral SPE LLC', role: 'spe' });
   D(app, 'POST', '/properties', { id: 'prop-1', code: 'NG', name: 'Northgate', entityId: 'ent-spe' });
+  // Post NOI on the community so distributions have distributable cash behind
+  // them (the Phase-7C guardrail escalates a draw over NOI − reserves).
+  D(app, 'POST', '/units', { id: 'u-1', code: 'A-1', label: 'Apt 101', propertyId: 'prop-1' });
+  D(app, 'POST', '/agreements', { id: 'ag-1', guestId: 'Bea Lima', unitId: 'u-1', kind: 'lease', start: '2026-01-01', end: '2027-01-01', rateCents: 300000 });
+  D(app, 'POST', '/agreements/ag-1/activate', {});
+  D(app, 'POST', '/invoices', { id: 'inv-noi', agreementId: 'ag-1', issuedAt: NOW, dueAt: '2026-07-20', lines: [{ description: 'rent', account: 'revenue:room', amountCents: 1000000 }] });
   return app;
 }
 function record(app: App, over: Record<string, unknown> = {}, token = 'acc') {

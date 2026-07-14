@@ -721,6 +721,7 @@ export class App {
       properties,
       totalNoiCents,
       totalDistributedCents,
+      distributableCents: Math.max(0, totalNoiCents - totalDistributedCents),
       distributions: dists
         .map((d) => ({ id: d.id, recordedAt: d.recordedAt, propertyName: d.propertyId ? (this.masterData.properties.get(tenantId, d.propertyId)?.name ?? d.propertyId) : 'Portfolio', amountCents: d.amountCents, memo: d.memo }))
         .sort((a, b) => b.recordedAt.localeCompare(a.recordedAt)),
@@ -1032,6 +1033,27 @@ export class App {
     const entity = this.entities.getEntity(tenantId, d.entityId);
     const property = d.propertyId ? this.masterData.properties.get(tenantId, d.propertyId) : undefined;
     return { ...d, entityName: entity?.name ?? d.entityId, propertyName: property?.name };
+  }
+
+  /** NOI across an entity's communities from the ledger (revenue − expense; both
+   *  folded credit − debit, so revenue adds and expense subtracts). */
+  private entityNoiCents(tenantId: string, entityId: string): number {
+    const propIds = new Set(this.masterData.properties.list(tenantId).filter((p) => p.entityId === entityId).map((p) => p.id));
+    let noi = 0;
+    for (const l of this.ledger.allLines) {
+      if (!l.propertyId || !propIds.has(l.propertyId)) continue;
+      if (l.account.startsWith('revenue') || l.account.startsWith('expense')) noi += l.creditCents - l.debitCents;
+    }
+    return noi;
+  }
+
+  /** Distributable cash for an owning entity = NOI − reserves − already-distributed
+   *  (floored at 0). The guardrail behind the distribution escalation. */
+  private distributableFor(tenantId: string, entityId: string, reserveCents = 0) {
+    const noiCents = this.entityNoiCents(tenantId, entityId);
+    const distributedCents = this.distributions.list(tenantId).filter((d) => d.entityId === entityId).reduce((n, d) => n + d.amountCents, 0);
+    const reserve = Math.max(0, reserveCents);
+    return { noiCents, distributedCents, reserveCents: reserve, distributableCents: Math.max(0, noiCents - distributedCents - reserve) };
   }
 
   /** Enrich a parcel with its recipient name + unit label + days waiting. */
@@ -3395,6 +3417,16 @@ export class App {
       return { status: 200, body: { distributions } };
     });
 
+    // Distributable-cash preview for an owning entity (NOI − reserves − already-
+    // distributed). Registered BEFORE /distributions/:id so 'distributable' isn't
+    // captured as an id. reserveCents (optional) is the cash to hold back.
+    this.add('GET', '/distributions/distributable', 'distribution.read', (ctx, _p, body) => {
+      const entityId = this.requireString(body, 'entityId');
+      if (!this.entities.getEntity(ctx.tenantId, entityId)) throw new HttpError(404, 'legal entity not found');
+      const reserveCents = typeof body['reserveCents'] === 'string' ? Number(body['reserveCents']) : (typeof body['reserveCents'] === 'number' ? (body['reserveCents'] as number) : 0);
+      return { status: 200, body: { entityId, ...this.distributableFor(ctx.tenantId, entityId, Number.isFinite(reserveCents) ? reserveCents : 0) } };
+    });
+
     this.add('GET', '/distributions/:id', 'distribution.read', (ctx, p) => ({
       status: 200, body: this.distributionRow(ctx.tenantId, this.ownedDistribution(ctx, p['id']!)),
     }));
@@ -3406,11 +3438,15 @@ export class App {
       if (propertyId && !this.masterData.properties.get(ctx.tenantId, propertyId)) throw new HttpError(404, 'property not found');
       const amountCents = this.requireInt(body, 'amountCents');
       const id = this.requireString(body, 'id');
-      // Money out → policy-gated on the amount (large distribution escalates).
+      // Distributable-cash guardrail: distributing more than the entity has
+      // available (NOI − reserves − already-distributed) escalates for approval.
+      const reserveCents = typeof body['reserveCents'] === 'number' ? (body['reserveCents'] as number) : 0;
+      const { distributableCents } = this.distributableFor(ctx.tenantId, entityId, reserveCents);
+      // Money out → policy-gated on the amount (large OR over-distributable escalates).
       return this.gated(
         'distribution.record',
         ctx,
-        { amountCents },
+        { amountCents, distributableCents },
         () => {
           const d = this.distributions.record({
             id, tenantId: ctx.tenantId, entityId, propertyId, amountCents,

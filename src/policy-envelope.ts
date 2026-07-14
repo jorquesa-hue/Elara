@@ -103,6 +103,14 @@ export const POLICY_RULES: readonly PolicyRule[] = [
     when: (ctx) => (ctx.amountCents ?? 0) > 500_000,
     conditionNote: 'amount_cents > 500000',
   },
+  {
+    id: 'pol-distribution-over-distributable',
+    action: 'distribution.record',
+    effect: 'escalate',
+    description: 'Distributing MORE than the entity has available (distributable cash = NOI − reserves − already-distributed) would return capital the community has not earned: a human confirms the over-distribution. The App computes distributableCents and threads it into the decision.',
+    when: (ctx) => typeof ctx.distributableCents === 'number' && (ctx.amountCents ?? 0) > ctx.distributableCents,
+    conditionNote: 'amount_cents > distributable_cents',
+  },
   { id: 'pol-distribution-record', action: 'distribution.record', effect: 'allow', description: 'Recording a routine owner distribution (an equity draw paid in cash) under the threshold is auto-approved.' },
   { id: 'pol-po-raise', action: 'purchase_order.raise', effect: 'allow', description: 'Raising a draft purchase order commits nothing to the ledger; routine.' },
   {

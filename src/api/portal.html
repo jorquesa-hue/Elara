@@ -1687,17 +1687,24 @@
     if(can("masterdata.read")) api("/properties").then(function(r){ ((r.body||{}).properties||[]).forEach(function(p){ prop.appendChild(h("option",{value:p.id},[p.name||p.code||p.id])); }); });
     var amt=h("input",{type:"number",min:"0",step:"1",placeholder:"5000.00"});
     var memo=h("input",{type:"text",placeholder:"Q2 distribution"});
+    // Distributable-cash headroom for the picked entity (NOI − already distributed).
+    var head=h("div",{class:"muted",style:"font-size:12.5px;margin:0 0 12px"},[]);
+    ent.onchange=function(){ head.innerHTML=""; if(!ent.value) return;
+      api("/distributions/distributable?entityId="+encodeURIComponent(ent.value)).then(function(r){ if(r.status===200){ var d=r.body||{};
+        head.appendChild(h("span",{},["Distributable now: "])); head.appendChild(h("strong",{},[fmt(d.distributableCents||0)]));
+        head.appendChild(h("span",{},[" (NOI "+fmt(d.noiCents||0)+" − distributed "+fmt(d.distributedCents||0)+"). A draw over this parks for approval."])); } });
+    };
     return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
       if(!ent.value) return toast("Pick an owning entity","err");
       var cents=Math.round((parseFloat(amt.value)||0)*100);
       if(cents<=0) return toast("Enter an amount","err");
       var body={ id:"dist-"+Date.now(), entityId:ent.value, propertyId:prop.value||undefined, amountCents:cents, memo:memo.value||undefined };
       api("/distributions",{method:"POST",body:body}).then(function(r){
-        if(r.status===201){ toast("Distribution recorded","ok"); amt.value=memo.value=""; refreshDistributions(wrap); }
-        else if(r.status===202){ toast("Over R$5k — parked for approval (see Approvals)","ok"); }
+        if(r.status===201){ toast("Distribution recorded","ok"); amt.value=memo.value=""; ent.onchange(); refreshDistributions(wrap); }
+        else if(r.status===202){ toast("Parked for approval (over R$5k or over distributable)","ok"); }
         else toast((r.body||{}).error||"err","err");
       });
-    }},[ field("Owning entity",ent), field("Community",prop), field("Amount",amt), field("Memo",memo), h("div",{},[h("button",{class:"btn",type:"submit"},["Record distribution"])]) ]);
+    }},[ field("Owning entity",ent), field("Community",prop), field("Amount",amt), field("Memo",memo), head, h("div",{},[h("button",{class:"btn",type:"submit"},["Record distribution"])]) ]);
   }
   function refreshDistributions(wrap){
     api("/distributions").then(function(r){

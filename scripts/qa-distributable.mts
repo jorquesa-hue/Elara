@@ -1,5 +1,6 @@
-// Browser-QA Phase 7A: the Distributions view — record an owner distribution to
-// an SPE, see it listed with the total. NO console errors.
+// Browser-QA Phase 7C: the distributable-cash guardrail on the Distributions
+// view — picking an entity shows its distributable headroom, and an over-
+// distributable draw is parked for approval (toast) not recorded. NO console errors.
 import { chromium } from 'playwright-core';
 import { readdirSync } from 'node:fs';
 import { App, StaticTokenAuthenticator, ConfigStore, RoleRegistry, MasterData, createHttpServer } from '../src/index.ts';
@@ -20,11 +21,11 @@ const app = new App({ authenticator: auth, config, roles: new RoleRegistry(), ma
 const D = (method: string, path: string, body: Record<string, unknown>) => app.dispatch({ method, path, bearer: 'Bearer owner-demo', body });
 D('POST', '/legal-entities', { id: 'ent-spe', name: 'Northgate SPE LLC', role: 'spe' });
 D('POST', '/properties', { id: 'prop-1', code: 'NG', name: 'Northgate', entityId: 'ent-spe' });
-// NOI backing so the $3k draw is within distributable (Phase 7C guardrail).
 D('POST', '/units', { id: 'u-1', code: 'A-1', label: 'Apt 101', propertyId: 'prop-1' });
 D('POST', '/agreements', { id: 'ag-1', guestId: 'Bea Lima', unitId: 'u-1', kind: 'lease', start: '2026-01-01', end: '2027-01-01', rateCents: 300000 });
 D('POST', '/agreements/ag-1/activate', {});
-D('POST', '/invoices', { id: 'inv-noi', agreementId: 'ag-1', issuedAt: NOW, dueAt: '2026-07-20', lines: [{ description: 'rent', account: 'revenue:room', amountCents: 1000000 }] });
+// NOI = $2,000 -> distributable $2,000.
+D('POST', '/invoices', { id: 'inv-noi', agreementId: 'ag-1', issuedAt: NOW, dueAt: '2026-07-20', lines: [{ description: 'rent', account: 'revenue:room', amountCents: 200000 }] });
 
 const server = createHttpServer(app);
 await new Promise<void>((r) => server.listen(0, () => r()));
@@ -45,21 +46,27 @@ await page.waitForTimeout(400);
 await page.getByRole('button', { name: 'Distributions' }).click();
 await page.waitForTimeout(400);
 
-await page.locator('form select').first().selectOption('ent-spe'); // owning entity
-await page.locator('form select').nth(1).selectOption('prop-1'); // community
-await page.getByPlaceholder('5000.00').fill('3000');
-await page.getByPlaceholder('Q2 distribution').fill('Q2 draw');
+await page.locator('form select').first().selectOption('ent-spe'); // triggers onchange -> distributable
+await page.waitForTimeout(400);
+const afterPick = await page.evaluate(() => document.body.innerText);
+const headroom = /Distributable now/i.test(afterPick);
+
+// Try to over-distribute ($5,000 draw > $2,000 distributable) -> parked for approval.
+await page.getByPlaceholder('5000.00').fill('5000');
+await page.getByPlaceholder('Q2 distribution').fill('Over-draw');
 await page.getByRole('button', { name: 'Record distribution' }).click();
 await page.waitForTimeout(500);
-const after = await page.evaluate(() => document.body.innerText);
-const listed = /Northgate SPE LLC/.test(after) && /Q2 draw/.test(after);
-const total = /Total distributed/i.test(after);
+const afterSubmit = await page.evaluate(() => document.body.innerText);
+const parked = /Parked for approval/i.test(afterSubmit);
+// It must NOT appear in the list (nothing recorded).
+const notRecorded = !/Over-draw/.test(afterSubmit);
 
-await page.screenshot({ path: process.argv[2] ?? '/tmp/claude-0/-home-user-Elara/8362700f-e9b3-5f80-9d7c-fe02ed300b4d/scratchpad/distributions.png' });
+await page.screenshot({ path: process.argv[2] ?? '/tmp/claude-0/-home-user-Elara/8362700f-e9b3-5f80-9d7c-fe02ed300b4d/scratchpad/distributable.png' });
 await browser.close();
 server.close();
 
-console.log('distribution listed:', listed);
-console.log('total shown:', total);
+console.log('distributable headroom shown:', headroom);
+console.log('over-draw parked for approval:', parked);
+console.log('over-draw not recorded:', notRecorded);
 console.log('console errors:', errors.length ? errors : 'NONE');
-if (errors.length || !listed || !total) process.exit(1);
+if (errors.length || !headroom || !parked || !notRecorded) process.exit(1);
