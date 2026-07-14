@@ -46,6 +46,7 @@ import { Tours } from '../tours.ts';
 import { Turns, turnDays } from '../turns.ts';
 import { PreventiveMaintenance } from '../preventive.ts';
 import { InsuranceRegistry, coverageStatus } from '../insurance.ts';
+import { UtilityBilling, allocateUtility, isUtilityKind, isAllocationMethod, type AllocationMethod, type UtilityParticipant } from '../utility-billing.ts';
 import { PeriodLock } from '../period-lock.ts';
 import { BankAccounts } from '../bank-account.ts';
 import { gaapViewFromLines } from '../multigaap.ts';
@@ -213,6 +214,7 @@ export class App {
   readonly turns = new Turns();
   readonly pm = new PreventiveMaintenance();
   readonly insurance = new InsuranceRegistry();
+  readonly utilities = new UtilityBilling();
   readonly signatures = new Signatures();
   readonly periodLock = new PeriodLock();
   readonly bankAccounts = new BankAccounts();
@@ -237,6 +239,7 @@ export class App {
   private readonly turnTenant = new Map<string, string>();
   private readonly pmTenant = new Map<string, string>();
   private readonly insuranceTenant = new Map<string, string>();
+  private readonly utilityTenant = new Map<string, string>();
   private readonly flushMarks = new Map<string, FlushMark>();
   /** Per-tenant in-flight flush, so overlapping flushes serialize (see flushWorld). */
   private readonly flushInFlight = new Map<string, Promise<void>>();
@@ -950,6 +953,46 @@ export class App {
     const coverage = coverageStatus(this.insurance.forAgreement(p.agreementId), at);
     const residentName = ag ? this.residentNameFor(tenantId, p.agreementId, ag.guestId) : undefined;
     return { ...p, residentName, unitLabel, agreementStatus: ag?.status, coverage };
+  }
+
+  private ownedUtilityBill(ctx: AuthContext, id: string) {
+    if (this.utilityTenant.get(id) !== ctx.tenantId) throw new HttpError(404, 'utility bill not found');
+    return this.utilities.get(id);
+  }
+
+  /** The active residential leases in a property that share a utility bill —
+   *  each carrying its ratio inputs (resident headcount, unit area, bedrooms). */
+  private utilityParticipants(tenantId: string, propertyId: string): UtilityParticipant[] {
+    const out: UtilityParticipant[] = [];
+    for (const { agreement: ag } of this.agreements.values()) {
+      if (ag.tenantId !== tenantId) continue;
+      if (ag.status !== 'active' || (ag.kind !== 'lease' && ag.kind !== 'monthly')) continue;
+      if (this.propertyForAgreement(tenantId, ag.id) !== propertyId) continue;
+      const unit = this.masterData.units.get(tenantId, ag.currentUnitId);
+      const type = unit?.typeId ? this.masterData.unitTypes.get(tenantId, unit.typeId) : undefined;
+      out.push({
+        agreementId: ag.id,
+        unitId: ag.currentUnitId,
+        occupancy: Math.max(1, this.parties.partiesFor(ag.id, 'resident').length),
+        area: type?.areaSqm,
+        bedrooms: type?.bedrooms,
+      });
+    }
+    return out.sort((a, b) => a.agreementId.localeCompare(b.agreementId));
+  }
+
+  /** A utility bill plus its live allocation (resident/unit labels per share). */
+  private utilityBillView(tenantId: string, bill: ReturnType<UtilityBilling['get']>) {
+    const shares = allocateUtility(bill.totalCents, bill.method as AllocationMethod, this.utilityParticipants(tenantId, bill.propertyId)).map((s) => {
+      const ag = this.agreements.get(s.agreementId)?.agreement;
+      return {
+        ...s,
+        unitLabel: this.masterData.units.get(tenantId, s.unitId)?.label ?? s.unitId,
+        residentName: ag ? this.residentNameFor(tenantId, s.agreementId, ag.guestId) : undefined,
+      };
+    });
+    const propertyName = this.masterData.properties.get(tenantId, bill.propertyId)?.name;
+    return { ...bill, propertyName, allocation: shares };
   }
 
   private ownedProspect(ctx: AuthContext, id: string) {
@@ -3049,6 +3092,74 @@ export class App {
       return { status: 200, body: { coverage: coverageStatus(this.insurance.forAgreement(p['id']!), at), policies } };
     });
 
+    // --- utility billing / RUBS (Phase 6B) --------------------------------
+    // A master utility bill for a property, recovered from residents by an
+    // allocation ratio (equal / occupancy / area / bedrooms). The allocation is
+    // a pure function that sums back to the exact master total; the bill step
+    // raises a resident invoice per share through the SAME gated invoice.issue
+    // path (no bypass), idempotent per (bill, agreement) via the invoice id.
+    this.add('GET', '/utility-bills', 'utility.read', (ctx) => {
+      const bills = this.utilities.list(ctx.tenantId).map((b) => this.utilityBillView(ctx.tenantId, b));
+      return { status: 200, body: { bills } };
+    });
+
+    this.add('GET', '/utility-bills/:id', 'utility.read', (ctx, p) => ({
+      status: 200, body: this.utilityBillView(ctx.tenantId, this.ownedUtilityBill(ctx, p['id']!)),
+    }));
+
+    this.add('POST', '/utility-bills', 'utility.manage', (ctx, _p, body) => {
+      const propertyId = this.requireString(body, 'propertyId');
+      if (!this.masterData.properties.get(ctx.tenantId, propertyId)) throw new HttpError(404, 'property not found');
+      const utility = this.requireString(body, 'utility');
+      if (!isUtilityKind(utility)) throw new HttpError(400, `unknown utility: ${utility}`);
+      const method = this.requireString(body, 'method');
+      if (!isAllocationMethod(method)) throw new HttpError(400, `unknown allocation method: ${method}`);
+      const bill = this.utilities.create({
+        id: this.requireString(body, 'id'),
+        tenantId: ctx.tenantId,
+        propertyId,
+        utility,
+        method,
+        periodStart: this.requireString(body, 'periodStart'),
+        periodEnd: this.requireString(body, 'periodEnd'),
+        totalCents: this.requireInt(body, 'totalCents'),
+        notes: this.optString(body, 'notes'),
+        createdAt: this.now(),
+      });
+      this.utilityTenant.set(bill.id, ctx.tenantId);
+      return { status: 201, body: this.utilityBillView(ctx.tenantId, bill) };
+    });
+
+    // Raise a resident invoice for each allocated share through the gated
+    // invoice.issue path. Idempotent per (bill, agreement) via `util-<bill>-<ag>`.
+    this.add('POST', '/utility-bills/:id/bill', 'utility.manage', (ctx, p, body) => {
+      const bill = this.ownedUtilityBill(ctx, p['id']!);
+      const dueAt = this.optString(body, 'dueAt') ?? bill.periodEnd;
+      const issuedAt = this.now();
+      const currency = this.config.get(ctx.tenantId).currency;
+      const shares = allocateUtility(bill.totalCents, bill.method as AllocationMethod, this.utilityParticipants(ctx.tenantId, bill.propertyId));
+      const label = `${bill.utility.charAt(0).toUpperCase()}${bill.utility.slice(1)} ${bill.periodStart}–${bill.periodEnd} — utility reimbursement`;
+      const invoiceIds: string[] = [];
+      for (const s of shares) {
+        const invId = `util-${bill.id}-${s.agreementId}`;
+        if (this.invoiceTenant.get(invId) === ctx.tenantId) continue; // already raised
+        const billToPartyId = this.parties.billTo(s.agreementId) ?? undefined;
+        const propertyId = this.propertyForAgreement(ctx.tenantId, s.agreementId);
+        this.gated(
+          'invoice.issue', ctx, { agreementId: s.agreementId },
+          () => {
+            const inv = this.billing.issue({ id: invId, agreementId: s.agreementId, tenantId: ctx.tenantId, issuedAt, dueAt, currency, lines: [{ description: label, account: 'revenue:utility_reimbursement', amountCents: s.shareCents }], billToPartyId, propertyId });
+            this.invoiceTenant.set(invId, ctx.tenantId);
+            return inv;
+          },
+          (inv) => ({ status: 201, body: inv }),
+        );
+        invoiceIds.push(invId);
+      }
+      const updated = this.utilities.markBilled(bill.id, issuedAt);
+      return { status: 200, body: { billed: invoiceIds.length, invoiceIds, bill: updated } };
+    });
+
     // --- e-signature for lease execution (#17) ----------------------------
     // The CRM → lease → e-sign tail. The provider I/O lives in an edge adapter
     // (secretRef); a fully signed envelope advances the CRM lead but does NOT
@@ -3868,6 +3979,7 @@ export class App {
       unitTurns: this.turns.list(tenantId),
       pmSchedules: this.pm.list(tenantId),
       insurancePolicies: this.insurance.list(tenantId),
+      utilityBills: this.utilities.list(tenantId),
       // --- full persistence: platform users, custom roles, e-sign, connectors --
       users: this.masterData.users.list(tenantId),
       customRoles: this.roles.customRolesFor(tenantId).map((r) => ({ tenantId, roleId: r.id, name: r.name, description: r.description, permissions: r.permissions === '*' ? [...this.roles.permissionsFor(tenantId, r.id)] : (r.permissions as readonly string[]) })),
@@ -3966,6 +4078,8 @@ export class App {
     for (const s of world.pmSchedules ?? []) this.pmTenant.set(s.id, s.tenantId);
     this.insurance.hydrate((world.insurancePolicies ?? []) as never);
     for (const p of world.insurancePolicies ?? []) this.insuranceTenant.set(p.id, p.tenantId);
+    this.utilities.hydrate((world.utilityBills ?? []) as never);
+    for (const b of world.utilityBills ?? []) this.utilityTenant.set(b.id, b.tenantId);
     this.signatures.hydrate((world.signatureEnvelopes ?? []) as never);
     this.integrations.hydrate((world.integrations ?? []) as never);
     this.connectorOutbox.hydrate((world.connectorCommands ?? []) as never);

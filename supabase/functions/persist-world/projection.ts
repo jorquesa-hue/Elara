@@ -231,6 +231,10 @@ export interface WorldData {
     id: string; tenantId: string; agreementId: string; partyId?: string; carrier: string; policyNumber: string;
     liabilityCents: number; effectiveAt: string; expiresAt: string; status: string; verifiedAt?: string; notes?: string; createdAt: string;
   }>;
+  utilityBills?: ReadonlyArray<{
+    id: string; tenantId: string; propertyId: string; utility: string; periodStart: string; periodEnd: string;
+    totalCents: number; method: string; status: string; billedAt?: string; notes?: string; createdAt: string;
+  }>;
   users?: Array<{ id: string; tenantId: string; code: string; displayName: string; roleId: string; active: boolean }>;
   customRoles?: Array<{ tenantId: string; roleId: string; name: string; description?: string; permissions: readonly string[] }>;
   integrations?: Array<{
@@ -586,6 +590,14 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       stmt(
         'insert into insurance_policy (id, tenant_id, agreement_id, party_id, carrier, policy_number, liability_cents, effective_at, expires_at, status, verified_at, notes, created_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) on conflict (id) do update set party_id = excluded.party_id, carrier = excluded.carrier, policy_number = excluded.policy_number, liability_cents = excluded.liability_cents, effective_at = excluded.effective_at, expires_at = excluded.expires_at, status = excluded.status, verified_at = excluded.verified_at, notes = excluded.notes',
         [p.id, p.tenantId, p.agreementId, p.partyId ?? null, p.carrier, p.policyNumber, p.liabilityCents, p.effectiveAt, p.expiresAt, p.status, p.verifiedAt ?? null, p.notes ?? null, p.createdAt],
+      ),
+    );
+  }
+  for (const b of w.utilityBills ?? []) {
+    out.push(
+      stmt(
+        'insert into utility_bill (id, tenant_id, property_id, utility, period_start, period_end, total_cents, method, status, billed_at, notes, created_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) on conflict (id) do update set utility = excluded.utility, period_start = excluded.period_start, period_end = excluded.period_end, total_cents = excluded.total_cents, method = excluded.method, status = excluded.status, billed_at = excluded.billed_at, notes = excluded.notes',
+        [b.id, b.tenantId, b.propertyId, b.utility, b.periodStart, b.periodEnd, b.totalCents, b.method, b.status, b.billedAt ?? null, b.notes ?? null, b.createdAt],
       ),
     );
   }

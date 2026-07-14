@@ -89,6 +89,13 @@ export const PERMISSIONS = [
   // desk collect certificates); reading is broadly available via READS.
   'insurance.read',
   'insurance.manage',
+  // Utility billing / RUBS — recovering a master utility bill from residents by
+  // an allocation ratio. Reading is broadly available (OPS + READS); managing
+  // (creating a bill + raising the resident invoices) is a FINANCE function
+  // (manager/staff/accountant/owner), NOT in the generic OPS bundle. The invoices
+  // it raises still pass the invoice.issue policy gate — no bypass.
+  'utility.read',
+  'utility.manage',
   'esign.read',
   'esign.manage',
   // Recording a signer's COMPLETION is the provider's webhook, relayed by the
@@ -161,6 +168,7 @@ const OPS: Permission[] = [
   'tour.read', 'tour.manage',
   'turn.read', 'turn.manage',
   'insurance.read', 'insurance.manage',
+  'utility.read',
   'esign.read', 'esign.manage',
   'renewal.read',
   'ledger.read', 'exception.read', 'subscription.read',
@@ -173,7 +181,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'manager',
     name: 'Manager',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'agreement.execute', 'collections.run', 'renewal.run', 'period.manage', 'metrics.scrape', 'privacy.export', 'privacy.manage'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'utility.manage', 'agreement.execute', 'collections.run', 'renewal.run', 'period.manage', 'metrics.scrape', 'privacy.export', 'privacy.manage'],
     builtin: true,
     description: 'Runs the property: all operations, approvals, staff and master data.',
   },
@@ -181,7 +189,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'staff',
     name: 'Staff',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'masterdata.manage', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'agreement.execute', 'collections.run', 'renewal.run', 'period.manage', 'metrics.scrape', 'privacy.export', 'privacy.manage'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'masterdata.manage', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'utility.manage', 'agreement.execute', 'collections.run', 'renewal.run', 'period.manage', 'metrics.scrape', 'privacy.export', 'privacy.manage'],
     builtin: true,
     description: 'Approvals and day-to-day management.',
   },
@@ -189,7 +197,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'accountant',
     name: 'Accountant',
-    permissions: ['invoice.read', 'invoice.issue', 'payment.record', 'deposit.read', 'deposit.refund', 'ledger.read', 'reports.read', 'collections.run', 'period.manage', 'subscription.read', 'masterdata.read', 'config.read', 'party.read', 'entity.read', 'entity.manage', 'bill.read', 'bill.issue', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'procurement.read', 'procurement.manage'],
+    permissions: ['invoice.read', 'invoice.issue', 'payment.record', 'deposit.read', 'deposit.refund', 'ledger.read', 'reports.read', 'collections.run', 'period.manage', 'subscription.read', 'masterdata.read', 'config.read', 'party.read', 'entity.read', 'entity.manage', 'bill.read', 'bill.issue', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'procurement.read', 'procurement.manage', 'utility.read', 'utility.manage'],
     builtin: true,
     description: 'Finance: bills rent, ledger, payments, deposit refunds, accounts payable, collections, reporting.',
   },

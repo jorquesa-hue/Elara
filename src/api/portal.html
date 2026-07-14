@@ -222,6 +222,7 @@
     tours: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="M9 15l2 2 4-4"/>',
     turns: '<path d="M3 7h13l-3-3M21 17H8l3 3"/><rect x="3" y="10" width="7" height="4" rx="1"/><rect x="14" y="10" width="7" height="4" rx="1"/>',
     insurance: '<path d="M12 3l7 3v5c0 4.4-3 8.4-7 10-4-1.6-7-5.6-7-10V6z"/><path d="M9 12l2 2 4-4"/>',
+    utilities: '<path d="M12 2v6M12 8a4 4 0 0 0-4 4c0 3 4 8 4 8s4-5 4-8a4 4 0 0 0-4-4z"/>',
     reports: '<path d="M4 3v18h16"/><rect x="7" y="12" width="3" height="6" rx="1"/><rect x="12" y="8" width="3" height="10" rx="1"/><rect x="17" y="4" width="3" height="14" rx="1"/>',
     advisor: '<path d="M12 3l1.9 4.3L18 9l-4.1 1.7L12 15l-1.9-4.3L6 9l4.1-1.7z"/><path d="M18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z"/>',
     properties: '<path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M10 21v-6h4v6"/><path d="M9 10h.01M15 10h.01"/>',
@@ -433,6 +434,7 @@
     if (can("maintenance.read")) items.splice(can("bill.read") ? 4 : 3, 0, ["maintenance", "Maintenance", ICONS.maintenance]);
     if (can("turn.read")) items.splice(can("bill.read") ? 4 : 3, 0, ["turns", "Make-ready", ICONS.turns]);
     if (can("insurance.read")) items.splice(items.length - 1, 0, ["insurance", "Insurance", ICONS.insurance]);
+    if (can("utility.read")) items.splice(items.length - 1, 0, ["utilities", "Utilities", ICONS.utilities]);
     if (can("reservation.read")) items.splice(3, 0, ["reservations", "Reservations", ICONS.reservations]);
     if (can("comms.read")) items.splice(items.length - 1, 0, ["inbox", "Inbox", ICONS.inbox]);
     if (can("reconciliation.read")) items.splice(items.length - 1, 0, ["reconcile", "Reconcile", ICONS.reconcile]);
@@ -469,7 +471,7 @@
       h("main", { id: "main" }, [])
     ]));
     var main = document.getElementById("main");
-    ({ dashboard: viewDashboard, agreements: viewAgreements, properties: viewProperties, website: viewWebsite, pricing: viewPricing, crm: viewCrm, applications: viewApplications, tours: viewTours, turns: viewTurns, insurance: viewInsurance, renewals: viewRenewals, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
+    ({ dashboard: viewDashboard, agreements: viewAgreements, properties: viewProperties, website: viewWebsite, pricing: viewPricing, crm: viewCrm, applications: viewApplications, tours: viewTours, turns: viewTurns, insurance: viewInsurance, utilities: viewUtilities, renewals: viewRenewals, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
   }
 
   // ---- views --------------------------------------------------------------
@@ -1519,6 +1521,52 @@
         ]);
       });
       wrap.appendChild(tableEl([th("Resident"),th("Unit"),th("Carrier"),th("Liability"),th("Expires"),th("Coverage"),th("")], rows, 7, "No policies."));
+    });
+  }
+
+  // ---- Utility billing / RUBS (Phase 6B) -----------------------------------
+  function viewUtilities(main){
+    main.appendChild(h("h1",{},["Utilities"]));
+    main.appendChild(h("p",{class:"sub"},["Recover a master utility bill (water, sewer, trash, gas, electric) from residents by an allocation ratio — equal share, by occupancy, by unit area, or by bedroom count. Billing raises a resident invoice per share; the shares always sum to the exact master total."]));
+    var formSlot=h("div",{},[]); main.appendChild(formSlot);
+    var wrap=h("div",{},[]); main.appendChild(wrap);
+    if(can("utility.manage")) formSlot.appendChild(utilityForm(wrap));
+    refreshUtilities(wrap);
+  }
+  function utilityForm(wrap){
+    var prop=h("select",{},[h("option",{value:""},["— property —"])]);
+    if(can("masterdata.read")) api("/properties").then(function(r){ ((r.body||{}).properties||[]).forEach(function(p){ prop.appendChild(h("option",{value:p.id},[p.name||p.code||p.id])); }); });
+    var util=h("select",{},[["water","Water"],["sewer","Sewer"],["trash","Trash"],["gas","Gas"],["electric","Electric"],["other","Other"]].map(function(u){return h("option",{value:u[0]},[u[1]]);}));
+    var method=h("select",{},[["equal","Equal share"],["occupancy","By occupancy"],["area","By area (sqm)"],["bedrooms","By bedrooms"]].map(function(m){return h("option",{value:m[0]},[m[1]]);}));
+    var total=h("input",{type:"number",min:"0",step:"1",placeholder:"250.00"});
+    var ps=h("input",{type:"date"}); var pe=h("input",{type:"date"});
+    return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
+      if(!prop.value) return toast("Pick a property","err");
+      if(!ps.value||!pe.value) return toast("Period dates are required","err");
+      var body={ id:"util-"+Date.now(), propertyId:prop.value, utility:util.value, method:method.value,
+        totalCents:Math.round((parseFloat(total.value)||0)*100), periodStart:ps.value, periodEnd:pe.value };
+      api("/utility-bills",{method:"POST",body:body}).then(function(r){ if(r.status===201){ toast("Utility bill added","ok"); total.value=""; refreshUtilities(wrap);} else toast((r.body||{}).error||"err","err"); });
+    }},[ field("Property",prop), field("Utility",util), field("Allocation",method), field("Master total",total), field("Period start",ps), field("Period end",pe), h("div",{},[h("button",{class:"btn",type:"submit"},["Add bill"])]) ]);
+  }
+  function refreshUtilities(wrap){
+    api("/utility-bills").then(function(r){
+      wrap.innerHTML="";
+      var bills=((r.body||{}).bills||[]);
+      if(!bills.length){ wrap.appendChild(h("div",{class:"panel muted"},["No utility bills yet. Add a master bill to allocate it across residents."])); return; }
+      bills.forEach(function(b){
+        var stCls = b.status==="billed" ? "active" : "draft";
+        var rows=(b.allocation||[]).map(function(s){ return h("tr",{},[ h("td",{},[s.residentName||"—"]), h("td",{},[s.unitLabel||s.unitId]), h("td",{class:"mono"},[String(s.basisValue)]), h("td",{class:"mono"},[fmt(s.shareCents)]) ]); });
+        var head=h("div",{class:"row",style:"justify-content:space-between;flex-wrap:wrap;gap:8px"},[
+          h("strong",{},[(b.propertyName||b.propertyId)+" · "+b.utility+" · "+b.periodStart+"→"+b.periodEnd]),
+          h("div",{class:"row",style:"gap:8px"},[ h("span",{class:"pill "},[fmt(b.totalCents)+" · "+b.method]), h("span",{class:"pill "+stCls},[b.status]) ])
+        ]);
+        var actions=h("div",{class:"row",style:"gap:8px;margin-top:10px"},[]);
+        if(b.status!=="billed" && can("utility.manage")) actions.appendChild(h("button",{class:"btn sm",onclick:function(){ api("/utility-bills/"+b.id+"/bill",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast("Billed "+(x.body||{}).billed+" resident(s)","ok"); refreshUtilities(wrap);} else toast((x.body||{}).error||"err","err"); }); }},["Bill residents"]));
+        wrap.appendChild(h("div",{class:"panel",style:"margin-bottom:12px"},[ head,
+          h("table",{style:"margin-top:10px"},[ h("thead",{},[h("tr",{},[th("Resident"),th("Unit"),th("Basis"),th("Share")])]), h("tbody",{},rows) ]),
+          actions
+        ]));
+      });
     });
   }
 
