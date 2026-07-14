@@ -2,7 +2,7 @@
 // property is recovered from residents by an allocation ratio (equal /
 // occupancy / area / bedrooms); the allocation sums exactly to the master total
 // and the bill step raises a resident invoice per share through the gated
-// invoice.issue path (no bypass), idempotent. RBAC-only, durable. 12 tests.
+// invoice.issue path (no bypass), idempotent. RBAC-only, durable. 13 tests.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -88,6 +88,23 @@ test('billing raises a resident invoice per share through invoice.issue, summing
   assert.equal(out.bill.status, 'billed');
   const totals = out.invoiceIds.map((id) => (D(app, 'GET', '/invoices/' + id).body as { totalCents: number }).totalCents);
   assert.equal(totals.reduce((a, b) => a + b, 0), 90001);
+});
+
+test('a share that rounds to $0 is skipped, not billed — the bill still completes', () => {
+  const app = mkApp();
+  // Two floorplans with a lopsided area ratio; a small total floors one share to 0.
+  D(app, 'POST', '/unit-types', { id: 'ut-studio', code: 'ST', name: 'Studio', areaSqm: 1 });
+  D(app, 'POST', '/unit-types', { id: 'ut-penthouse', code: 'PH', name: 'Penthouse', areaSqm: 500 });
+  D(app, 'PUT', '/units/u-1', { typeId: 'ut-studio' });
+  D(app, 'PUT', '/units/u-2', { typeId: 'ut-penthouse' });
+  create(app, { method: 'area', totalCents: 100 }); // 100 * 1/501 -> floor 0 for the studio
+  const r = D(app, 'POST', '/utility-bills/util-1/bill', {});
+  assert.equal(r.status, 200); // completes (no mid-loop throw)
+  const out = r.body as { billed: number; bill: { status: string } };
+  assert.equal(out.billed, 1); // only the penthouse (non-zero share) invoiced
+  assert.equal(out.bill.status, 'billed'); // markBilled still ran
+  // The single invoice carries the full master total (remainder-on-last).
+  assert.equal((D(app, 'GET', '/invoices/util-util-1-ag-2').body as { totalCents: number }).totalCents, 100);
 });
 
 test('re-billing is idempotent — no duplicate resident invoices', () => {

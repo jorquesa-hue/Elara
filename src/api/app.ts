@@ -3180,6 +3180,11 @@ export class App {
       const label = `${bill.utility.charAt(0).toUpperCase()}${bill.utility.slice(1)} ${bill.periodStart}–${bill.periodEnd} — utility reimbursement`;
       const invoiceIds: string[] = [];
       for (const s of shares) {
+        // A share that rounds to $0 (a lopsided allocation on a small total) is
+        // not invoiced — issuing it would trip billing.issue's positive-total
+        // guard mid-loop, leaving a partial bill with markBilled never reached.
+        // Skipping it keeps the billed shares summing to the exact master total.
+        if (s.shareCents <= 0) continue;
         const invId = `util-${bill.id}-${s.agreementId}`;
         if (this.invoiceTenant.get(invId) === ctx.tenantId) continue; // already raised
         const billToPartyId = this.parties.billTo(s.agreementId) ?? undefined;
