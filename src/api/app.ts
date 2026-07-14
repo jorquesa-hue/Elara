@@ -49,6 +49,7 @@ import { InsuranceRegistry, coverageStatus } from '../insurance.ts';
 import { UtilityBilling, allocateUtility, isUtilityKind, isAllocationMethod, type AllocationMethod, type UtilityParticipant } from '../utility-billing.ts';
 import { Parcels, parcelDaysWaiting } from '../packages.ts';
 import { Waitlist } from '../waitlist.ts';
+import { Distributions } from '../distributions.ts';
 import { PeriodLock } from '../period-lock.ts';
 import { BankAccounts } from '../bank-account.ts';
 import { gaapViewFromLines } from '../multigaap.ts';
@@ -191,6 +192,7 @@ export class App {
   readonly payables: Payables;
   readonly payments: Payments;
   readonly deposits: Deposits;
+  readonly distributions: Distributions;
   readonly parties = new PartyDirectory();
   readonly spaces = new SpaceTree();
   readonly entities = new EntityCatalog();
@@ -246,6 +248,7 @@ export class App {
   private readonly utilityTenant = new Map<string, string>();
   private readonly parcelTenant = new Map<string, string>();
   private readonly waitlistTenant = new Map<string, string>();
+  private readonly distributionTenant = new Map<string, string>();
   private readonly flushMarks = new Map<string, FlushMark>();
   /** Per-tenant in-flight flush, so overlapping flushes serialize (see flushWorld). */
   private readonly flushInFlight = new Map<string, Promise<void>>();
@@ -264,6 +267,7 @@ export class App {
     this.payables = new Payables(this.ledger);
     this.payments = new Payments(this.ledger, this.billing);
     this.deposits = new Deposits(this.ledger);
+    this.distributions = new Distributions(this.ledger);
     this.auth = config.authenticator ?? new StaticTokenAuthenticator();
     this.plan = config.subscriptionPlan ?? { perUnitCents: 5000, currency: 'BRL' };
     this.persistence = config.persistence;
@@ -980,6 +984,18 @@ export class App {
   private waitlistRow(tenantId: string, e: ReturnType<Waitlist['get']>) {
     const type = e.typeId ? this.masterData.unitTypes.get(tenantId, e.typeId) : undefined;
     return { ...e, floorplanName: type?.name, position: this.waitlist.position(e.id) };
+  }
+
+  private ownedDistribution(ctx: AuthContext, id: string) {
+    if (this.distributionTenant.get(id) !== ctx.tenantId) throw new HttpError(404, 'distribution not found');
+    return this.distributions.get(id);
+  }
+
+  /** Enrich a distribution with its owning-entity + community names. */
+  private distributionRow(tenantId: string, d: ReturnType<Distributions['get']>) {
+    const entity = this.entities.getEntity(tenantId, d.entityId);
+    const property = d.propertyId ? this.masterData.properties.get(tenantId, d.propertyId) : undefined;
+    return { ...d, entityName: entity?.name ?? d.entityId, propertyName: property?.name };
   }
 
   /** Enrich a parcel with its recipient name + unit label + days waiting. */
@@ -3319,6 +3335,50 @@ export class App {
       return { status: 200, body: this.waitlistRow(ctx.tenantId, this.waitlist.withdraw(p['id']!)) };
     });
 
+    // --- owner distributions (Phase 7A) -----------------------------------
+    // The capital-return arm: pay operating cash out to a property's owning legal
+    // entity (an equity draw). It MOVES MONEY OUT, so it is policy-gated — a
+    // distribution over R$5k escalates for human approval (parallels bill.pay) and
+    // posts DR equity:distributions / CR assets:cash only on allow/approve.
+    this.add('GET', '/distributions', 'distribution.read', (ctx) => {
+      const distributions = this.distributions.list(ctx.tenantId)
+        .map((d) => this.distributionRow(ctx.tenantId, d))
+        .sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
+      return { status: 200, body: { distributions } };
+    });
+
+    this.add('GET', '/distributions/:id', 'distribution.read', (ctx, p) => ({
+      status: 200, body: this.distributionRow(ctx.tenantId, this.ownedDistribution(ctx, p['id']!)),
+    }));
+
+    this.add('POST', '/distributions', 'distribution.record', (ctx, _p, body) => {
+      const entityId = this.requireString(body, 'entityId');
+      if (!this.entities.getEntity(ctx.tenantId, entityId)) throw new HttpError(404, 'legal entity not found');
+      const propertyId = this.optString(body, 'propertyId');
+      if (propertyId && !this.masterData.properties.get(ctx.tenantId, propertyId)) throw new HttpError(404, 'property not found');
+      const amountCents = this.requireInt(body, 'amountCents');
+      const id = this.requireString(body, 'id');
+      // Money out → policy-gated on the amount (large distribution escalates).
+      return this.gated(
+        'distribution.record',
+        ctx,
+        { amountCents },
+        () => {
+          const d = this.distributions.record({
+            id, tenantId: ctx.tenantId, entityId, propertyId, amountCents,
+            currency: this.config.get(ctx.tenantId).currency,
+            periodStart: this.optString(body, 'periodStart'),
+            periodEnd: this.optString(body, 'periodEnd'),
+            memo: this.optString(body, 'memo'),
+            recordedAt: this.now(),
+          });
+          this.distributionTenant.set(d.id, ctx.tenantId);
+          return d;
+        },
+        (d) => ({ status: 201, body: this.distributionRow(ctx.tenantId, d) }),
+      );
+    });
+
     // --- e-signature for lease execution (#17) ----------------------------
     // The CRM → lease → e-sign tail. The provider I/O lives in an edge adapter
     // (secretRef); a fully signed envelope advances the CRM lead but does NOT
@@ -3702,6 +3762,7 @@ export class App {
       insurancePolicies: this.insurance.list(tenantId).map((p) => ({ agreementId: p.agreementId, carrier: p.carrier, liabilityCents: p.liabilityCents, effectiveAt: p.effectiveAt, expiresAt: p.expiresAt, status: p.status })),
       parcels: this.parcels.list(tenantId).map((p) => { const r = this.parcelRow(tenantId, p); return { recipientName: r.recipientName, unitLabel: r.unitLabel, carrier: p.carrier, status: p.status, daysWaiting: r.daysWaiting }; }),
       waitlist: this.waitlist.list(tenantId).map((e) => ({ floorplanName: e.typeId ? this.masterData.unitTypes.get(tenantId, e.typeId)?.name : undefined, status: e.status })),
+      distributions: this.distributions.list(tenantId).map((d) => ({ entityName: this.entities.getEntity(tenantId, d.entityId)?.name ?? d.entityId, propertyName: d.propertyId ? this.masterData.properties.get(tenantId, d.propertyId)?.name : undefined, amountCents: d.amountCents, recordedAt: d.recordedAt })),
       holds: this.calendar.allHolds().filter((h) => agIds.has(h.holderId)).map((h) => ({ unitId: h.unitId, start: h.start, end: h.end, status: h.status })),
       ledgerBalanced: this.trialBalance(tenantId).balanced,
       // Tenant-scoped GL lines (same predicate as the trial balance) — the raw
@@ -4143,6 +4204,7 @@ export class App {
       utilityBills: this.utilities.list(tenantId),
       parcels: this.parcels.list(tenantId),
       waitlist: this.waitlist.list(tenantId),
+      distributions: this.distributions.list(tenantId),
       // --- full persistence: platform users, custom roles, e-sign, connectors --
       users: this.masterData.users.list(tenantId),
       customRoles: this.roles.customRolesFor(tenantId).map((r) => ({ tenantId, roleId: r.id, name: r.name, description: r.description, permissions: r.permissions === '*' ? [...this.roles.permissionsFor(tenantId, r.id)] : (r.permissions as readonly string[]) })),
@@ -4247,6 +4309,8 @@ export class App {
     for (const p of world.parcels ?? []) this.parcelTenant.set(p.id, p.tenantId);
     this.waitlist.hydrate((world.waitlist ?? []) as never);
     for (const e of world.waitlist ?? []) this.waitlistTenant.set(e.id, e.tenantId);
+    this.distributions.hydrate((world.distributions ?? []) as never);
+    for (const d of world.distributions ?? []) this.distributionTenant.set(d.id, d.tenantId);
     this.signatures.hydrate((world.signatureEnvelopes ?? []) as never);
     this.integrations.hydrate((world.integrations ?? []) as never);
     this.connectorOutbox.hydrate((world.connectorCommands ?? []) as never);

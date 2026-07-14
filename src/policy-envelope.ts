@@ -95,6 +95,15 @@ export const POLICY_RULES: readonly PolicyRule[] = [
     conditionNote: 'amount_cents > 500000',
   },
   { id: 'pol-bill-pay', action: 'bill.pay', effect: 'allow', description: 'Routine payables settlement is auto-approved; real bank-rail payout (a future integration) will tighten this.' },
+  {
+    id: 'pol-distribution-record-large',
+    action: 'distribution.record',
+    effect: 'escalate',
+    description: 'Distributing more than R$5,000 of operating cash to an owning entity sends real money out of the business: human approval required (parallels bill.pay).',
+    when: (ctx) => (ctx.amountCents ?? 0) > 500_000,
+    conditionNote: 'amount_cents > 500000',
+  },
+  { id: 'pol-distribution-record', action: 'distribution.record', effect: 'allow', description: 'Recording a routine owner distribution (an equity draw paid in cash) under the threshold is auto-approved.' },
   { id: 'pol-po-raise', action: 'purchase_order.raise', effect: 'allow', description: 'Raising a draft purchase order commits nothing to the ledger; routine.' },
   {
     id: 'pol-po-approve-large',

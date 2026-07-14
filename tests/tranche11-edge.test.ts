@@ -105,6 +105,7 @@ function buildWorld(): WorldData {
     utilityBills: [{ id: 'util-1', tenantId: 't-1', propertyId: 'prop-1', utility: 'water', periodStart: '2026-06-01', periodEnd: '2026-07-01', totalCents: 90000, method: 'equal', status: 'billed', billedAt: '2026-07-02T00:00:00Z', notes: 'municipal water', createdAt: '2026-07-01T00:00:00Z' }],
     parcels: [{ id: 'pcl-1', tenantId: 't-1', partyId: 'p-1', agreementId: 'ag-1', carrier: 'UPS', trackingNumber: '1Z999', description: 'large box', location: 'Shelf B3', status: 'notified', receivedAt: '2026-07-10T00:00:00Z', notifiedAt: '2026-07-10T01:00:00Z', notes: 'fragile' }],
     waitlist: [{ id: 'wl-1', tenantId: 't-1', typeId: 'utype-1', propertyId: 'prop-1', prospectName: 'Dana Reed', prospectEmail: 'dana@x.com', prospectPhone: '555-0100', desiredMoveIn: '2026-09-01', status: 'offered', joinedAt: '2026-07-05T00:00:00Z', offeredAt: '2026-07-12T00:00:00Z', notes: 'wants a 2-bed' }],
+    distributions: [{ id: 'dist-1', tenantId: 't-1', entityId: 'ent-1', propertyId: 'prop-1', amountCents: 400000, currency: 'BRL', periodStart: '2026-06-01', periodEnd: '2026-07-01', memo: 'Q2 draw', recordedAt: '2026-07-05T00:00:00Z' }],
     // full persistence — exercise the config + platform + connector paths.
     users: [{ id: 'usr-1', tenantId: 't-1', code: 'U-1', displayName: 'Manager', roleId: 'manager', active: true }],
     customRoles: [{ tenantId: 't-1', roleId: 'housekeeping_lead', name: 'Housekeeping Lead', description: 'HK', permissions: ['agreement.read', 'maintenance.manage'] }],

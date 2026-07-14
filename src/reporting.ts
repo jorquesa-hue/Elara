@@ -34,6 +34,8 @@ export interface ReportingInput {
   parcels?: ReadonlyArray<{ recipientName: string; unitLabel?: string; carrier: string; status: string; daysWaiting: number }>;
   /** Waitlist entries — for the demand-by-floorplan report + demand insight. */
   waitlist?: ReadonlyArray<{ floorplanName?: string; status: string }>;
+  /** Owner distributions — for the distributions-by-owner report. */
+  distributions?: ReadonlyArray<{ entityName: string; propertyName?: string; amountCents: number; recordedAt: string }>;
   holds: ReadonlyArray<{ unitId: string; start: string; end: string; status: string }>;
   ledgerBalanced: boolean;
   /** Tenant-scoped journal lines — the raw material for the FINANCIAL reports
@@ -87,6 +89,7 @@ export const REPORT_CATALOG: readonly ReportSpec[] = [
   { key: 'insurance_compliance', title: 'Insurance compliance', description: 'Renters-insurance coverage per active lease — compliant, expiring, lapsed or none, with the portfolio compliance rate.' },
   { key: 'package_room', title: 'Package room', description: 'Parcels awaiting pickup at the front desk, by days waiting — the packages still clogging the mail room.' },
   { key: 'waitlist_demand', title: 'Waitlist demand', description: 'Prospects waiting per floorplan — where demand outstrips available supply.' },
+  { key: 'owner_distributions', title: 'Owner distributions', description: 'Cash distributions (equity draws) paid to each owning entity/community in the window — the capital returned to owners.' },
   { key: 'pipeline', title: 'Sales pipeline', description: 'Leads by stage, pipeline value and conversion.' },
   { key: 'portfolio', title: 'Portfolio mix', description: 'Agreements by kind and status; unit occupancy mix.' },
   { key: 'cashflow', title: 'Cash flow', description: 'Money in (payments) vs money out (vendor payouts) for the window.' },
@@ -664,6 +667,36 @@ function waitlistDemand(inp: ReportingInput): Report {
   };
 }
 
+/** Owner distributions: cash returned to each owning entity/community in the
+ *  window (the capital-return side of the owner statement). */
+function ownerDistributions(inp: ReportingInput): Report {
+  const inWin = (inp.distributions ?? []).filter((d) => inWindow(d.recordedAt, inp.from, inp.to));
+  const byOwner = new Map<string, { entity: string; property: string; cents: number }>();
+  for (const d of inWin) {
+    const property = d.propertyName ?? 'Portfolio / unattributed';
+    const key = `${d.entityName} ${property}`;
+    const row = byOwner.get(key) ?? { entity: d.entityName, property, cents: 0 };
+    row.cents += d.amountCents;
+    byOwner.set(key, row);
+  }
+  const rows = [...byOwner.values()].map((r) => ({ entity: r.entity, property: r.property, distributed: r.cents })).sort((a, b) => b.distributed - a.distributed);
+  const total = sum(inWin.map((d) => d.amountCents));
+  return {
+    key: 'owner_distributions', title: 'Owner distributions', window: { from: inp.from, to: inp.to },
+    subtitle: 'Cash distributed to owning entities in the window — the capital-return side of the owner statement.',
+    columns: [
+      { key: 'entity', label: 'Owning entity', kind: 'text' }, { key: 'property', label: 'Community', kind: 'text' },
+      { key: 'distributed', label: 'Distributed', kind: 'money' },
+    ],
+    rows,
+    kpis: [
+      { label: 'Total distributed', value: total, kind: 'money' },
+      { label: 'Distributions', value: inWin.length, kind: 'number' },
+      { label: 'Owning entities', value: new Set(inWin.map((d) => d.entityName)).size, kind: 'number' },
+    ],
+  };
+}
+
 // --- financial statements (GL-based) -----------------------------------------
 
 /** P&L for the window: revenue accounts are credit-normal, expenses debit-normal.
@@ -895,7 +928,7 @@ const BUILDERS: Record<string, (inp: ReportingInput) => Report> = {
   occupancy, revenue, ar_aging: arAging, collections, deposits: depositsReport, payables, pipeline, portfolio, cashflow,
   rent_roll: rentRoll, delinquency, lease_expirations: leaseExpirations, box_score: boxScore, vacancy, wo_aging: woAging,
   income_statement: incomeStatement, general_ledger: generalLedger, billing_collections: billingCollections, occupancy_trend: occupancyTrend,
-  owner_statement: ownerStatement, cash_flow_statement: cashFlowStatement, make_ready: makeReady, insurance_compliance: insuranceCompliance, package_room: packageRoom, waitlist_demand: waitlistDemand,
+  owner_statement: ownerStatement, cash_flow_statement: cashFlowStatement, make_ready: makeReady, insurance_compliance: insuranceCompliance, package_room: packageRoom, waitlist_demand: waitlistDemand, owner_distributions: ownerDistributions,
 };
 
 export function buildReport(key: string, inp: ReportingInput): Report | null {

@@ -243,6 +243,10 @@ export interface WorldData {
     id: string; tenantId: string; typeId?: string; propertyId?: string; prospectName: string; prospectEmail?: string; prospectPhone?: string;
     desiredMoveIn?: string; status: string; joinedAt: string; offeredAt?: string; convertedAt?: string; leadId?: string; notes?: string;
   }>;
+  distributions?: ReadonlyArray<{
+    id: string; tenantId: string; entityId: string; propertyId?: string; amountCents: number; currency: string;
+    periodStart?: string; periodEnd?: string; memo?: string; recordedAt: string;
+  }>;
   users?: Array<{ id: string; tenantId: string; code: string; displayName: string; roleId: string; active: boolean }>;
   customRoles?: Array<{ tenantId: string; roleId: string; name: string; description?: string; permissions: readonly string[] }>;
   integrations?: Array<{
@@ -622,6 +626,14 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       stmt(
         'insert into waitlist_entry (id, tenant_id, type_id, property_id, prospect_name, prospect_email, prospect_phone, desired_move_in, status, joined_at, offered_at, converted_at, lead_id, notes) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) on conflict (id) do update set type_id = excluded.type_id, property_id = excluded.property_id, prospect_name = excluded.prospect_name, prospect_email = excluded.prospect_email, prospect_phone = excluded.prospect_phone, desired_move_in = excluded.desired_move_in, status = excluded.status, offered_at = excluded.offered_at, converted_at = excluded.converted_at, lead_id = excluded.lead_id, notes = excluded.notes',
         [e.id, e.tenantId, e.typeId ?? null, e.propertyId ?? null, e.prospectName, e.prospectEmail ?? null, e.prospectPhone ?? null, e.desiredMoveIn ?? null, e.status, e.joinedAt, e.offeredAt ?? null, e.convertedAt ?? null, e.leadId ?? null, e.notes ?? null],
+      ),
+    );
+  }
+  for (const d of w.distributions ?? []) {
+    out.push(
+      stmt(
+        'insert into distribution (id, tenant_id, entity_id, property_id, amount_cents, currency, period_start, period_end, memo, recorded_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) on conflict (id) do update set memo = excluded.memo',
+        [d.id, d.tenantId, d.entityId, d.propertyId ?? null, d.amountCents, d.currency, d.periodStart ?? null, d.periodEnd ?? null, d.memo ?? null, d.recordedAt],
       ),
     );
   }
