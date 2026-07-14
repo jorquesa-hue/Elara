@@ -24,6 +24,7 @@ export const NOTIFICATION_KINDS: readonly NotificationKindSpec[] = [
   { kind: 'work_order_update', description: 'A maintenance work-order status update.', data: ['workOrderId'] },
   { kind: 'adverse_action', description: 'An FCRA adverse-action notice (a denied rental application).', data: ['applicationId', 'reason'] },
   { kind: 'renewal_offer', description: 'A lease-renewal offer (proposed new rent + extended term).', data: ['agreementId', 'proposedRateCents', 'proposedEnd'] },
+  { kind: 'package_arrival', description: 'A parcel has arrived and is awaiting pickup at the front desk.', data: ['parcelId', 'carrier'] },
   { kind: 'general', description: 'A free-form operator message.', data: ['subject', 'body'] },
 ];
 

@@ -96,6 +96,11 @@ export const PERMISSIONS = [
   // it raises still pass the invoice.issue policy gate — no bypass.
   'utility.read',
   'utility.manage',
+  // Package / parcel room — logging resident deliveries, notifying recipients,
+  // recording pickup. A front-desk task, so both are in OPS. RBAC-only (the
+  // arrival notification rides the existing outbox; no PolicyEnvelope action).
+  'package.read',
+  'package.manage',
   'esign.read',
   'esign.manage',
   // Recording a signer's COMPLETION is the provider's webhook, relayed by the
@@ -169,6 +174,7 @@ const OPS: Permission[] = [
   'turn.read', 'turn.manage',
   'insurance.read', 'insurance.manage',
   'utility.read',
+  'package.read', 'package.manage',
   'esign.read', 'esign.manage',
   'renewal.read',
   'ledger.read', 'exception.read', 'subscription.read',

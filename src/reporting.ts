@@ -30,6 +30,8 @@ export interface ReportingInput {
   turns?: ReadonlyArray<{ id: string; unitLabel: string; status: string; days: number; openTasks: number }>;
   /** Renters-insurance policies — for the compliance report + lapsed-coverage insight. */
   insurancePolicies?: ReadonlyArray<{ agreementId: string; carrier: string; liabilityCents: number; effectiveAt: string; expiresAt: string; status: string }>;
+  /** Parcels at the front desk — for the package-room report + aging insight. */
+  parcels?: ReadonlyArray<{ recipientName: string; unitLabel?: string; carrier: string; status: string; daysWaiting: number }>;
   holds: ReadonlyArray<{ unitId: string; start: string; end: string; status: string }>;
   ledgerBalanced: boolean;
   /** Tenant-scoped journal lines — the raw material for the FINANCIAL reports
@@ -81,6 +83,7 @@ export const REPORT_CATALOG: readonly ReportSpec[] = [
   { key: 'wo_aging', title: 'Work-order aging', description: 'Open work orders by age and priority.' },
   { key: 'make_ready', title: 'Make-ready (turn time)', description: 'Unit turns with days-in-turn and the turn-time KPIs — how fast vacant units get rent-ready.' },
   { key: 'insurance_compliance', title: 'Insurance compliance', description: 'Renters-insurance coverage per active lease — compliant, expiring, lapsed or none, with the portfolio compliance rate.' },
+  { key: 'package_room', title: 'Package room', description: 'Parcels awaiting pickup at the front desk, by days waiting — the packages still clogging the mail room.' },
   { key: 'pipeline', title: 'Sales pipeline', description: 'Leads by stage, pipeline value and conversion.' },
   { key: 'portfolio', title: 'Portfolio mix', description: 'Agreements by kind and status; unit occupancy mix.' },
   { key: 'cashflow', title: 'Cash flow', description: 'Money in (payments) vs money out (vendor payouts) for the window.' },
@@ -610,6 +613,33 @@ function insuranceCompliance(inp: ReportingInput): Report {
   };
 }
 
+/** Package room: parcels still at the desk, longest-waiting first. */
+function packageRoom(inp: ReportingInput): Report {
+  const parcels = (inp.parcels ?? []);
+  const awaiting = parcels.filter((p) => p.status !== 'picked_up');
+  const rows = awaiting
+    .map((p) => ({ recipient: p.recipientName, unit: p.unitLabel ?? '—', carrier: p.carrier, status: p.status.replace('_', ' '), days: p.daysWaiting }))
+    .sort((a, b) => b.days - a.days);
+  const stale = awaiting.filter((p) => p.daysWaiting >= 7).length;
+  const longest = awaiting.reduce((m, p) => Math.max(m, p.daysWaiting), 0);
+  return {
+    key: 'package_room', title: 'Package room', window: { from: inp.from, to: inp.to },
+    subtitle: 'Parcels awaiting pickup at the front desk — every unclaimed box takes shelf space.',
+    columns: [
+      { key: 'recipient', label: 'Recipient', kind: 'text' }, { key: 'unit', label: 'Unit', kind: 'text' },
+      { key: 'carrier', label: 'Carrier', kind: 'text' }, { key: 'status', label: 'Status', kind: 'text' },
+      { key: 'days', label: 'Days waiting', kind: 'number' },
+    ],
+    rows,
+    kpis: [
+      { label: 'Awaiting pickup', value: awaiting.length, kind: 'number' },
+      { label: 'Waiting 7+ days', value: stale, kind: 'number' },
+      { label: 'Longest wait (days)', value: longest, kind: 'number' },
+      { label: 'Picked up', value: parcels.length - awaiting.length, kind: 'number' },
+    ],
+  };
+}
+
 // --- financial statements (GL-based) -----------------------------------------
 
 /** P&L for the window: revenue accounts are credit-normal, expenses debit-normal.
@@ -841,7 +871,7 @@ const BUILDERS: Record<string, (inp: ReportingInput) => Report> = {
   occupancy, revenue, ar_aging: arAging, collections, deposits: depositsReport, payables, pipeline, portfolio, cashflow,
   rent_roll: rentRoll, delinquency, lease_expirations: leaseExpirations, box_score: boxScore, vacancy, wo_aging: woAging,
   income_statement: incomeStatement, general_ledger: generalLedger, billing_collections: billingCollections, occupancy_trend: occupancyTrend,
-  owner_statement: ownerStatement, cash_flow_statement: cashFlowStatement, make_ready: makeReady, insurance_compliance: insuranceCompliance,
+  owner_statement: ownerStatement, cash_flow_statement: cashFlowStatement, make_ready: makeReady, insurance_compliance: insuranceCompliance, package_room: packageRoom,
 };
 
 export function buildReport(key: string, inp: ReportingInput): Report | null {
@@ -922,6 +952,10 @@ export function computeInsights(inp: ReportingInput): Insight[] {
     if (uninsured.length > 0) out.push({ severity: 'warning', title: `${uninsured.length} lease(s) have no active renters insurance`, detail: 'Uninsured residents are a liability exposure — coverage has lapsed or was never filed.', metric: { value: uninsured.length, kind: 'number' }, action: 'Chase certificates in Insurance.' });
     else if (expiringSoon.length > 0) out.push({ severity: 'info', title: `${expiringSoon.length} insurance policy(ies) expire within 30 days`, detail: 'Coverage is about to lapse — request renewed certificates before it does.', metric: { value: expiringSoon.length, kind: 'number' }, action: 'Follow up in Insurance.' });
   }
+
+  // Front desk: parcels sitting unclaimed for a week or more clog the mail room.
+  const stalePackages = (inp.parcels ?? []).filter((p) => p.status !== 'picked_up' && p.daysWaiting >= 7);
+  if (stalePackages.length > 0) out.push({ severity: 'info', title: `${stalePackages.length} parcel(s) unclaimed for 7+ days`, detail: 'Packages waiting a week or more take shelf space — remind residents to collect them.', metric: { value: Math.max(...stalePackages.map((p) => p.daysWaiting)), kind: 'number' }, action: 'Re-notify recipients in Packages.' });
 
   // Profitability: NOI for the window from the ledger (when lines are provided).
   if (inp.ledgerLines?.length) {

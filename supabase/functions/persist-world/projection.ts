@@ -235,6 +235,10 @@ export interface WorldData {
     id: string; tenantId: string; propertyId: string; utility: string; periodStart: string; periodEnd: string;
     totalCents: number; method: string; status: string; billedAt?: string; notes?: string; createdAt: string;
   }>;
+  parcels?: ReadonlyArray<{
+    id: string; tenantId: string; partyId: string; agreementId?: string; carrier: string; trackingNumber?: string;
+    description?: string; location?: string; status: string; receivedAt: string; notifiedAt?: string; pickedUpAt?: string; pickedUpBy?: string; notes?: string;
+  }>;
   users?: Array<{ id: string; tenantId: string; code: string; displayName: string; roleId: string; active: boolean }>;
   customRoles?: Array<{ tenantId: string; roleId: string; name: string; description?: string; permissions: readonly string[] }>;
   integrations?: Array<{
@@ -598,6 +602,14 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       stmt(
         'insert into utility_bill (id, tenant_id, property_id, utility, period_start, period_end, total_cents, method, status, billed_at, notes, created_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) on conflict (id) do update set utility = excluded.utility, period_start = excluded.period_start, period_end = excluded.period_end, total_cents = excluded.total_cents, method = excluded.method, status = excluded.status, billed_at = excluded.billed_at, notes = excluded.notes',
         [b.id, b.tenantId, b.propertyId, b.utility, b.periodStart, b.periodEnd, b.totalCents, b.method, b.status, b.billedAt ?? null, b.notes ?? null, b.createdAt],
+      ),
+    );
+  }
+  for (const p of w.parcels ?? []) {
+    out.push(
+      stmt(
+        'insert into parcel (id, tenant_id, party_id, agreement_id, carrier, tracking_number, description, location, status, received_at, notified_at, picked_up_at, picked_up_by, notes) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) on conflict (id) do update set agreement_id = excluded.agreement_id, carrier = excluded.carrier, tracking_number = excluded.tracking_number, description = excluded.description, location = excluded.location, status = excluded.status, notified_at = excluded.notified_at, picked_up_at = excluded.picked_up_at, picked_up_by = excluded.picked_up_by, notes = excluded.notes',
+        [p.id, p.tenantId, p.partyId, p.agreementId ?? null, p.carrier, p.trackingNumber ?? null, p.description ?? null, p.location ?? null, p.status, p.receivedAt, p.notifiedAt ?? null, p.pickedUpAt ?? null, p.pickedUpBy ?? null, p.notes ?? null],
       ),
     );
   }

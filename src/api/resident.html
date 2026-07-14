@@ -146,6 +146,8 @@
     var docsWrap=h("div",{},[]); wrap.appendChild(docsWrap); refreshEnvelopes(docsWrap);
     // Renters insurance coverage
     var insWrap=h("div",{},[]); wrap.appendChild(insWrap); refreshInsurance(insWrap);
+    // Packages awaiting pickup
+    var pkgWrap=h("div",{},[]); wrap.appendChild(pkgWrap); refreshParcels(pkgWrap);
     // Maintenance
     wrap.appendChild(h("h2",{},["Maintenance"]));
     wrap.appendChild(maintenanceForm());
@@ -196,6 +198,16 @@
       var c=COV[l.coverage]||COV.none;
       var rows=(l.policies||[]).map(function(p){ return h("div",{class:"muted",style:"font-size:12px;margin-top:4px"},[p.carrier+" · "+p.policyNumber+" · through "+p.expiresAt+" ("+p.status+")"]); });
       wrap.appendChild(h("div",{class:"card"},[ h("div",{class:"row"},[ h("strong",{},["Lease "+l.agreementId]), h("span",{class:"pill "+c[1]},[c[0]]) ]) ].concat(rows.length?rows:[h("div",{class:"muted",style:"font-size:12px;margin-top:4px"},["Please file a renters-insurance certificate with the office."]) ]) ));
+    });
+  }); }
+  function refreshParcels(wrap){ api("/resident/parcels").then(function(r){ wrap.innerHTML="";
+    var all=((r.body||{}).parcels)||[];
+    var awaiting=all.filter(function(p){ return p.status!=="picked_up"; });
+    if(!awaiting.length) return;
+    wrap.appendChild(h("h2",{},["Packages"]));
+    wrap.appendChild(h("div",{class:"muted",style:"font-size:13px;margin-bottom:8px"},[awaiting.length+" parcel"+(awaiting.length===1?"":"s")+" waiting for you at the front desk."]));
+    awaiting.forEach(function(p){
+      wrap.appendChild(h("div",{class:"card"},[ h("div",{class:"row"},[ h("strong",{},[p.carrier+(p.description?" · "+p.description:"")]), h("span",{class:"pill ok"},[p.daysWaiting+"d waiting"]) ]), (p.location?h("div",{class:"muted",style:"font-size:12px;margin-top:4px"},["Pick up at: "+p.location]):"") ]));
     });
   }); }
   function refreshInvoices(wrap){ api("/resident/invoices").then(function(r){ wrap.innerHTML="";

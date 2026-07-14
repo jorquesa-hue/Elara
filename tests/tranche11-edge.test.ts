@@ -103,6 +103,7 @@ function buildWorld(): WorldData {
     pmSchedules: [{ id: 'pm-1', tenantId: 't-1', title: 'HVAC service', spaceId: 's-u', cadenceDays: 90, priority: 'medium', nextDueAt: '2026-08-01', lastRunAt: '2026-05-01T00:00:00Z', active: true, createdAt: '2026-05-01T00:00:00Z' }],
     insurancePolicies: [{ id: 'ins-1', tenantId: 't-1', agreementId: 'ag-1', partyId: 'p-1', carrier: 'Lemonade', policyNumber: 'POL-123', liabilityCents: 10000000, effectiveAt: '2026-06-01', expiresAt: '2027-06-01', status: 'active', verifiedAt: '2026-06-02T00:00:00Z', notes: 'certificate on file', createdAt: '2026-06-01T00:00:00Z' }],
     utilityBills: [{ id: 'util-1', tenantId: 't-1', propertyId: 'prop-1', utility: 'water', periodStart: '2026-06-01', periodEnd: '2026-07-01', totalCents: 90000, method: 'equal', status: 'billed', billedAt: '2026-07-02T00:00:00Z', notes: 'municipal water', createdAt: '2026-07-01T00:00:00Z' }],
+    parcels: [{ id: 'pcl-1', tenantId: 't-1', partyId: 'p-1', agreementId: 'ag-1', carrier: 'UPS', trackingNumber: '1Z999', description: 'large box', location: 'Shelf B3', status: 'notified', receivedAt: '2026-07-10T00:00:00Z', notifiedAt: '2026-07-10T01:00:00Z', notes: 'fragile' }],
     // full persistence — exercise the config + platform + connector paths.
     users: [{ id: 'usr-1', tenantId: 't-1', code: 'U-1', displayName: 'Manager', roleId: 'manager', active: true }],
     customRoles: [{ tenantId: 't-1', roleId: 'housekeeping_lead', name: 'Housekeeping Lead', description: 'HK', permissions: ['agreement.read', 'maintenance.manage'] }],

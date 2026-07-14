@@ -47,6 +47,7 @@ import { Turns, turnDays } from '../turns.ts';
 import { PreventiveMaintenance } from '../preventive.ts';
 import { InsuranceRegistry, coverageStatus } from '../insurance.ts';
 import { UtilityBilling, allocateUtility, isUtilityKind, isAllocationMethod, type AllocationMethod, type UtilityParticipant } from '../utility-billing.ts';
+import { Parcels, parcelDaysWaiting } from '../packages.ts';
 import { PeriodLock } from '../period-lock.ts';
 import { BankAccounts } from '../bank-account.ts';
 import { gaapViewFromLines } from '../multigaap.ts';
@@ -215,6 +216,7 @@ export class App {
   readonly pm = new PreventiveMaintenance();
   readonly insurance = new InsuranceRegistry();
   readonly utilities = new UtilityBilling();
+  readonly parcels = new Parcels();
   readonly signatures = new Signatures();
   readonly periodLock = new PeriodLock();
   readonly bankAccounts = new BankAccounts();
@@ -240,6 +242,7 @@ export class App {
   private readonly pmTenant = new Map<string, string>();
   private readonly insuranceTenant = new Map<string, string>();
   private readonly utilityTenant = new Map<string, string>();
+  private readonly parcelTenant = new Map<string, string>();
   private readonly flushMarks = new Map<string, FlushMark>();
   /** Per-tenant in-flight flush, so overlapping flushes serialize (see flushWorld). */
   private readonly flushInFlight = new Map<string, Promise<void>>();
@@ -958,6 +961,28 @@ export class App {
   private ownedUtilityBill(ctx: AuthContext, id: string) {
     if (this.utilityTenant.get(id) !== ctx.tenantId) throw new HttpError(404, 'utility bill not found');
     return this.utilities.get(id);
+  }
+
+  private ownedParcel(ctx: AuthContext, id: string) {
+    if (this.parcelTenant.get(id) !== ctx.tenantId) throw new HttpError(404, 'parcel not found');
+    return this.parcels.get(id);
+  }
+
+  /** Enrich a parcel with its recipient name + unit label + days waiting. */
+  private parcelRow(tenantId: string, p: ReturnType<Parcels['get']>) {
+    const recipient = this.parties.getParty(tenantId, p.partyId);
+    const ag = p.agreementId ? this.agreements.get(p.agreementId)?.agreement : undefined;
+    const unitLabel = ag ? (this.masterData.units.get(tenantId, ag.currentUnitId)?.label ?? ag.currentUnitId) : undefined;
+    return { ...p, recipientName: recipient?.displayName ?? p.partyId, unitLabel, daysWaiting: parcelDaysWaiting(p, this.now()) };
+  }
+
+  /** Mark a parcel notified and enqueue a best-effort arrival email to the
+   *  recipient (skipped silently if they have no email on file). */
+  private notifyParcel(tenantId: string, parcelId: string) {
+    const parcel = this.parcels.markNotified(parcelId, this.now());
+    const email = this.parties.getParty(tenantId, parcel.partyId)?.email;
+    this.notify({ id: `notif-parcel-${parcelId}`, tenantId, channel: 'email', to: email, kind: 'package_arrival', data: { parcelId, carrier: parcel.carrier } });
+    return parcel;
   }
 
   /** The active residential leases in a property that share a utility bill —
@@ -3160,6 +3185,66 @@ export class App {
       return { status: 200, body: { billed: invoiceIds.length, invoiceIds, bill: updated } };
     });
 
+    // --- package / parcel room (Phase 6C) ---------------------------------
+    // The front desk logs a resident's delivery, notifies them it arrived (via
+    // the existing outbox), and records pickup. A front-desk task, RBAC-only.
+    this.add('GET', '/parcels', 'package.read', (ctx) => {
+      const parcels = this.parcels.list(ctx.tenantId)
+        .map((p) => this.parcelRow(ctx.tenantId, p))
+        .sort((a, b) => (a.status === 'picked_up' ? 1 : 0) - (b.status === 'picked_up' ? 1 : 0) || b.receivedAt.localeCompare(a.receivedAt));
+      return { status: 200, body: { parcels } };
+    });
+
+    this.add('GET', '/parcels/:id', 'package.read', (ctx, p) => ({
+      status: 200, body: this.parcelRow(ctx.tenantId, this.ownedParcel(ctx, p['id']!)),
+    }));
+
+    this.add('POST', '/parcels', 'package.manage', (ctx, _p, body) => {
+      const partyId = this.requireString(body, 'partyId');
+      if (!this.parties.getParty(ctx.tenantId, partyId)) throw new HttpError(404, 'recipient party not found');
+      const agreementId = this.optString(body, 'agreementId');
+      if (agreementId && this.agreements.get(agreementId)?.tenantId !== ctx.tenantId) throw new HttpError(404, 'agreement not found');
+      const parcel = this.parcels.log({
+        id: this.requireString(body, 'id'),
+        tenantId: ctx.tenantId,
+        partyId,
+        carrier: this.requireString(body, 'carrier'),
+        receivedAt: this.optString(body, 'receivedAt') ?? this.now(),
+        agreementId,
+        trackingNumber: this.optString(body, 'trackingNumber'),
+        description: this.optString(body, 'description'),
+        location: this.optString(body, 'location'),
+        notes: this.optString(body, 'notes'),
+      });
+      this.parcelTenant.set(parcel.id, ctx.tenantId);
+      // Optionally notify the recipient on arrival (best-effort email).
+      if (body['notify'] === true) {
+        const updated = this.notifyParcel(ctx.tenantId, parcel.id);
+        return { status: 201, body: this.parcelRow(ctx.tenantId, updated) };
+      }
+      return { status: 201, body: this.parcelRow(ctx.tenantId, parcel) };
+    });
+
+    this.add('POST', '/parcels/:id/notify', 'package.manage', (ctx, p, _body) => {
+      this.ownedParcel(ctx, p['id']!);
+      return { status: 200, body: this.parcelRow(ctx.tenantId, this.notifyParcel(ctx.tenantId, p['id']!)) };
+    });
+
+    this.add('POST', '/parcels/:id/pickup', 'package.manage', (ctx, p, body) => {
+      this.ownedParcel(ctx, p['id']!);
+      return { status: 200, body: this.parcelRow(ctx.tenantId, this.parcels.markPickedUp(p['id']!, this.now(), this.optString(body, 'pickedUpBy'))) };
+    });
+
+    // A resident sees their own parcels awaiting pickup (party-scoped, read-only).
+    this.add('GET', '/resident/parcels', null, (ctx) => {
+      if (ctx.partyId === undefined) throw new HttpError(403, 'a resident session is required');
+      const parcels = this.parcels.forParty(ctx.partyId)
+        .filter((p) => p.tenantId === ctx.tenantId)
+        .map((p) => ({ id: p.id, carrier: p.carrier, description: p.description, location: p.location, status: p.status, receivedAt: p.receivedAt, daysWaiting: parcelDaysWaiting(p, this.now()) }))
+        .sort((a, b) => (a.status === 'picked_up' ? 1 : 0) - (b.status === 'picked_up' ? 1 : 0) || b.receivedAt.localeCompare(a.receivedAt));
+      return { status: 200, body: { parcels } };
+    });
+
     // --- e-signature for lease execution (#17) ----------------------------
     // The CRM → lease → e-sign tail. The provider I/O lives in an edge adapter
     // (secretRef); a fully signed envelope advances the CRM lead but does NOT
@@ -3541,6 +3626,7 @@ export class App {
       workOrders: this.maintenance.all().filter((w) => w.tenantId === tenantId).map((w) => ({ id: w.id, status: w.status, priority: w.priority, openedAt: w.openedAt, title: w.title })),
       turns: this.turns.list(tenantId).map((t) => ({ id: t.id, unitLabel: this.masterData.units.get(tenantId, t.unitId)?.label ?? t.unitId, status: t.status, days: turnDays(t, this.now()), openTasks: t.tasks.filter((x) => !x.done).length })),
       insurancePolicies: this.insurance.list(tenantId).map((p) => ({ agreementId: p.agreementId, carrier: p.carrier, liabilityCents: p.liabilityCents, effectiveAt: p.effectiveAt, expiresAt: p.expiresAt, status: p.status })),
+      parcels: this.parcels.list(tenantId).map((p) => { const r = this.parcelRow(tenantId, p); return { recipientName: r.recipientName, unitLabel: r.unitLabel, carrier: p.carrier, status: p.status, daysWaiting: r.daysWaiting }; }),
       holds: this.calendar.allHolds().filter((h) => agIds.has(h.holderId)).map((h) => ({ unitId: h.unitId, start: h.start, end: h.end, status: h.status })),
       ledgerBalanced: this.trialBalance(tenantId).balanced,
       // Tenant-scoped GL lines (same predicate as the trial balance) — the raw
@@ -3980,6 +4066,7 @@ export class App {
       pmSchedules: this.pm.list(tenantId),
       insurancePolicies: this.insurance.list(tenantId),
       utilityBills: this.utilities.list(tenantId),
+      parcels: this.parcels.list(tenantId),
       // --- full persistence: platform users, custom roles, e-sign, connectors --
       users: this.masterData.users.list(tenantId),
       customRoles: this.roles.customRolesFor(tenantId).map((r) => ({ tenantId, roleId: r.id, name: r.name, description: r.description, permissions: r.permissions === '*' ? [...this.roles.permissionsFor(tenantId, r.id)] : (r.permissions as readonly string[]) })),
@@ -4080,6 +4167,8 @@ export class App {
     for (const p of world.insurancePolicies ?? []) this.insuranceTenant.set(p.id, p.tenantId);
     this.utilities.hydrate((world.utilityBills ?? []) as never);
     for (const b of world.utilityBills ?? []) this.utilityTenant.set(b.id, b.tenantId);
+    this.parcels.hydrate((world.parcels ?? []) as never);
+    for (const p of world.parcels ?? []) this.parcelTenant.set(p.id, p.tenantId);
     this.signatures.hydrate((world.signatureEnvelopes ?? []) as never);
     this.integrations.hydrate((world.integrations ?? []) as never);
     this.connectorOutbox.hydrate((world.connectorCommands ?? []) as never);
