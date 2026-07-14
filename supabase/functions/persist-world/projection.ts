@@ -247,6 +247,9 @@ export interface WorldData {
     id: string; tenantId: string; entityId: string; propertyId?: string; amountCents: number; currency: string;
     periodStart?: string; periodEnd?: string; memo?: string; recordedAt: string;
   }>;
+  contributions?: ReadonlyArray<{
+    id: string; tenantId: string; entityId: string; propertyId?: string; amountCents: number; currency: string; memo?: string; recordedAt: string;
+  }>;
   users?: Array<{ id: string; tenantId: string; code: string; displayName: string; roleId: string; active: boolean }>;
   customRoles?: Array<{ tenantId: string; roleId: string; name: string; description?: string; permissions: readonly string[] }>;
   integrations?: Array<{
@@ -634,6 +637,14 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       stmt(
         'insert into distribution (id, tenant_id, entity_id, property_id, amount_cents, currency, period_start, period_end, memo, recorded_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) on conflict (id) do update set memo = excluded.memo',
         [d.id, d.tenantId, d.entityId, d.propertyId ?? null, d.amountCents, d.currency, d.periodStart ?? null, d.periodEnd ?? null, d.memo ?? null, d.recordedAt],
+      ),
+    );
+  }
+  for (const c of w.contributions ?? []) {
+    out.push(
+      stmt(
+        'insert into contribution (id, tenant_id, entity_id, property_id, amount_cents, currency, memo, recorded_at) values ($1, $2, $3, $4, $5, $6, $7, $8) on conflict (id) do update set memo = excluded.memo',
+        [c.id, c.tenantId, c.entityId, c.propertyId ?? null, c.amountCents, c.currency, c.memo ?? null, c.recordedAt],
       ),
     );
   }

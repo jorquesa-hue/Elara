@@ -112,6 +112,12 @@ export const PERMISSIONS = [
   // in OPS, and the amount is additionally policy-gated (large -> escalate).
   'distribution.read',
   'distribution.record',
+  // Owner capital contributions — the money-IN counterpart to distributions.
+  // Cash entering the business is not a payout risk, so it is RBAC-only (no
+  // PolicyEnvelope action). A FINANCE function (manager/staff/accountant/owner),
+  // NOT in OPS; reading is broadly available via READS.
+  'capital.read',
+  'capital.record',
   'esign.read',
   'esign.manage',
   // Recording a signer's COMPLETION is the provider's webhook, relayed by the
@@ -187,7 +193,7 @@ const OPS: Permission[] = [
   'utility.read',
   'package.read', 'package.manage',
   'waitlist.read', 'waitlist.manage',
-  'distribution.read',
+  'distribution.read', 'capital.read',
   'esign.read', 'esign.manage',
   'renewal.read',
   'ledger.read', 'exception.read', 'subscription.read',
@@ -200,7 +206,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'manager',
     name: 'Manager',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'utility.manage', 'distribution.record', 'agreement.execute', 'collections.run', 'renewal.run', 'period.manage', 'metrics.scrape', 'privacy.export', 'privacy.manage'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'user.manage', 'role.read', 'masterdata.manage', 'persistence.run', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'utility.manage', 'distribution.record', 'capital.record', 'agreement.execute', 'collections.run', 'renewal.run', 'period.manage', 'metrics.scrape', 'privacy.export', 'privacy.manage'],
     builtin: true,
     description: 'Runs the property: all operations, approvals, staff and master data.',
   },
@@ -208,7 +214,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'staff',
     name: 'Staff',
-    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'masterdata.manage', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'utility.manage', 'distribution.record', 'agreement.execute', 'collections.run', 'renewal.run', 'period.manage', 'metrics.scrape', 'privacy.export', 'privacy.manage'],
+    permissions: [...OPS, 'deposit.refund', 'exception.approve', 'user.read', 'masterdata.manage', 'space.manage', 'entity.manage', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'integration.manage', 'revenue.manage', 'procurement.manage', 'utility.manage', 'distribution.record', 'capital.record', 'agreement.execute', 'collections.run', 'renewal.run', 'period.manage', 'metrics.scrape', 'privacy.export', 'privacy.manage'],
     builtin: true,
     description: 'Approvals and day-to-day management.',
   },
@@ -216,7 +222,7 @@ export const BUILTIN_ROLES: readonly RoleDef[] = [
   {
     id: 'accountant',
     name: 'Accountant',
-    permissions: ['invoice.read', 'invoice.issue', 'payment.record', 'deposit.read', 'deposit.refund', 'ledger.read', 'reports.read', 'collections.run', 'period.manage', 'subscription.read', 'masterdata.read', 'config.read', 'party.read', 'entity.read', 'entity.manage', 'bill.read', 'bill.issue', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'procurement.read', 'procurement.manage', 'utility.read', 'utility.manage', 'distribution.read', 'distribution.record'],
+    permissions: ['invoice.read', 'invoice.issue', 'payment.record', 'deposit.read', 'deposit.refund', 'ledger.read', 'reports.read', 'collections.run', 'period.manage', 'subscription.read', 'masterdata.read', 'config.read', 'party.read', 'entity.read', 'entity.manage', 'bill.read', 'bill.issue', 'bill.pay', 'reconciliation.read', 'reconciliation.manage', 'procurement.read', 'procurement.manage', 'utility.read', 'utility.manage', 'distribution.read', 'distribution.record', 'capital.read', 'capital.record'],
     builtin: true,
     description: 'Finance: bills rent, ledger, payments, deposit refunds, accounts payable, collections, reporting.',
   },

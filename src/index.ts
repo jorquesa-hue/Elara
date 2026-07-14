@@ -38,6 +38,7 @@ export * from './utility-billing.ts';
 export * from './packages.ts';
 export * from './waitlist.ts';
 export * from './distributions.ts';
+export * from './contributions.ts';
 export * from './persistence/executor.ts';
 export * from './persistence/project.ts';
 export * from './persistence/repository.ts';

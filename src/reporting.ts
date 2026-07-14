@@ -36,6 +36,8 @@ export interface ReportingInput {
   waitlist?: ReadonlyArray<{ floorplanName?: string; status: string }>;
   /** Owner distributions — for the distributions-by-owner report. */
   distributions?: ReadonlyArray<{ entityName: string; propertyName?: string; amountCents: number; recordedAt: string }>;
+  /** Owner capital contributions — for the capital-account report. */
+  contributions?: ReadonlyArray<{ entityName: string; amountCents: number }>;
   holds: ReadonlyArray<{ unitId: string; start: string; end: string; status: string }>;
   ledgerBalanced: boolean;
   /** Tenant-scoped journal lines — the raw material for the FINANCIAL reports
@@ -90,6 +92,7 @@ export const REPORT_CATALOG: readonly ReportSpec[] = [
   { key: 'package_room', title: 'Package room', description: 'Parcels awaiting pickup at the front desk, by days waiting — the packages still clogging the mail room.' },
   { key: 'waitlist_demand', title: 'Waitlist demand', description: 'Prospects waiting per floorplan — where demand outstrips available supply.' },
   { key: 'owner_distributions', title: 'Owner distributions', description: 'Cash distributions (equity draws) paid to each owning entity/community in the window — the capital returned to owners.' },
+  { key: 'capital_account', title: 'Capital accounts', description: 'Per owning entity: capital contributed in, distributions paid out, and net invested — the investor capital account.' },
   { key: 'pipeline', title: 'Sales pipeline', description: 'Leads by stage, pipeline value and conversion.' },
   { key: 'portfolio', title: 'Portfolio mix', description: 'Agreements by kind and status; unit occupancy mix.' },
   { key: 'cashflow', title: 'Cash flow', description: 'Money in (payments) vs money out (vendor payouts) for the window.' },
@@ -697,6 +700,30 @@ function ownerDistributions(inp: ReportingInput): Report {
   };
 }
 
+/** Owner capital accounts: per owning entity, contributions in − distributions
+ *  out = net invested. The classic investor capital account. */
+function capitalAccounts(inp: ReportingInput): Report {
+  const byEntity = new Map<string, { contributed: number; distributed: number }>();
+  for (const c of inp.contributions ?? []) { const r = byEntity.get(c.entityName) ?? { contributed: 0, distributed: 0 }; r.contributed += c.amountCents; byEntity.set(c.entityName, r); }
+  for (const d of inp.distributions ?? []) { const r = byEntity.get(d.entityName) ?? { contributed: 0, distributed: 0 }; r.distributed += d.amountCents; byEntity.set(d.entityName, r); }
+  const rows = [...byEntity.entries()].map(([entity, r]) => ({ entity, contributed: r.contributed, distributed: r.distributed, net: r.contributed - r.distributed })).sort((a, b) => b.net - a.net);
+  return {
+    key: 'capital_account', title: 'Capital accounts', window: { from: inp.from, to: inp.to },
+    subtitle: 'Per owning entity: capital contributed in, distributions paid out, net invested.',
+    columns: [
+      { key: 'entity', label: 'Owning entity', kind: 'text' }, { key: 'contributed', label: 'Contributed', kind: 'money' },
+      { key: 'distributed', label: 'Distributed', kind: 'money' }, { key: 'net', label: 'Net invested', kind: 'money' },
+    ],
+    rows,
+    kpis: [
+      { label: 'Total contributed', value: sum(rows.map((r) => r.contributed)), kind: 'money' },
+      { label: 'Total distributed', value: sum(rows.map((r) => r.distributed)), kind: 'money' },
+      { label: 'Net invested', value: sum(rows.map((r) => r.net)), kind: 'money' },
+      { label: 'Owning entities', value: rows.length, kind: 'number' },
+    ],
+  };
+}
+
 // --- financial statements (GL-based) -----------------------------------------
 
 /** P&L for the window: revenue accounts are credit-normal, expenses debit-normal.
@@ -928,7 +955,7 @@ const BUILDERS: Record<string, (inp: ReportingInput) => Report> = {
   occupancy, revenue, ar_aging: arAging, collections, deposits: depositsReport, payables, pipeline, portfolio, cashflow,
   rent_roll: rentRoll, delinquency, lease_expirations: leaseExpirations, box_score: boxScore, vacancy, wo_aging: woAging,
   income_statement: incomeStatement, general_ledger: generalLedger, billing_collections: billingCollections, occupancy_trend: occupancyTrend,
-  owner_statement: ownerStatement, cash_flow_statement: cashFlowStatement, make_ready: makeReady, insurance_compliance: insuranceCompliance, package_room: packageRoom, waitlist_demand: waitlistDemand, owner_distributions: ownerDistributions,
+  owner_statement: ownerStatement, cash_flow_statement: cashFlowStatement, make_ready: makeReady, insurance_compliance: insuranceCompliance, package_room: packageRoom, waitlist_demand: waitlistDemand, owner_distributions: ownerDistributions, capital_account: capitalAccounts,
 };
 
 export function buildReport(key: string, inp: ReportingInput): Report | null {

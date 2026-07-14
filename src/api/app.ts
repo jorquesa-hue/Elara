@@ -50,6 +50,7 @@ import { UtilityBilling, allocateUtility, isUtilityKind, isAllocationMethod, typ
 import { Parcels, parcelDaysWaiting } from '../packages.ts';
 import { Waitlist } from '../waitlist.ts';
 import { Distributions } from '../distributions.ts';
+import { Contributions } from '../contributions.ts';
 import { PeriodLock } from '../period-lock.ts';
 import { BankAccounts } from '../bank-account.ts';
 import { gaapViewFromLines } from '../multigaap.ts';
@@ -193,6 +194,7 @@ export class App {
   readonly payments: Payments;
   readonly deposits: Deposits;
   readonly distributions: Distributions;
+  readonly contributions: Contributions;
   readonly parties = new PartyDirectory();
   readonly spaces = new SpaceTree();
   readonly entities = new EntityCatalog();
@@ -249,6 +251,7 @@ export class App {
   private readonly parcelTenant = new Map<string, string>();
   private readonly waitlistTenant = new Map<string, string>();
   private readonly distributionTenant = new Map<string, string>();
+  private readonly contributionTenant = new Map<string, string>();
   private readonly flushMarks = new Map<string, FlushMark>();
   /** Per-tenant in-flight flush, so overlapping flushes serialize (see flushWorld). */
   private readonly flushInFlight = new Map<string, Promise<void>>();
@@ -268,6 +271,7 @@ export class App {
     this.payments = new Payments(this.ledger, this.billing);
     this.deposits = new Deposits(this.ledger);
     this.distributions = new Distributions(this.ledger);
+    this.contributions = new Contributions(this.ledger);
     this.auth = config.authenticator ?? new StaticTokenAuthenticator();
     this.plan = config.subscriptionPlan ?? { perUnitCents: 5000, currency: 'BRL' };
     this.persistence = config.persistence;
@@ -722,6 +726,7 @@ export class App {
       totalNoiCents,
       totalDistributedCents,
       distributableCents: Math.max(0, totalNoiCents - totalDistributedCents),
+      capitalAccount: this.capitalAccount(tenantId, entityId),
       distributions: dists
         .map((d) => ({ id: d.id, recordedAt: d.recordedAt, propertyName: d.propertyId ? (this.masterData.properties.get(tenantId, d.propertyId)?.name ?? d.propertyId) : 'Portfolio', amountCents: d.amountCents, memo: d.memo }))
         .sort((a, b) => b.recordedAt.localeCompare(a.recordedAt)),
@@ -1045,6 +1050,25 @@ export class App {
       if (l.account.startsWith('revenue') || l.account.startsWith('expense')) noi += l.creditCents - l.debitCents;
     }
     return noi;
+  }
+
+  private ownedContribution(ctx: AuthContext, id: string) {
+    if (this.contributionTenant.get(id) !== ctx.tenantId) throw new HttpError(404, 'contribution not found');
+    return this.contributions.get(id);
+  }
+
+  private contributionRow(tenantId: string, c: ReturnType<Contributions['get']>) {
+    const entity = this.entities.getEntity(tenantId, c.entityId);
+    const property = c.propertyId ? this.masterData.properties.get(tenantId, c.propertyId) : undefined;
+    return { ...c, entityName: entity?.name ?? c.entityId, propertyName: property?.name };
+  }
+
+  /** The owner capital account for an entity: capital in (contributions), capital
+   *  out (distributions), and net invested = contributions − distributions. */
+  private capitalAccount(tenantId: string, entityId: string) {
+    const contributionsCents = this.contributions.list(tenantId).filter((c) => c.entityId === entityId).reduce((n, c) => n + c.amountCents, 0);
+    const distributionsCents = this.distributions.list(tenantId).filter((d) => d.entityId === entityId).reduce((n, d) => n + d.amountCents, 0);
+    return { contributionsCents, distributionsCents, netCapitalCents: contributionsCents - distributionsCents };
   }
 
   /** Distributable cash for an owning entity = NOI − reserves − already-distributed
@@ -3463,6 +3487,50 @@ export class App {
       );
     });
 
+    // --- owner capital contributions + capital account (Phase 7D) ---------
+    // The money-IN counterpart to distributions: an owner puts capital INTO the
+    // entity (DR assets:cash / CR equity:contributions). Cash coming IN is not a
+    // payout risk, so it is RBAC-only (finance). Together with distributions this
+    // completes the owner CAPITAL ACCOUNT (net invested = contributions − draws).
+    this.add('GET', '/contributions', 'capital.read', (ctx) => {
+      const contributions = this.contributions.list(ctx.tenantId)
+        .map((c) => this.contributionRow(ctx.tenantId, c))
+        .sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
+      return { status: 200, body: { contributions } };
+    });
+
+    // The owner capital account for an entity (contributions in, distributions
+    // out, net invested). Registered BEFORE /contributions/:id.
+    this.add('GET', '/contributions/capital-account', 'capital.read', (ctx, _p, body) => {
+      const entityId = this.requireString(body, 'entityId');
+      if (!this.entities.getEntity(ctx.tenantId, entityId)) throw new HttpError(404, 'legal entity not found');
+      const entity = this.entities.getEntity(ctx.tenantId, entityId);
+      return { status: 200, body: { entityId, entityName: entity?.name ?? entityId, ...this.capitalAccount(ctx.tenantId, entityId) } };
+    });
+
+    this.add('GET', '/contributions/:id', 'capital.read', (ctx, p) => ({
+      status: 200, body: this.contributionRow(ctx.tenantId, this.ownedContribution(ctx, p['id']!)),
+    }));
+
+    this.add('POST', '/contributions', 'capital.record', (ctx, _p, body) => {
+      const entityId = this.requireString(body, 'entityId');
+      if (!this.entities.getEntity(ctx.tenantId, entityId)) throw new HttpError(404, 'legal entity not found');
+      const propertyId = this.optString(body, 'propertyId');
+      if (propertyId && !this.masterData.properties.get(ctx.tenantId, propertyId)) throw new HttpError(404, 'property not found');
+      const c = this.contributions.record({
+        id: this.requireString(body, 'id'),
+        tenantId: ctx.tenantId,
+        entityId,
+        propertyId,
+        amountCents: this.requireInt(body, 'amountCents'),
+        currency: this.config.get(ctx.tenantId).currency,
+        memo: this.optString(body, 'memo'),
+        recordedAt: this.now(),
+      });
+      this.contributionTenant.set(c.id, ctx.tenantId);
+      return { status: 201, body: this.contributionRow(ctx.tenantId, c) };
+    });
+
     // --- e-signature for lease execution (#17) ----------------------------
     // The CRM → lease → e-sign tail. The provider I/O lives in an edge adapter
     // (secretRef); a fully signed envelope advances the CRM lead but does NOT
@@ -3847,6 +3915,7 @@ export class App {
       parcels: this.parcels.list(tenantId).map((p) => { const r = this.parcelRow(tenantId, p); return { recipientName: r.recipientName, unitLabel: r.unitLabel, carrier: p.carrier, status: p.status, daysWaiting: r.daysWaiting }; }),
       waitlist: this.waitlist.list(tenantId).map((e) => ({ floorplanName: e.typeId ? this.masterData.unitTypes.get(tenantId, e.typeId)?.name : undefined, status: e.status })),
       distributions: this.distributions.list(tenantId).map((d) => ({ entityName: this.entities.getEntity(tenantId, d.entityId)?.name ?? d.entityId, propertyName: d.propertyId ? this.masterData.properties.get(tenantId, d.propertyId)?.name : undefined, amountCents: d.amountCents, recordedAt: d.recordedAt })),
+      contributions: this.contributions.list(tenantId).map((c) => ({ entityName: this.entities.getEntity(tenantId, c.entityId)?.name ?? c.entityId, amountCents: c.amountCents })),
       holds: this.calendar.allHolds().filter((h) => agIds.has(h.holderId)).map((h) => ({ unitId: h.unitId, start: h.start, end: h.end, status: h.status })),
       ledgerBalanced: this.trialBalance(tenantId).balanced,
       // Tenant-scoped GL lines (same predicate as the trial balance) — the raw
@@ -4289,6 +4358,7 @@ export class App {
       parcels: this.parcels.list(tenantId),
       waitlist: this.waitlist.list(tenantId),
       distributions: this.distributions.list(tenantId),
+      contributions: this.contributions.list(tenantId),
       // --- full persistence: platform users, custom roles, e-sign, connectors --
       users: this.masterData.users.list(tenantId),
       customRoles: this.roles.customRolesFor(tenantId).map((r) => ({ tenantId, roleId: r.id, name: r.name, description: r.description, permissions: r.permissions === '*' ? [...this.roles.permissionsFor(tenantId, r.id)] : (r.permissions as readonly string[]) })),
@@ -4395,6 +4465,8 @@ export class App {
     for (const e of world.waitlist ?? []) this.waitlistTenant.set(e.id, e.tenantId);
     this.distributions.hydrate((world.distributions ?? []) as never);
     for (const d of world.distributions ?? []) this.distributionTenant.set(d.id, d.tenantId);
+    this.contributions.hydrate((world.contributions ?? []) as never);
+    for (const c of world.contributions ?? []) this.contributionTenant.set(c.id, c.tenantId);
     this.signatures.hydrate((world.signatureEnvelopes ?? []) as never);
     this.integrations.hydrate((world.integrations ?? []) as never);
     this.connectorOutbox.hydrate((world.connectorCommands ?? []) as never);

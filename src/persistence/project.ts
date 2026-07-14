@@ -31,6 +31,7 @@ import type { UtilityBill as UtilityBillRecord } from '../utility-billing.ts';
 import type { Parcel as ParcelRecord } from '../packages.ts';
 import type { WaitlistEntry as WaitlistRecord } from '../waitlist.ts';
 import type { OwnerDistribution as DistributionRecord } from '../distributions.ts';
+import type { OwnerContribution as ContributionRecord } from '../contributions.ts';
 
 export interface WorldData {
   tenants: Array<{
@@ -155,6 +156,7 @@ export interface WorldData {
   parcels?: readonly ParcelRecord[];
   waitlist?: readonly WaitlistRecord[];
   distributions?: readonly DistributionRecord[];
+  contributions?: readonly ContributionRecord[];
   // --- full persistence: platform users, custom roles, e-sign, connectors -----
   users?: Array<{ id: string; tenantId: string; code: string; displayName: string; roleId: string; active: boolean }>;
   customRoles?: Array<{ tenantId: string; roleId: string; name: string; description?: string; permissions: readonly string[] }>;
@@ -546,6 +548,14 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       stmt(
         'insert into distribution (id, tenant_id, entity_id, property_id, amount_cents, currency, period_start, period_end, memo, recorded_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) on conflict (id) do update set memo = excluded.memo',
         [d.id, d.tenantId, d.entityId, d.propertyId ?? null, d.amountCents, d.currency, d.periodStart ?? null, d.periodEnd ?? null, d.memo ?? null, d.recordedAt],
+      ),
+    );
+  }
+  for (const c of w.contributions ?? []) {
+    out.push(
+      stmt(
+        'insert into contribution (id, tenant_id, entity_id, property_id, amount_cents, currency, memo, recorded_at) values ($1, $2, $3, $4, $5, $6, $7, $8) on conflict (id) do update set memo = excluded.memo',
+        [c.id, c.tenantId, c.entityId, c.propertyId ?? null, c.amountCents, c.currency, c.memo ?? null, c.recordedAt],
       ),
     );
   }

@@ -1679,6 +1679,41 @@
     var wrap=h("div",{},[]); main.appendChild(wrap);
     if(can("distribution.record")) formSlot.appendChild(distributionForm(wrap));
     refreshDistributions(wrap);
+    // Capital contributions (money IN) + the capital account.
+    if(can("capital.read")){
+      main.appendChild(h("h2",{style:"margin-top:28px"},["Capital contributions"]));
+      main.appendChild(h("p",{class:"sub"},["The money-in counterpart: an owner puts capital into the entity (debit cash, credit owner equity). Net invested = contributions − distributions."]));
+      var cslot=h("div",{},[]); main.appendChild(cslot);
+      var cwrap=h("div",{},[]); main.appendChild(cwrap);
+      if(can("capital.record")) cslot.appendChild(contributionForm(cwrap));
+      refreshContributions(cwrap);
+    }
+  }
+  function contributionForm(wrap){
+    var ent=h("select",{},[h("option",{value:""},["— owning entity —"])]);
+    if(can("entity.read")) api("/legal-entities").then(function(r){ ((r.body||{}).entities||[]).forEach(function(e){ ent.appendChild(h("option",{value:e.id},[e.name||e.id])); }); });
+    var prop=h("select",{},[h("option",{value:""},["— community (optional) —"])]);
+    if(can("masterdata.read")) api("/properties").then(function(r){ ((r.body||{}).properties||[]).forEach(function(p){ prop.appendChild(h("option",{value:p.id},[p.name||p.code||p.id])); }); });
+    var amt=h("input",{type:"number",min:"0",step:"1",placeholder:"50000.00"});
+    var memo=h("input",{type:"text",placeholder:"Seed capital"});
+    return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
+      if(!ent.value) return toast("Pick an owning entity","err");
+      var cents=Math.round((parseFloat(amt.value)||0)*100);
+      if(cents<=0) return toast("Enter an amount","err");
+      api("/contributions",{method:"POST",body:{ id:"contrib-"+Date.now(), entityId:ent.value, propertyId:prop.value||undefined, amountCents:cents, memo:memo.value||undefined }}).then(function(r){
+        if(r.status===201){ toast("Contribution recorded","ok"); amt.value=memo.value=""; refreshContributions(wrap); }
+        else toast((r.body||{}).error||"err","err");
+      });
+    }},[ field("Owning entity",ent), field("Community",prop), field("Amount",amt), field("Memo",memo), h("div",{},[h("button",{class:"btn",type:"submit"},["Record contribution"])]) ]);
+  }
+  function refreshContributions(wrap){
+    api("/contributions").then(function(r){
+      wrap.innerHTML="";
+      var cs=((r.body||{}).contributions||[]);
+      if(!cs.length){ wrap.appendChild(h("div",{class:"panel muted"},["No capital contributions recorded yet."])); return; }
+      var rows=cs.map(function(c){ return h("tr",{},[ h("td",{},[(c.recordedAt||"").slice(0,10)]), h("td",{},[c.entityName||c.entityId]), h("td",{},[c.propertyName||"Portfolio"]), h("td",{class:"mono"},[fmt(c.amountCents)]), h("td",{},[c.memo||"—"]) ]); });
+      wrap.appendChild(tableEl([th("Date"),th("Owning entity"),th("Community"),th("Amount"),th("Memo")], rows, 5, "No contributions."));
+    });
   }
   function distributionForm(wrap){
     var ent=h("select",{},[h("option",{value:""},["— owning entity —"])]);

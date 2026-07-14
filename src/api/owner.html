@@ -108,8 +108,20 @@
     var cards=h("div",{class:"cards"},[]);
     cards.appendChild(kpi("Net operating income", fmtMoney(state.home.totalNoiCents)));
     cards.appendChild(kpi("Distributed to you", fmtMoney(state.home.totalDistributedCents)));
+    var ca=state.home.capitalAccount||{};
+    cards.appendChild(kpi("Net capital invested", fmtMoney(ca.netCapitalCents||0)));
     cards.appendChild(kpi("Communities", String((state.home.properties||[]).length)));
     wrap.appendChild(cards);
+    if((ca.contributionsCents||0)>0){
+      wrap.appendChild(h("div",{class:"card",style:"margin-top:12px"},[
+        h("strong",{},["Capital account"]),
+        h("div",{class:"row",style:"margin-top:8px"},[
+          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},["Contributed"]), h("div",{class:"mono"},[fmtMoney(ca.contributionsCents||0)]) ]),
+          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},["Distributed"]), h("div",{class:"mono"},[fmtMoney(ca.distributionsCents||0)]) ]),
+          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},["Net invested"]), h("div",{class:"mono"},[fmtMoney(ca.netCapitalCents||0)]) ])
+        ])
+      ]));
+    }
     // Communities
     wrap.appendChild(h("h2",{},["Communities"]));
     if(!(state.home.properties||[]).length) wrap.appendChild(h("div",{class:"card muted"},["No communities are linked to your entity yet."]));
