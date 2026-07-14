@@ -5,6 +5,7 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import type { App } from './app.ts';
 import { portalHtml } from './portal.ts';
 import { residentHtml } from './resident.ts';
+import { ownerHtml } from './owner.ts';
 import { bookingSiteHtml } from './booking-site.ts';
 
 // Reject oversized bodies before buffering them fully — an unbounded POST is a
@@ -64,6 +65,12 @@ export function createHttpServer(app: App, hooks: HttpHooks = {}): Server {
       if (req.method === 'GET' && (path === '/resident' || path === '/resident/')) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         res.end(residentHtml());
+        return;
+      }
+      // The owner/investor SPA at /owner (entity-scoped once signed in).
+      if (req.method === 'GET' && (path === '/owner' || path === '/owner/')) {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.end(ownerHtml());
         return;
       }
       // Browsers auto-request /favicon.ico; answer 204 so it never hits the auth

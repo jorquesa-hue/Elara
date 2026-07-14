@@ -1,0 +1,141 @@
+<style>
+  :root{
+    --bg:#f4f6fb; --card:#ffffff; --line:#e6e9f2; --text:#1a1f36; --muted:#6b7280;
+    --accent:#2f6f4f; --accent-soft:#e6f2ec; --ok:#0f9d58; --warn:#e0533a; --radius:14px;
+  }
+  :root[data-theme="dark"]{
+    --bg:#0e1016; --card:#171a22; --line:#262b38; --text:#e8eaf2; --muted:#9aa2b4;
+    --accent-soft:#173026;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text)}
+  a{color:var(--accent)}
+  .wrap{max-width:900px;margin:0 auto;padding:20px 18px 60px}
+  header{display:flex;align-items:center;gap:12px;padding:6px 0 18px}
+  .mark{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--accent),#4faf7f);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700}
+  h1{font-size:22px;margin:0}
+  h2{font-size:16px;margin:24px 0 10px}
+  .sub{color:var(--muted);margin:2px 0 0}
+  .spacer{flex:1}
+  .btn{appearance:none;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:10px;padding:9px 14px;font-size:14px;font-weight:600;cursor:pointer}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .btn.sm{padding:6px 10px;font-size:13px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:15px}
+  .kpi .v{font-size:24px;font-weight:700} .kpi .k{color:var(--muted);font-size:12.5px;margin-top:3px}
+  .prop{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:12px}
+  .prop .row{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;background:var(--accent-soft);color:var(--accent)}
+  .pill.warn{background:rgba(224,83,58,.14);color:var(--warn)}
+  .pill.ok{background:rgba(15,157,88,.14);color:var(--ok)}
+  label{display:block;font-size:13px;color:var(--muted);margin:0 0 4px}
+  input{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);font-size:14px}
+  .field{margin:0 0 12px}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  th,td{text-align:left;padding:10px 13px;border-bottom:1px solid var(--line);font-size:14px}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  tr:last-child td{border-bottom:none}
+  .mono{font-variant-numeric:tabular-nums}
+  .muted{color:var(--muted)}
+  .toast{position:fixed;right:16px;bottom:16px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 15px;box-shadow:0 8px 30px rgba(0,0,0,.12);font-size:14px}
+  .toast .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-right:8px}
+  .toast.err .dot{background:var(--warn)}
+  .gate{max-width:380px;margin:12vh auto 0}
+</style>
+<div id="root"></div>
+<script>
+(function(){
+  var TOKEN_KEY="usos.own.token", REFRESH_KEY="usos.own.refresh", THEME_KEY="usos.theme";
+  var state={ token:localStorage.getItem(TOKEN_KEY)||"", refresh:localStorage.getItem(REFRESH_KEY)||"", auth:null, me:null, home:null };
+
+  function h(tag,attrs,kids){ var e=document.createElement(tag); attrs=attrs||{};
+    for(var k in attrs){ if(k==="onclick"||k==="onsubmit") e[k]=attrs[k];
+      else if(attrs[k]!=null) e.setAttribute(k,attrs[k]); }
+    (kids||[]).forEach(function(c){ if(c==null)return; e.appendChild(typeof c==="string"?document.createTextNode(c):c); });
+    return e; }
+  function fmtMoney(minor){ var c=(state.home&&state.home.currency)||"USD"; try{ return new Intl.NumberFormat(undefined,{style:"currency",currency:c}).format((minor||0)/100);}catch(e){ return (c+" "+((minor||0)/100).toFixed(2)); } }
+  function toast(msg,kind){ var t=h("div",{class:"toast"+(kind==="err"?" err":"")},[h("span",{class:"dot"}),msg]); document.body.appendChild(t); setTimeout(function(){t.remove();},2600); }
+  function setSession(a,r){ state.token=a||""; state.refresh=r||""; if(a)localStorage.setItem(TOKEN_KEY,a);else localStorage.removeItem(TOKEN_KEY); if(r)localStorage.setItem(REFRESH_KEY,r);else localStorage.removeItem(REFRESH_KEY); }
+
+  function api(path,opts){ opts=opts||{};
+    return fetch(path,{ method:opts.method||"GET", headers:{ "authorization":"Bearer "+state.token, "content-type":"application/json" }, body:opts.body?JSON.stringify(opts.body):undefined })
+      .then(function(r){ return r.json().catch(function(){return {};}).then(function(b){
+        if(r.status===401 && state.refresh && state.auth && state.auth.mode==="supabase" && !opts._retried){
+          return refresh().then(function(ok){ if(ok){ opts._retried=true; return api(path,opts); } return {status:401,body:b}; });
+        }
+        return {status:r.status,body:b};
+      }); });
+  }
+  function refresh(){ return fetch(state.auth.authUrl+"/token?grant_type=refresh_token",{ method:"POST", headers:{ "content-type":"application/json","apikey":state.auth.anonKey }, body:JSON.stringify({refresh_token:state.refresh}) })
+      .then(function(r){return r.json();}).then(function(j){ if(j.access_token){ setSession(j.access_token,j.refresh_token); return true; } setSession("",""); return false; }).catch(function(){return false;}); }
+
+  function theme(){ var saved=localStorage.getItem(THEME_KEY)||"light"; document.documentElement.setAttribute("data-theme",saved); }
+  function toggleTheme(){ var next=(localStorage.getItem(THEME_KEY)==="dark")?"light":"dark"; localStorage.setItem(THEME_KEY,next); document.documentElement.setAttribute("data-theme",next); }
+
+  function boot(){ theme();
+    fetch("/auth/config").then(function(r){return r.json();}).then(function(cfg){ state.auth=cfg; if(!state.token) return renderGate();
+      api("/me").then(function(r){ if(r.status===200 && r.body.entityId){ state.me=r.body; load(); } else if(r.status===200){ renderNotOwner(); } else renderGate(); });
+    }).catch(function(){ state.auth={mode:"dev"}; renderGate(); });
+  }
+
+  function renderGate(){ var root=document.getElementById("root"); root.innerHTML="";
+    var box=h("div",{class:"card gate"},[]);
+    box.appendChild(h("header",{},[ h("div",{class:"mark"},["E"]), h("h1",{},["Owner portal"]) ]));
+    if(state.auth && state.auth.mode==="supabase"){
+      var em=h("input",{type:"email",placeholder:"you@email.com"}); var pw=h("input",{type:"password",placeholder:"Password"});
+      box.appendChild(h("form",{onsubmit:function(e){e.preventDefault();
+        fetch(state.auth.authUrl+"/token?grant_type=password",{ method:"POST", headers:{ "content-type":"application/json","apikey":state.auth.anonKey }, body:JSON.stringify({email:em.value,password:pw.value}) })
+          .then(function(r){return r.json();}).then(function(j){ if(j.access_token){ setSession(j.access_token,j.refresh_token); boot(); } else toast(j.error_description||j.msg||"Sign-in failed","err"); });
+      }},[ h("div",{class:"field"},[h("label",{},["Email"]),em]), h("div",{class:"field"},[h("label",{},["Password"]),pw]), h("button",{class:"btn",type:"submit"},["Sign in"]) ]));
+    } else {
+      var tk=h("input",{placeholder:"Paste owner token"});
+      box.appendChild(h("form",{onsubmit:function(e){e.preventDefault(); setSession(tk.value.trim(),""); boot();}},[ h("div",{class:"field"},[h("label",{},["Access token"]),tk]), h("button",{class:"btn",type:"submit"},["Enter"]) ]));
+      box.appendChild(h("p",{class:"sub"},["Dev mode — paste an entity-scoped owner token."]));
+    }
+    root.appendChild(h("div",{class:"wrap"},[box]));
+  }
+  function renderNotOwner(){ var root=document.getElementById("root"); root.innerHTML="";
+    root.appendChild(h("div",{class:"wrap"},[ h("div",{class:"card gate"},[ h("h2",{},["Not an owner account"]), h("p",{class:"sub"},["This portal is for owners/investors. Operators sign in at the main portal."]), h("button",{class:"btn ghost sm",onclick:function(){ setSession("",""); renderGate(); }},["Sign out"]) ]) ]));
+  }
+
+  function load(){ api("/owner/home").then(function(r){ if(r.status!==200){ toast((r.body||{}).error||"Could not load","err"); return renderGate(); } state.home=r.body; render(); }); }
+
+  function render(){ var root=document.getElementById("root"); root.innerHTML="";
+    var wrap=h("div",{class:"wrap"},[]);
+    var head=h("header",{},[ h("div",{class:"mark"},["E"]), h("div",{},[ h("h1",{},["Hi, "+(state.home.profile.name||"owner")]), h("div",{class:"sub"},["Your ownership portfolio"]) ]), h("div",{class:"spacer"}), h("button",{class:"btn ghost sm",onclick:toggleTheme},["Theme"]), h("button",{class:"btn ghost sm",onclick:function(){ setSession("",""); renderGate(); }},["Sign out"]) ]);
+    wrap.appendChild(head);
+    // KPIs
+    var cards=h("div",{class:"cards"},[]);
+    cards.appendChild(kpi("Net operating income", fmtMoney(state.home.totalNoiCents)));
+    cards.appendChild(kpi("Distributed to you", fmtMoney(state.home.totalDistributedCents)));
+    cards.appendChild(kpi("Communities", String((state.home.properties||[]).length)));
+    wrap.appendChild(cards);
+    // Communities
+    wrap.appendChild(h("h2",{},["Communities"]));
+    if(!(state.home.properties||[]).length) wrap.appendChild(h("div",{class:"card muted"},["No communities are linked to your entity yet."]));
+    (state.home.properties||[]).forEach(function(p){
+      var noiCls = p.noiCents>=0?"ok":"warn";
+      wrap.appendChild(h("div",{class:"prop"},[
+        h("div",{class:"row"},[ h("strong",{},[p.name]), h("span",{class:"pill "+noiCls},["NOI "+fmtMoney(p.noiCents)]) ]),
+        h("div",{class:"row",style:"margin-top:8px"},[
+          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},["Net operating income"]), h("div",{class:"mono"},[fmtMoney(p.noiCents)]) ]),
+          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},["Distributed to you"]), h("div",{class:"mono"},[fmtMoney(p.distributedCents)]) ])
+        ])
+      ]));
+    });
+    // Distributions
+    var ds=(state.home.distributions||[]);
+    if(ds.length){
+      wrap.appendChild(h("h2",{},["Distributions"]));
+      var rows=ds.map(function(d){ return h("tr",{},[ h("td",{},[(d.recordedAt||"").slice(0,10)]), h("td",{},[d.propertyName||"Portfolio"]), h("td",{class:"mono"},[fmtMoney(d.amountCents)]), h("td",{},[d.memo||"—"]) ]); });
+      wrap.appendChild(h("table",{},[ h("thead",{},[h("tr",{},[th("Date"),th("Community"),th("Amount"),th("Memo")])]), h("tbody",{},rows) ]));
+      wrap.appendChild(h("div",{class:"muted",style:"font-size:12px;margin-top:6px"},["Distributions are equity draws paid to your entity from operating cash."]));
+    }
+    document.getElementById("root").appendChild(wrap);
+  }
+  function kpi(k,v){ return h("div",{class:"card kpi"},[ h("div",{class:"v"},[v]), h("div",{class:"k"},[k]) ]); }
+  function th(t){ return h("th",{},[t]); }
+
+  boot();
+})();
+</script>

@@ -691,6 +691,42 @@ export class App {
     };
   }
 
+  /** The owner/investor home: for a legal entity, its communities with NOI (from
+   *  the ledger) and the distributions paid out to it. Read-only, entity-scoped —
+   *  an owner sees only their own entity's portfolio. */
+  private ownerHome(tenantId: string, entityId: string) {
+    const entity = this.entities.getEntity(tenantId, entityId);
+    if (!entity) throw new HttpError(404, 'legal entity not found');
+    const props = this.masterData.properties.list(tenantId).filter((p) => p.entityId === entityId);
+    const propIds = new Set(props.map((p) => p.id));
+    // NOI per community from the ledger (revenue credit-normal, expense debit-normal),
+    // scoped to this entity's properties (which are this tenant's — so tenant-safe).
+    const noiByProp = new Map<string, number>();
+    for (const l of this.ledger.allLines) {
+      if (!l.propertyId || !propIds.has(l.propertyId)) continue;
+      // NOI = revenue − expense: revenue is credit-normal (+), and an expense
+      // (debit-normal) must REDUCE NOI, so both use credit − debit.
+      if (l.account.startsWith('revenue') || l.account.startsWith('expense')) noiByProp.set(l.propertyId, (noiByProp.get(l.propertyId) ?? 0) + (l.creditCents - l.debitCents));
+    }
+    // Distributions paid to this owning entity, grouped by community.
+    const dists = this.distributions.list(tenantId).filter((d) => d.entityId === entityId);
+    const distByProp = new Map<string, number>();
+    for (const d of dists) if (d.propertyId) distByProp.set(d.propertyId, (distByProp.get(d.propertyId) ?? 0) + d.amountCents);
+    const properties = props.map((p) => ({ id: p.id, name: p.name, noiCents: noiByProp.get(p.id) ?? 0, distributedCents: distByProp.get(p.id) ?? 0 }));
+    const totalNoiCents = properties.reduce((n, p) => n + p.noiCents, 0);
+    const totalDistributedCents = dists.reduce((n, d) => n + d.amountCents, 0);
+    return {
+      profile: { entityId, name: entity.name, role: entity.role },
+      currency: this.config.get(tenantId).currency,
+      properties,
+      totalNoiCents,
+      totalDistributedCents,
+      distributions: dists
+        .map((d) => ({ id: d.id, recordedAt: d.recordedAt, propertyName: d.propertyId ? (this.masterData.properties.get(tenantId, d.propertyId)?.name ?? d.propertyId) : 'Portfolio', amountCents: d.amountCents, memo: d.memo }))
+        .sort((a, b) => b.recordedAt.localeCompare(a.recordedAt)),
+    };
+  }
+
   /** Execute an erasure: redact the party's PII + its notification recipients,
    *  keeping the financial record (role links, invoices, bills) by opaque id. */
   private erasePartyData(tenantId: string, partyId: string, reason?: string): ErasureReceipt {
@@ -1117,6 +1153,7 @@ export class App {
         tenantId: ctx.tenantId,
         role: ctx.role,
         ...(ctx.partyId ? { partyId: ctx.partyId } : {}),
+        ...(ctx.entityId ? { entityId: ctx.entityId } : {}),
         permissions: [...this.roles.permissionsFor(ctx.tenantId, ctx.role)],
       },
     }));
@@ -2324,6 +2361,17 @@ export class App {
     this.add('GET', '/resident/home', null, (ctx) => {
       if (ctx.partyId === undefined) throw new HttpError(403, 'a resident session is required');
       return { status: 200, body: this.residentHome(ctx.tenantId, ctx.partyId) };
+    });
+
+    // --- owner / investor portal (Phase 7B) -------------------------------
+    // An owner/investor token (entity-scoped) gets a read-only view of THEIR
+    // legal entity's communities (NOI from the ledger) and the distributions
+    // paid out to them. permission:null + a REQUIRED ctx.entityId, so an operator
+    // or resident token (no entityId) is 403'd — an owner sees only their own
+    // entity, never another owner's or the operator surface.
+    this.add('GET', '/owner/home', null, (ctx) => {
+      if (ctx.entityId === undefined) throw new HttpError(403, 'an owner session is required');
+      return { status: 200, body: this.ownerHome(ctx.tenantId, ctx.entityId) };
     });
 
     // A resident's own maintenance requests (the work orders they raised).

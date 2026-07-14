@@ -29,6 +29,13 @@ export interface AuthContext {
    * to agreements this party is linked to. Undefined for operator/staff tokens.
    */
   partyId?: string;
+  /**
+   * The legal entity this token acts as, when the caller is an OWNER/INVESTOR
+   * rather than an operator or resident. Owner-portal reads are constrained to
+   * this entity's properties + distributions. Undefined for operator/resident
+   * tokens (orthogonal to partyId — a token is at most one of the two).
+   */
+  entityId?: string;
 }
 
 export interface Authenticator {
@@ -66,6 +73,8 @@ export interface JwtClaimMap {
   role: string;
   tenantId: string;
   partyId: string;
+  /** The owning legal entity, for an owner/investor token (owner portal). */
+  entityId: string;
   /** The subject/actor identifier. */
   actor: string;
 }
@@ -74,6 +83,7 @@ const DEFAULT_CLAIM_MAP: JwtClaimMap = {
   role: 'user_role',
   tenantId: 'tenant_id',
   partyId: 'party_id',
+  entityId: 'entity_id',
   actor: 'sub',
 };
 
@@ -216,7 +226,12 @@ export class JwtAuthenticator implements Authenticator {
     const actor = pick(this.claims.actor) ?? tenantId;
     const role: Role = pick(this.claims.role) ?? 'read_only';
     const partyId = pick(this.claims.partyId);
+    const entityId = pick(this.claims.entityId);
 
-    return partyId ? { actor, tenantId, role, partyId } : { actor, tenantId, role };
+    return {
+      actor, tenantId, role,
+      ...(partyId ? { partyId } : {}),
+      ...(entityId ? { entityId } : {}),
+    };
   }
 }
