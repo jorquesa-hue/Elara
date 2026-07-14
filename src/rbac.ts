@@ -101,6 +101,11 @@ export const PERMISSIONS = [
   // arrival notification rides the existing outbox; no PolicyEnvelope action).
   'package.read',
   'package.manage',
+  // Prospect waitlist — a leasing-funnel tool (a queue for a floorplan when it's
+  // full). Both in OPS (leasing agents run the waitlist); converting a prospect
+  // creates a CRM lead through the existing gated path. RBAC-only.
+  'waitlist.read',
+  'waitlist.manage',
   'esign.read',
   'esign.manage',
   // Recording a signer's COMPLETION is the provider's webhook, relayed by the
@@ -175,6 +180,7 @@ const OPS: Permission[] = [
   'insurance.read', 'insurance.manage',
   'utility.read',
   'package.read', 'package.manage',
+  'waitlist.read', 'waitlist.manage',
   'esign.read', 'esign.manage',
   'renewal.read',
   'ledger.read', 'exception.read', 'subscription.read',

@@ -48,6 +48,7 @@ import { PreventiveMaintenance } from '../preventive.ts';
 import { InsuranceRegistry, coverageStatus } from '../insurance.ts';
 import { UtilityBilling, allocateUtility, isUtilityKind, isAllocationMethod, type AllocationMethod, type UtilityParticipant } from '../utility-billing.ts';
 import { Parcels, parcelDaysWaiting } from '../packages.ts';
+import { Waitlist } from '../waitlist.ts';
 import { PeriodLock } from '../period-lock.ts';
 import { BankAccounts } from '../bank-account.ts';
 import { gaapViewFromLines } from '../multigaap.ts';
@@ -217,6 +218,7 @@ export class App {
   readonly insurance = new InsuranceRegistry();
   readonly utilities = new UtilityBilling();
   readonly parcels = new Parcels();
+  readonly waitlist = new Waitlist();
   readonly signatures = new Signatures();
   readonly periodLock = new PeriodLock();
   readonly bankAccounts = new BankAccounts();
@@ -243,6 +245,7 @@ export class App {
   private readonly insuranceTenant = new Map<string, string>();
   private readonly utilityTenant = new Map<string, string>();
   private readonly parcelTenant = new Map<string, string>();
+  private readonly waitlistTenant = new Map<string, string>();
   private readonly flushMarks = new Map<string, FlushMark>();
   /** Per-tenant in-flight flush, so overlapping flushes serialize (see flushWorld). */
   private readonly flushInFlight = new Map<string, Promise<void>>();
@@ -966,6 +969,17 @@ export class App {
   private ownedParcel(ctx: AuthContext, id: string) {
     if (this.parcelTenant.get(id) !== ctx.tenantId) throw new HttpError(404, 'parcel not found');
     return this.parcels.get(id);
+  }
+
+  private ownedWaitlistEntry(ctx: AuthContext, id: string) {
+    if (this.waitlistTenant.get(id) !== ctx.tenantId) throw new HttpError(404, 'waitlist entry not found');
+    return this.waitlist.get(id);
+  }
+
+  /** Enrich a waitlist entry with its floorplan name + queue position. */
+  private waitlistRow(tenantId: string, e: ReturnType<Waitlist['get']>) {
+    const type = e.typeId ? this.masterData.unitTypes.get(tenantId, e.typeId) : undefined;
+    return { ...e, floorplanName: type?.name, position: this.waitlist.position(e.id) };
   }
 
   /** Enrich a parcel with its recipient name + unit label + days waiting. */
@@ -3245,6 +3259,61 @@ export class App {
       return { status: 200, body: { parcels } };
     });
 
+    // --- prospect waitlist (Phase 6D) -------------------------------------
+    // A leasing-funnel tool: prospects queue for a floorplan when it's full;
+    // as a unit turns available the office offers it to the top of the FIFO
+    // queue and converts that prospect into a CRM lead (the funnel resumes).
+    this.add('GET', '/waitlist', 'waitlist.read', (ctx) => {
+      const entries = this.waitlist.list(ctx.tenantId)
+        .map((e) => this.waitlistRow(ctx.tenantId, e))
+        .sort((a, b) => a.joinedAt.localeCompare(b.joinedAt));
+      return { status: 200, body: { entries } };
+    });
+
+    this.add('GET', '/waitlist/:id', 'waitlist.read', (ctx, p) => ({
+      status: 200, body: this.waitlistRow(ctx.tenantId, this.ownedWaitlistEntry(ctx, p['id']!)),
+    }));
+
+    this.add('POST', '/waitlist', 'waitlist.manage', (ctx, _p, body) => {
+      const typeId = this.optString(body, 'typeId');
+      if (typeId && !this.masterData.unitTypes.get(ctx.tenantId, typeId)) throw new HttpError(404, 'floorplan not found');
+      const propertyId = this.optString(body, 'propertyId');
+      if (propertyId && !this.masterData.properties.get(ctx.tenantId, propertyId)) throw new HttpError(404, 'property not found');
+      const entry = this.waitlist.join({
+        id: this.requireString(body, 'id'),
+        tenantId: ctx.tenantId,
+        prospectName: this.requireString(body, 'prospectName'),
+        typeId,
+        propertyId,
+        prospectEmail: this.optString(body, 'prospectEmail'),
+        prospectPhone: this.optString(body, 'prospectPhone'),
+        desiredMoveIn: this.optString(body, 'desiredMoveIn'),
+        notes: this.optString(body, 'notes'),
+        joinedAt: this.optString(body, 'joinedAt') ?? this.now(),
+      });
+      this.waitlistTenant.set(entry.id, ctx.tenantId);
+      return { status: 201, body: this.waitlistRow(ctx.tenantId, entry) };
+    });
+
+    this.add('POST', '/waitlist/:id/offer', 'waitlist.manage', (ctx, p, _body) => {
+      this.ownedWaitlistEntry(ctx, p['id']!);
+      return { status: 200, body: this.waitlistRow(ctx.tenantId, this.waitlist.offer(p['id']!, this.now())) };
+    });
+
+    // Convert a prospect to a CRM lead (source 'waitlist') and close the entry.
+    this.add('POST', '/waitlist/:id/convert', 'waitlist.manage', (ctx, p, _body) => {
+      const entry = this.ownedWaitlistEntry(ctx, p['id']!);
+      const leadId = `wl-lead-${entry.id}`;
+      const lead = this.crm.createLead({ id: leadId, tenantId: ctx.tenantId, name: entry.prospectName, source: 'waitlist', estValueCents: 0, createdAt: this.now() });
+      const updated = this.waitlist.convert(entry.id, this.now(), leadId);
+      return { status: 200, body: { entry: this.waitlistRow(ctx.tenantId, updated), lead } };
+    });
+
+    this.add('POST', '/waitlist/:id/withdraw', 'waitlist.manage', (ctx, p, _body) => {
+      this.ownedWaitlistEntry(ctx, p['id']!);
+      return { status: 200, body: this.waitlistRow(ctx.tenantId, this.waitlist.withdraw(p['id']!)) };
+    });
+
     // --- e-signature for lease execution (#17) ----------------------------
     // The CRM → lease → e-sign tail. The provider I/O lives in an edge adapter
     // (secretRef); a fully signed envelope advances the CRM lead but does NOT
@@ -3627,6 +3696,7 @@ export class App {
       turns: this.turns.list(tenantId).map((t) => ({ id: t.id, unitLabel: this.masterData.units.get(tenantId, t.unitId)?.label ?? t.unitId, status: t.status, days: turnDays(t, this.now()), openTasks: t.tasks.filter((x) => !x.done).length })),
       insurancePolicies: this.insurance.list(tenantId).map((p) => ({ agreementId: p.agreementId, carrier: p.carrier, liabilityCents: p.liabilityCents, effectiveAt: p.effectiveAt, expiresAt: p.expiresAt, status: p.status })),
       parcels: this.parcels.list(tenantId).map((p) => { const r = this.parcelRow(tenantId, p); return { recipientName: r.recipientName, unitLabel: r.unitLabel, carrier: p.carrier, status: p.status, daysWaiting: r.daysWaiting }; }),
+      waitlist: this.waitlist.list(tenantId).map((e) => ({ floorplanName: e.typeId ? this.masterData.unitTypes.get(tenantId, e.typeId)?.name : undefined, status: e.status })),
       holds: this.calendar.allHolds().filter((h) => agIds.has(h.holderId)).map((h) => ({ unitId: h.unitId, start: h.start, end: h.end, status: h.status })),
       ledgerBalanced: this.trialBalance(tenantId).balanced,
       // Tenant-scoped GL lines (same predicate as the trial balance) — the raw
@@ -4067,6 +4137,7 @@ export class App {
       insurancePolicies: this.insurance.list(tenantId),
       utilityBills: this.utilities.list(tenantId),
       parcels: this.parcels.list(tenantId),
+      waitlist: this.waitlist.list(tenantId),
       // --- full persistence: platform users, custom roles, e-sign, connectors --
       users: this.masterData.users.list(tenantId),
       customRoles: this.roles.customRolesFor(tenantId).map((r) => ({ tenantId, roleId: r.id, name: r.name, description: r.description, permissions: r.permissions === '*' ? [...this.roles.permissionsFor(tenantId, r.id)] : (r.permissions as readonly string[]) })),
@@ -4169,6 +4240,8 @@ export class App {
     for (const b of world.utilityBills ?? []) this.utilityTenant.set(b.id, b.tenantId);
     this.parcels.hydrate((world.parcels ?? []) as never);
     for (const p of world.parcels ?? []) this.parcelTenant.set(p.id, p.tenantId);
+    this.waitlist.hydrate((world.waitlist ?? []) as never);
+    for (const e of world.waitlist ?? []) this.waitlistTenant.set(e.id, e.tenantId);
     this.signatures.hydrate((world.signatureEnvelopes ?? []) as never);
     this.integrations.hydrate((world.integrations ?? []) as never);
     this.connectorOutbox.hydrate((world.connectorCommands ?? []) as never);

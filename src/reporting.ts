@@ -32,6 +32,8 @@ export interface ReportingInput {
   insurancePolicies?: ReadonlyArray<{ agreementId: string; carrier: string; liabilityCents: number; effectiveAt: string; expiresAt: string; status: string }>;
   /** Parcels at the front desk — for the package-room report + aging insight. */
   parcels?: ReadonlyArray<{ recipientName: string; unitLabel?: string; carrier: string; status: string; daysWaiting: number }>;
+  /** Waitlist entries — for the demand-by-floorplan report + demand insight. */
+  waitlist?: ReadonlyArray<{ floorplanName?: string; status: string }>;
   holds: ReadonlyArray<{ unitId: string; start: string; end: string; status: string }>;
   ledgerBalanced: boolean;
   /** Tenant-scoped journal lines — the raw material for the FINANCIAL reports
@@ -84,6 +86,7 @@ export const REPORT_CATALOG: readonly ReportSpec[] = [
   { key: 'make_ready', title: 'Make-ready (turn time)', description: 'Unit turns with days-in-turn and the turn-time KPIs — how fast vacant units get rent-ready.' },
   { key: 'insurance_compliance', title: 'Insurance compliance', description: 'Renters-insurance coverage per active lease — compliant, expiring, lapsed or none, with the portfolio compliance rate.' },
   { key: 'package_room', title: 'Package room', description: 'Parcels awaiting pickup at the front desk, by days waiting — the packages still clogging the mail room.' },
+  { key: 'waitlist_demand', title: 'Waitlist demand', description: 'Prospects waiting per floorplan — where demand outstrips available supply.' },
   { key: 'pipeline', title: 'Sales pipeline', description: 'Leads by stage, pipeline value and conversion.' },
   { key: 'portfolio', title: 'Portfolio mix', description: 'Agreements by kind and status; unit occupancy mix.' },
   { key: 'cashflow', title: 'Cash flow', description: 'Money in (payments) vs money out (vendor payouts) for the window.' },
@@ -640,6 +643,27 @@ function packageRoom(inp: ReportingInput): Report {
   };
 }
 
+/** Waitlist demand: prospects still waiting/offered, grouped by floorplan. */
+function waitlistDemand(inp: ReportingInput): Report {
+  const active = (inp.waitlist ?? []).filter((e) => e.status === 'waiting' || e.status === 'offered');
+  const byPlan = new Map<string, number>();
+  for (const e of active) { const k = e.floorplanName ?? 'Any / unspecified'; byPlan.set(k, (byPlan.get(k) ?? 0) + 1); }
+  const rows = [...byPlan.entries()].map(([floorplan, waiting]) => ({ floorplan, waiting })).sort((a, b) => b.waiting - a.waiting);
+  return {
+    key: 'waitlist_demand', title: 'Waitlist demand', window: { from: inp.from, to: inp.to },
+    subtitle: 'Prospects waiting per floorplan — a demand signal for pricing and unit releases.',
+    columns: [
+      { key: 'floorplan', label: 'Floorplan', kind: 'text' }, { key: 'waiting', label: 'Prospects waiting', kind: 'number' },
+    ],
+    rows,
+    kpis: [
+      { label: 'Waiting', value: active.length, kind: 'number' },
+      { label: 'Floorplans with demand', value: byPlan.size, kind: 'number' },
+      { label: 'Converted', value: (inp.waitlist ?? []).filter((e) => e.status === 'converted').length, kind: 'number' },
+    ],
+  };
+}
+
 // --- financial statements (GL-based) -----------------------------------------
 
 /** P&L for the window: revenue accounts are credit-normal, expenses debit-normal.
@@ -871,7 +895,7 @@ const BUILDERS: Record<string, (inp: ReportingInput) => Report> = {
   occupancy, revenue, ar_aging: arAging, collections, deposits: depositsReport, payables, pipeline, portfolio, cashflow,
   rent_roll: rentRoll, delinquency, lease_expirations: leaseExpirations, box_score: boxScore, vacancy, wo_aging: woAging,
   income_statement: incomeStatement, general_ledger: generalLedger, billing_collections: billingCollections, occupancy_trend: occupancyTrend,
-  owner_statement: ownerStatement, cash_flow_statement: cashFlowStatement, make_ready: makeReady, insurance_compliance: insuranceCompliance, package_room: packageRoom,
+  owner_statement: ownerStatement, cash_flow_statement: cashFlowStatement, make_ready: makeReady, insurance_compliance: insuranceCompliance, package_room: packageRoom, waitlist_demand: waitlistDemand,
 };
 
 export function buildReport(key: string, inp: ReportingInput): Report | null {
@@ -956,6 +980,10 @@ export function computeInsights(inp: ReportingInput): Insight[] {
   // Front desk: parcels sitting unclaimed for a week or more clog the mail room.
   const stalePackages = (inp.parcels ?? []).filter((p) => p.status !== 'picked_up' && p.daysWaiting >= 7);
   if (stalePackages.length > 0) out.push({ severity: 'info', title: `${stalePackages.length} parcel(s) unclaimed for 7+ days`, detail: 'Packages waiting a week or more take shelf space — remind residents to collect them.', metric: { value: Math.max(...stalePackages.map((p) => p.daysWaiting)), kind: 'number' }, action: 'Re-notify recipients in Packages.' });
+
+  // Leasing: prospects waiting for a floorplan are unmet demand — a pricing signal.
+  const waiting = (inp.waitlist ?? []).filter((e) => e.status === 'waiting' || e.status === 'offered');
+  if (waiting.length >= 3) out.push({ severity: 'positive', title: `${waiting.length} prospect(s) on the waitlist`, detail: 'Demand is outrunning available supply — a signal to raise asking rents or release held units.', metric: { value: waiting.length, kind: 'number' }, action: 'Review demand by floorplan in the Waitlist-demand report.' });
 
   // Profitability: NOI for the window from the ledger (when lines are provided).
   if (inp.ledgerLines?.length) {

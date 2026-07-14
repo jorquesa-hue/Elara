@@ -29,6 +29,7 @@ import type { PmSchedule as PmScheduleRecord } from '../preventive.ts';
 import type { InsurancePolicy as InsurancePolicyRecord } from '../insurance.ts';
 import type { UtilityBill as UtilityBillRecord } from '../utility-billing.ts';
 import type { Parcel as ParcelRecord } from '../packages.ts';
+import type { WaitlistEntry as WaitlistRecord } from '../waitlist.ts';
 
 export interface WorldData {
   tenants: Array<{
@@ -151,6 +152,7 @@ export interface WorldData {
   insurancePolicies?: readonly InsurancePolicyRecord[];
   utilityBills?: readonly UtilityBillRecord[];
   parcels?: readonly ParcelRecord[];
+  waitlist?: readonly WaitlistRecord[];
   // --- full persistence: platform users, custom roles, e-sign, connectors -----
   users?: Array<{ id: string; tenantId: string; code: string; displayName: string; roleId: string; active: boolean }>;
   customRoles?: Array<{ tenantId: string; roleId: string; name: string; description?: string; permissions: readonly string[] }>;
@@ -526,6 +528,14 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       stmt(
         'insert into parcel (id, tenant_id, party_id, agreement_id, carrier, tracking_number, description, location, status, received_at, notified_at, picked_up_at, picked_up_by, notes) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) on conflict (id) do update set agreement_id = excluded.agreement_id, carrier = excluded.carrier, tracking_number = excluded.tracking_number, description = excluded.description, location = excluded.location, status = excluded.status, notified_at = excluded.notified_at, picked_up_at = excluded.picked_up_at, picked_up_by = excluded.picked_up_by, notes = excluded.notes',
         [p.id, p.tenantId, p.partyId, p.agreementId ?? null, p.carrier, p.trackingNumber ?? null, p.description ?? null, p.location ?? null, p.status, p.receivedAt, p.notifiedAt ?? null, p.pickedUpAt ?? null, p.pickedUpBy ?? null, p.notes ?? null],
+      ),
+    );
+  }
+  for (const e of w.waitlist ?? []) {
+    out.push(
+      stmt(
+        'insert into waitlist_entry (id, tenant_id, type_id, property_id, prospect_name, prospect_email, prospect_phone, desired_move_in, status, joined_at, offered_at, converted_at, lead_id, notes) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) on conflict (id) do update set type_id = excluded.type_id, property_id = excluded.property_id, prospect_name = excluded.prospect_name, prospect_email = excluded.prospect_email, prospect_phone = excluded.prospect_phone, desired_move_in = excluded.desired_move_in, status = excluded.status, offered_at = excluded.offered_at, converted_at = excluded.converted_at, lead_id = excluded.lead_id, notes = excluded.notes',
+        [e.id, e.tenantId, e.typeId ?? null, e.propertyId ?? null, e.prospectName, e.prospectEmail ?? null, e.prospectPhone ?? null, e.desiredMoveIn ?? null, e.status, e.joinedAt, e.offeredAt ?? null, e.convertedAt ?? null, e.leadId ?? null, e.notes ?? null],
       ),
     );
   }

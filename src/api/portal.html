@@ -224,6 +224,7 @@
     insurance: '<path d="M12 3l7 3v5c0 4.4-3 8.4-7 10-4-1.6-7-5.6-7-10V6z"/><path d="M9 12l2 2 4-4"/>',
     utilities: '<path d="M12 2v6M12 8a4 4 0 0 0-4 4c0 3 4 8 4 8s4-5 4-8a4 4 0 0 0-4-4z"/>',
     packages: '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
+    waitlist: '<circle cx="12" cy="7" r="3"/><path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M17 3l2 2-2 2"/>',
     reports: '<path d="M4 3v18h16"/><rect x="7" y="12" width="3" height="6" rx="1"/><rect x="12" y="8" width="3" height="10" rx="1"/><rect x="17" y="4" width="3" height="14" rx="1"/>',
     advisor: '<path d="M12 3l1.9 4.3L18 9l-4.1 1.7L12 15l-1.9-4.3L6 9l4.1-1.7z"/><path d="M18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z"/>',
     properties: '<path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M10 21v-6h4v6"/><path d="M9 10h.01M15 10h.01"/>',
@@ -437,6 +438,7 @@
     if (can("insurance.read")) items.splice(items.length - 1, 0, ["insurance", "Insurance", ICONS.insurance]);
     if (can("utility.read")) items.splice(items.length - 1, 0, ["utilities", "Utilities", ICONS.utilities]);
     if (can("package.read")) items.splice(items.length - 1, 0, ["packages", "Packages", ICONS.packages]);
+    if (can("waitlist.read")) items.splice(2, 0, ["waitlist", "Waitlist", ICONS.waitlist]);
     if (can("reservation.read")) items.splice(3, 0, ["reservations", "Reservations", ICONS.reservations]);
     if (can("comms.read")) items.splice(items.length - 1, 0, ["inbox", "Inbox", ICONS.inbox]);
     if (can("reconciliation.read")) items.splice(items.length - 1, 0, ["reconcile", "Reconcile", ICONS.reconcile]);
@@ -473,7 +475,7 @@
       h("main", { id: "main" }, [])
     ]));
     var main = document.getElementById("main");
-    ({ dashboard: viewDashboard, agreements: viewAgreements, properties: viewProperties, website: viewWebsite, pricing: viewPricing, crm: viewCrm, applications: viewApplications, tours: viewTours, turns: viewTurns, insurance: viewInsurance, utilities: viewUtilities, packages: viewPackages, renewals: viewRenewals, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
+    ({ dashboard: viewDashboard, agreements: viewAgreements, properties: viewProperties, website: viewWebsite, pricing: viewPricing, crm: viewCrm, applications: viewApplications, tours: viewTours, turns: viewTurns, insurance: viewInsurance, utilities: viewUtilities, packages: viewPackages, waitlist: viewWaitlist, renewals: viewRenewals, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
   }
 
   // ---- views --------------------------------------------------------------
@@ -1619,6 +1621,54 @@
     });
   }
 
+  // ---- Prospect waitlist (Phase 6D) ----------------------------------------
+  function viewWaitlist(main){
+    main.appendChild(h("h1",{},["Waitlist"]));
+    main.appendChild(h("p",{class:"sub"},["When a floorplan is full, prospects queue for it here (first-come, first-served). As a unit opens, offer it to the top of the queue and convert that prospect into a pipeline lead."]));
+    var formSlot=h("div",{},[]); main.appendChild(formSlot);
+    var wrap=h("div",{},[]); main.appendChild(wrap);
+    if(can("waitlist.manage")) formSlot.appendChild(waitlistForm(wrap));
+    refreshWaitlist(wrap);
+  }
+  var WL_PILL={ waiting:"draft", offered:"active", converted:"active", withdrawn:"terminated" };
+  function waitlistForm(wrap){
+    var name=h("input",{type:"text",placeholder:"Prospect name"});
+    var email=h("input",{type:"email",placeholder:"prospect@email.com"});
+    var type=h("select",{},[h("option",{value:""},["— any floorplan —"])]);
+    if(can("masterdata.read")) api("/unit-types").then(function(r){ ((r.body||{}).unitTypes||[]).forEach(function(t){ type.appendChild(h("option",{value:t.id},[t.name||t.code||t.id])); }); });
+    var move=h("input",{type:"date"});
+    return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
+      if(!name.value) return toast("Prospect name is required","err");
+      var body={ id:"wl-"+Date.now(), prospectName:name.value, prospectEmail:email.value||undefined, typeId:type.value||undefined, desiredMoveIn:move.value||undefined };
+      api("/waitlist",{method:"POST",body:body}).then(function(r){ if(r.status===201){ toast("Added to waitlist","ok"); name.value=email.value=""; refreshWaitlist(wrap);} else toast((r.body||{}).error||"err","err"); });
+    }},[ field("Prospect",name), field("Email",email), field("Floorplan",type), field("Desired move-in",move), h("div",{},[h("button",{class:"btn",type:"submit"},["Join waitlist"])]) ]);
+  }
+  function refreshWaitlist(wrap){
+    api("/waitlist").then(function(r){
+      wrap.innerHTML="";
+      var entries=((r.body||{}).entries||[]);
+      if(!entries.length){ wrap.appendChild(h("div",{class:"panel muted"},["No prospects on the waitlist."])); return; }
+      var rows=entries.map(function(e){
+        var actions=h("div",{class:"row",style:"gap:6px"},[]);
+        if(can("waitlist.manage")){
+          if(e.status==="waiting") actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/waitlist/"+e.id+"/offer",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast("Offered","ok"); refreshWaitlist(wrap);} else toast((x.body||{}).error||"err","err"); }); }},["Offer"]));
+          if(e.status==="waiting"||e.status==="offered"){
+            actions.appendChild(h("button",{class:"btn sm",onclick:function(){ api("/waitlist/"+e.id+"/convert",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast("Converted to a pipeline lead","ok"); refreshWaitlist(wrap);} else toast((x.body||{}).error||"err","err"); }); }},["Convert"]));
+            actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/waitlist/"+e.id+"/withdraw",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast(t("msg.saved"),"ok"); refreshWaitlist(wrap);} else toast((x.body||{}).error||"err","err"); }); }},["Withdraw"]));
+          }
+        }
+        var pos = (e.status==="waiting"||e.status==="offered") && e.position ? h("span",{class:"pill "},["#"+e.position]) : "—";
+        return h("tr",{},[
+          h("td",{},[pos]), h("td",{},[e.prospectName]), h("td",{},[e.floorplanName||"Any"]),
+          h("td",{},[(e.desiredMoveIn||"—")]),
+          h("td",{},[h("span",{class:"pill "+(WL_PILL[e.status]||"draft")},[e.status])]),
+          h("td",{},[actions])
+        ]);
+      });
+      wrap.appendChild(tableEl([th("#"),th("Prospect"),th("Floorplan"),th("Move-in"),th("Status"),th("")], rows, 6, "No prospects."));
+    });
+  }
+
   // ---- Renewals (Phase 2D) -------------------------------------------------
   function viewRenewals(main){
     main.appendChild(h("h1",{},["Renewals"]));
@@ -2403,7 +2453,7 @@
 
   // ---- reports & insights -------------------------------------------------
   var CHART_PALETTE = ["#6d8bff","#8b6cff","#3aa76d","#e0894a","#e05a5a","#22a5b8","#c98a1e","#b565d8","#4f9d69","#d98a8a"];
-  var CATALOG_CHART = { occupancy:"bar", revenue:"line", ar_aging:"bar", collections:"table", deposits:"bar", payables:"bar", pipeline:"bar", portfolio:"donut", cashflow:"bar", rent_roll:"table", delinquency:"bar", lease_expirations:"bar", box_score:"table", vacancy:"table", wo_aging:"bar", income_statement:"bar", owner_statement:"bar", general_ledger:"table", billing_collections:"bar", occupancy_trend:"line", cash_flow_statement:"bar", make_ready:"table", insurance_compliance:"table", package_room:"table" };
+  var CATALOG_CHART = { occupancy:"bar", revenue:"line", ar_aging:"bar", collections:"table", deposits:"bar", payables:"bar", pipeline:"bar", portfolio:"donut", cashflow:"bar", rent_roll:"table", delinquency:"bar", lease_expirations:"bar", box_score:"table", vacancy:"table", wo_aging:"bar", income_statement:"bar", owner_statement:"bar", general_ledger:"table", billing_collections:"bar", occupancy_trend:"line", cash_flow_statement:"bar", make_ready:"table", insurance_compliance:"table", package_room:"table", waitlist_demand:"bar" };
 
   // Download any report as CSV — columns become the header, cells are quoted.
   function csvEscape(v){ var s=String(v==null?"":v); return /[",\\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
