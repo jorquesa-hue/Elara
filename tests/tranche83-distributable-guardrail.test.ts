@@ -63,6 +63,19 @@ test('a reserve reduces distributable, so an otherwise-fine draw escalates', () 
   assert.equal(dist(app, { id: 'd-ok', amountCents: 80000, reserveCents: 200000 }).status, 201); // within the reserved distributable
 });
 
+test('a reserve delivered as a query-string (string) is honored on POST, matching the preview', () => {
+  // http.ts merges the query string into the POST body as STRING values, so a
+  // client calling POST /distributions?reserveCents=200000 arrives with
+  // reserveCents: '200000'. The enforced decision must parse it identically to
+  // the GET preview (string-or-number) — otherwise the guardrail silently drops
+  // the reserve to 0 and auto-records a draw the preview said would escalate.
+  const app = mkApp(300000);
+  const preview = D(app, 'GET', '/distributions/distributable', { entityId: 'ent-a', reserveCents: '200000' }).body as { distributableCents: number };
+  assert.equal(preview.distributableCents, 100000);
+  // 150000 > 100000 distributable (with the string reserve honored) -> must escalate, not 201.
+  assert.equal(dist(app, { amountCents: 150000, reserveCents: '200000' }).status, 202);
+});
+
 test('a human approving records the over-distribution', () => {
   const app = mkApp(300000);
   const esc = dist(app, { amountCents: 400000 });

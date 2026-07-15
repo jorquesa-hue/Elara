@@ -3464,7 +3464,13 @@ export class App {
       const id = this.requireString(body, 'id');
       // Distributable-cash guardrail: distributing more than the entity has
       // available (NOI − reserves − already-distributed) escalates for approval.
-      const reserveCents = typeof body['reserveCents'] === 'number' ? (body['reserveCents'] as number) : 0;
+      // Parse reserveCents string-OR-number so a query-string reserve (http.ts
+      // merges the query into the POST body as strings) is honored identically
+      // to the GET /distributions/distributable preview — the enforced decision
+      // must never disagree with the preview for the same inputs.
+      const reserveRaw = body['reserveCents'];
+      const reserveNum = typeof reserveRaw === 'string' ? Number(reserveRaw) : (typeof reserveRaw === 'number' ? reserveRaw : 0);
+      const reserveCents = Number.isFinite(reserveNum) ? reserveNum : 0;
       const { distributableCents } = this.distributableFor(ctx.tenantId, entityId, reserveCents);
       // Money out → policy-gated on the amount (large OR over-distributable escalates).
       return this.gated(
