@@ -2,11 +2,11 @@
 
 Everything the build sandbox could do is ALREADY DONE: all 14 migrations are
 applied to the live project, the three edge functions are deployed
-(persist-world v14, connector-worker v3, notification-worker v1), and the three
+(persist-world v16, connector-worker v5, notification-worker v2), and the four
 schedulers are running inside Supabase (pg_cron: `notification-drain` and
-`connector-drain` every minute, `collections-sweep` daily 08:00 UTC — each is a
-safe no-op until you add the Vault secrets in step 4). What remains needs YOUR
-accounts. Total: ~30 minutes.
+`connector-drain` every minute, `collections-sweep` daily 08:00 UTC,
+`renewals-sweep` daily 09:00 UTC — each is a safe no-op until you add the Vault
+secrets in step 4). What remains needs YOUR accounts. Total: ~35 minutes.
 
 Project: `shplrbhwpttsukwgaxli` — https://shplrbhwpttsukwgaxli.supabase.co
 
