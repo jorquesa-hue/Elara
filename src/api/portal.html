@@ -199,9 +199,25 @@
   .kv .vv { font-weight: 650; margin-top: 3px; font-size: 15px; }
   .detail-actions { display: grid; grid-template-columns: repeat(auto-fit,minmax(230px,1fr)); gap: 14px; }
   .mini { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 15px; }
+  .mini.now { background: var(--warn-soft); border-color: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
   .mini h4 { margin: 0 0 12px; font-size: 12.5px; font-weight: 650; }
   .mini label { font-size: 11px; }
   .mini .stack > * { margin-bottom: 9px; }
+  /* Lifecycle stepper on the agreement detail */
+  .steprail { overflow-x: auto; padding: 4px 2px 8px; margin: 0 0 6px; }
+  .stepper { display: flex; align-items: flex-start; min-width: max-content; }
+  .step { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 78px; }
+  .step .bub { width: 25px; height: 25px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700;
+    border: 2px solid var(--border-strong); background: var(--surface); color: var(--subtle); }
+  .step.done .bub { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .step.now .bub { background: var(--warn); border-color: var(--warn); color: #1b2333; box-shadow: 0 0 0 5px var(--warn-soft); }
+  .step .sl { font-size: 10.5px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+  .step.now .sl { color: var(--warn); } .step.done .sl { color: var(--text); }
+  .step .sd { font-size: 9.5px; color: var(--subtle); white-space: nowrap; }
+  .stepconn { flex: 1 0 22px; height: 2px; background: var(--border-strong); margin-top: 12px; }
+  .stepconn.done { background: var(--accent); }
+  .actsec { font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--subtle); margin: 22px 0 11px; font-weight: 700; }
+  .actsec.now { color: var(--warn); }
   .timeline { display: flex; flex-direction: column; }
   .tl-item { display: flex; gap: 13px; padding: 8px 0; }
   .tl-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); margin-top: 5px; flex: none; box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -1091,9 +1107,9 @@
         cell(t("field.end"), a.period.end),
         cell(t("field.rate"), fmt(a.rateCents))
       ]) ]));
+      slot.appendChild(lifecycleStepper(a));
       slot.appendChild(h("h2",{},["People"])); slot.appendChild(partiesSection(id));
-      var acts = actionForms(id, bill);
-      if (acts){ slot.appendChild(h("h2",{},[t("section.actions")])); slot.appendChild(acts); }
+      slot.appendChild(h("h2",{},[t("section.actions")])); slot.appendChild(stageAwareActions(id, a, bill));
       slot.appendChild(h("h2",{},[t("section.invoices")])); slot.appendChild(invoicesTable(bill.invoices));
       slot.appendChild(h("h2",{},[t("section.payments")])); slot.appendChild(paymentsTable(bill.payments));
       slot.appendChild(h("h2",{},[t("section.deposits")])); slot.appendChild(depositsTable(bill.deposits));
@@ -1108,18 +1124,79 @@
     if(r.status>=400) return toast(r.body.error||("Error "+r.status),"err");
     toast(t("msg.saved"),"ok"); reloadDetail();
   }
-  function actionForms(id, bill){
-    var forms=[];
-    if (can("invoice.issue")) forms.push(issueInvoiceForm(id));
-    if (can("payment.record")) forms.push(recordPaymentForm(bill));
-    if (can("deposit.hold")) forms.push(holdDepositForm(id));
-    if (can("deposit.refund")){ var f=refundDepositForm(bill); if(f) forms.push(f); }
-    if (can("agreement.adjust")) forms.push(adjustRentForm(id));
-    if (can("agreement.transfer")) forms.push(transferForm(id));
-    if (can("agreement.move")) forms.push(moveForm(id));
-    if (can("esign.read")) forms.push(leaseDocForm(id));
-    if (can("agreement.adjust")) forms.push(renewForm(id));
-    return forms.length ? h("div",{class:"detail-actions"}, forms) : null;
+  // ---- lifecycle stage (derived from status + events) ---------------------
+  function agDaysUntil(dateStr){ if(!dateStr) return null; var d=new Date(dateStr+"T00:00:00"); if(isNaN(d)) return null; return Math.round((d - new Date())/86400000); }
+  function agHasEvent(a, type){ return (a.history||[]).some(function(e){ return e.type===type; }); }
+  // The resident lifecycle a lease moves through. `now` is the current stage; every
+  // earlier stage is done. Nightly/monthly stays that never record a move-in simply
+  // sit at "Active". A lease within 90 days of its end (and moved in) is at "Renewal".
+  function computeStage(a){
+    var STAGES = ["Draft","Active","Moved in","Residing","Renewal","Moved out","Closed"];
+    var dte = a.period ? agDaysUntil(a.period.end) : null;
+    var idx;
+    if (a.status==="draft") idx=0;
+    else if (a.status==="completed" || a.status==="terminated") idx=6;
+    else if (agHasEvent(a,"moved_out")) idx=5;
+    else if (agHasEvent(a,"moved_in")) idx = (a.kind!=="nightly" && dte!=null && dte<=90 && dte>=0) ? 4 : 3;
+    else idx=1;
+    return { idx: idx, key: STAGES[idx], stages: STAGES, daysToExpiry: dte };
+  }
+  function lifecycleStepper(a){
+    var s = computeStage(a);
+    var kids = [];
+    s.stages.forEach(function(label, i){
+      if (i>0) kids.push(h("div",{class:"stepconn"+(i<=s.idx?" done":"")}));
+      var cls = i<s.idx ? "done" : (i===s.idx ? "now" : "");
+      var bub = i<s.idx ? "✓" : (i===s.idx ? "●" : String(i+1));
+      var sub = (i===s.idx && i===4 && s.daysToExpiry!=null) ? (s.daysToExpiry+"d left") : "";
+      kids.push(h("div",{class:"step "+cls},[ h("div",{class:"bub"},[bub]), h("div",{class:"sl"},[label]), sub?h("div",{class:"sd"},[sub]):null ]));
+    });
+    return h("div",{class:"steprail"},[ h("div",{class:"stepper"}, kids) ]);
+  }
+  // Dedicated one-tap cards for the stage's primary next step.
+  function activateCard(id){ return h("div",{class:"mini now"},[ h("h4",{},["Activate this agreement"]), h("div",{class:"stack"},[ h("div",{class:"muted",style:"font-size:12px"},["It's a draft. Activate it to start the lease and begin billing."]), h("button",{class:"btn sm",onclick:function(){ api("/agreements/"+id+"/activate",{method:"POST",body:{}}).then(actThen); }},["Activate"]) ]) ]); }
+  function moveInCard(id){ return h("div",{class:"mini now"},[ h("h4",{},["Record move-in"]), h("div",{class:"stack"},[ h("div",{class:"muted",style:"font-size:12px"},["The resident is ready to take possession — record the move-in and hand over keys."]), h("button",{class:"btn sm",onclick:function(){ api("/agreements/"+id+"/move-in",{method:"POST",body:{}}).then(actThen); }},["Record move-in"]) ]) ]); }
+  function moveOutCard(id){ return h("div",{class:"mini now"},[ h("h4",{},["Record move-out"]), h("div",{class:"stack"},[ h("div",{class:"muted",style:"font-size:12px"},["The resident is leaving — record the move-out, then run the inspection and refund the deposit."]), h("button",{class:"btn sm",onclick:function(){ api("/agreements/"+id+"/move-out",{method:"POST",body:{}}).then(actThen); }},["Record move-out"]) ]) ]); }
+
+  // Stage-aware action layout: the step the lease is AT is promoted into a
+  // highlighted "Do now" group; routine billing sits under "Everyday"; state
+  // transitions under "Lifecycle". Every action is still permission-gated and hits
+  // the same endpoints — only the emphasis changes with the stage.
+  function stageAwareActions(id, a, bill){
+    var s = computeStage(a);
+    var everyday = [], lifecycle = [], doNow = [];
+    // routine billing
+    if (can("invoice.issue")) everyday.push(issueInvoiceForm(id));
+    if (can("payment.record")) everyday.push(recordPaymentForm(bill));
+    if (can("deposit.hold")) everyday.push(holdDepositForm(id));
+    if (can("agreement.adjust")) everyday.push(adjustRentForm(id));
+    // state transitions (some get promoted to Do-now below)
+    var refund = can("deposit.refund") ? refundDepositForm(bill) : null;
+    var renew = can("agreement.adjust") ? renewForm(id) : null;
+    var leaseDoc = can("esign.read") ? leaseDocForm(id) : null;
+    if (can("agreement.transfer")) lifecycle.push(transferForm(id));
+    if (can("agreement.move")) lifecycle.push(moveForm(id));
+    // promote by stage
+    var promoteRenew = false, promoteRefund = false, promoteLeaseDoc = false;
+    if (s.key==="Draft") { if (can("agreement.activate")) doNow.push(activateCard(id)); promoteLeaseDoc = a.kind==="lease" && !a.leaseExecuted; }
+    else if (s.key==="Active") { if (can("agreement.move")) doNow.push(moveInCard(id)); promoteLeaseDoc = a.kind==="lease" && !a.leaseExecuted; }
+    else if (s.key==="Renewal") { promoteRenew = true; }
+    else if (s.key==="Moved out") { promoteRefund = true; }
+    if (promoteLeaseDoc && leaseDoc) { leaseDoc.className+=" now"; doNow.push(leaseDoc); leaseDoc=null; }
+    if (promoteRenew && renew) { renew.className+=" now"; doNow.push(renew); renew=null; }
+    if (promoteRefund && refund) { refund.className+=" now"; doNow.push(refund); refund=null; }
+    // whatever wasn't promoted lands in Lifecycle
+    if (leaseDoc) lifecycle.push(leaseDoc);
+    if (renew) lifecycle.push(renew);
+    if (refund) lifecycle.push(refund);
+
+    var box = h("div",{},[]);
+    box.appendChild(h("div",{class:"actsec now"},["Do now" + (s.key ? " · " + s.key.toLowerCase() : "")]));
+    if (doNow.length) box.appendChild(h("div",{class:"detail-actions"}, doNow));
+    else box.appendChild(h("div",{class:"panel muted",style:"margin:0"},["Nothing needs your attention on this lease right now — it's "+s.key.toLowerCase()+"."]));
+    if (everyday.length){ box.appendChild(h("div",{class:"actsec"},["Everyday"])); box.appendChild(h("div",{class:"detail-actions"}, everyday)); }
+    if (lifecycle.length){ box.appendChild(h("div",{class:"actsec"},["Lifecycle"])); box.appendChild(h("div",{class:"detail-actions"}, lifecycle)); }
+    return box;
   }
   function renewForm(id){
     var rate=h("input",{type:"number",placeholder:"New rent (minor) — blank = +5%"});
