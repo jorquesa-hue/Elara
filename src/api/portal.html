@@ -175,6 +175,18 @@
   @keyframes toastin { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
   /* Auth / wizard */
+  /* Deployment-durability warning (from GET /health) */
+  .healthbar { display: flex; align-items: flex-start; gap: 12px; border-radius: 12px; padding: 13px 15px;
+    margin: 0 0 20px; border: 1px solid var(--border); }
+  .healthbar.warn { background: var(--warn-soft); border-color: var(--warn); }
+  .healthbar.bad { background: var(--danger-soft); border-color: var(--danger); }
+  .healthbar .hb-ico { font-size: 17px; line-height: 1.3; flex: none; }
+  .healthbar .hb-body { flex: 1; min-width: 0; }
+  .healthbar .hb-body strong { font-size: 13.5px; }
+  .healthbar .hb-d { color: var(--text); opacity: .82; font-size: 12.5px; margin-top: 3px; }
+  .healthbar .hb-x { flex: none; background: none; border: 0; color: var(--muted); cursor: pointer;
+    font-size: 15px; line-height: 1; padding: 2px 4px; border-radius: 6px; }
+  .healthbar .hb-x:hover { background: rgba(0,0,0,.08); color: var(--text); }
   .center { display: flex; min-height: 100vh; align-items: center; justify-content: center; padding: 24px; }
   .wizard { width: 100%; max-width: 460px; }
   .wizard .brand { justify-content: center; padding-bottom: 22px; }
@@ -208,7 +220,7 @@
 "use strict";
 (function () {
   var TOKEN_KEY = "usos.token", THEME_KEY = "usos.theme", REFRESH_KEY = "usos.refresh";
-  var state = { token: localStorage.getItem(TOKEN_KEY) || "", refresh: localStorage.getItem(REFRESH_KEY) || "", auth: null, me: null, config: null, options: null, cat: {}, view: "dashboard", detailId: null, workspace: null };
+  var state = { token: localStorage.getItem(TOKEN_KEY) || "", refresh: localStorage.getItem(REFRESH_KEY) || "", auth: null, me: null, config: null, options: null, cat: {}, view: "dashboard", detailId: null, workspace: null, health: null, healthDismissed: false };
   function wsKey(){ return "usos.ws." + ((state.config && state.config.tenantId) || "_"); }
   function setSession(access, refresh){ state.token = access || ""; state.refresh = refresh || ""; if (access) localStorage.setItem(TOKEN_KEY, access); else localStorage.removeItem(TOKEN_KEY); if (refresh) localStorage.setItem(REFRESH_KEY, refresh); else localStorage.removeItem(REFRESH_KEY); }
   function logout(){ setSession("", ""); state.me = null; boot(); }
@@ -340,6 +352,32 @@
   }
   function can(p) { return state.me && state.me.permissions.indexOf(p) >= 0; }
 
+  // Deployment-durability guard. GET /health exposes durableWrites + rehydration
+  // (set by the production entrypoint). A deployment that isn't writing to a DB, or
+  // isn't reloading saved data on boot, fails SILENTLY otherwise — the operator
+  // just sees an empty app / a repeated setup wizard. This surfaces it plainly.
+  function healthProblem() {
+    var hh = state.health; if (!hh) return null;
+    var dw = String(hh.durableWrites || ""), rh = String(hh.rehydration || "");
+    if (/^DISABLED/i.test(dw)) return { kind: "bad",
+      title: "Changes are not being saved",
+      detail: "This deployment has no durable write backend (durableWrites: " + dw + "). Anything you create is kept only in memory and is lost when the server restarts. Set SUPABASE_FUNCTIONS_URL and SUPABASE_SERVICE_ROLE_KEY on the server." };
+    if (/^(disabled|degraded)/i.test(rh)) return { kind: "warn",
+      title: "Saved data won't reload after a restart",
+      detail: "Your changes ARE being written to the database, but this server isn't reloading them on boot (rehydration: " + rh + "). After a restart it starts empty and re-asks you to finish setup — and completing setup again can overwrite your saved settings. Fix by setting DATABASE_URL (the Supabase connection-pooler string) on the server, then restart." };
+    return null;
+  }
+  function healthBanner() {
+    if (state.healthDismissed) return null;
+    var p = healthProblem(); if (!p) return null;
+    var el = h("div", { class: "healthbar " + p.kind }, [
+      h("div", { class: "hb-ico" }, [p.kind === "bad" ? "⛔" : "⚠️"]),
+      h("div", { class: "hb-body" }, [ h("strong", {}, [p.title]), h("div", { class: "hb-d" }, [p.detail]) ]),
+      h("button", { class: "hb-x", title: "Dismiss for this session", onclick: function () { state.healthDismissed = true; el.remove(); } }, ["✕"])
+    ]);
+    return el;
+  }
+
   // ---- bootstrapping ------------------------------------------------------
   function boot() {
     // Learn HOW to sign in (public, pre-auth) before deciding what gate to show.
@@ -351,8 +389,12 @@
         state.me = r.body;
       return api("/config").then(function (c) {
         state.config = c.body.config; state.options = c.body.options;
-        return api("/i18n/" + state.config.locale).then(function (i) {
-          state.cat = i.body;
+        // /health carries the deployment's durability status (durableWrites +
+        // rehydration). Best-effort — a portal that can't read it just shows no
+        // banner. Fetched in parallel with the i18n catalog.
+        return Promise.all([ api("/i18n/" + state.config.locale), api("/health").catch(function(){ return { body: null }; }) ]).then(function (res) {
+          state.cat = res[0].body;
+          state.health = (res[1] && res[1].body) || null;
           if (state.config.displayName === state.config.tenantId) return renderSetup(true);
           try { state.workspace = localStorage.getItem(wsKey()) || state.workspace; } catch (e) {}
           render();
@@ -436,6 +478,7 @@
     root.appendChild(h("div", { class: "center" }, [
       h("div", { class: "wizard" }, [
         h("div", { class: "brand" }, [ mark(), h("div",{class:"wm"},["Unified Stay OS", h("small",{},["Operator portal"])]) ]),
+        healthBanner(),
         h("div", { class: "panel" }, [
           h("h1", { style:"font-size:19px" }, [t("setup.title")]),
           h("p", { class: "sub" }, ["Switch language and currency any time — it flows through the whole ledger."]),
@@ -600,6 +643,7 @@
       h("main", { id: "main" }, [])
     ]));
     var main = document.getElementById("main");
+    var hb = healthBanner(); if (hb) main.appendChild(hb);
     var views = { dashboard: viewDashboard, agreements: viewAgreements, properties: viewProperties, website: viewWebsite, pricing: viewPricing, crm: viewCrm, applications: viewApplications, tours: viewTours, turns: viewTurns, insurance: viewInsurance, utilities: viewUtilities, packages: viewPackages, waitlist: viewWaitlist, distributions: viewDistributions, renewals: viewRenewals, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings };
     var fn = (state.view === "dashboard") ? (ws.home || viewDashboard) : (views[state.view] || ws.home || viewDashboard);
     fn(main);
