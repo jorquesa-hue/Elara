@@ -219,6 +219,10 @@
     return el;
   }
   function t(key) { return state.cat[key] || key; }
+  // Like t(), but with an explicit English fallback so a locale that is missing a
+  // key shows the readable default rather than the raw key. Used for the
+  // workspace menu + home screens (translations live in i18n.ts pt-BR/es).
+  function tt(key, fallback) { return (state.cat && state.cat[key]) || fallback; }
   function svg(inner, attrs) {
     var s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + inner + '</svg>';
     return h("span", { html: s, style: "display:inline-flex" + (attrs || "") });
@@ -456,50 +460,54 @@
   // reachable — nothing was removed, the menu was regrouped by persona. This is
   // presentation only: items route to the same views, still gated by RBAC, and
   // the home screens read existing endpoints.
+  // Each nav item is [viewKey, enLabel, permission|null, iconKey, i18nKey]; the
+  // English label is the always-present fallback and the i18n key layers a
+  // pt-BR/es translation on top (see i18n.ts). Section/workspace labels carry a
+  // labelKey the same way.
   var WORKSPACES = [
-    { id: "operator", label: "Property operator", hint: "on-site desk", icon: "properties", home: viewOperatorHome, sections: [
-      { label: null, items: [["dashboard", "Operations today", null, "dashboard"]] },
-      { label: "Front desk", items: [["packages","Packages","package.read","packages"],["inbox","Inbox","comms.read","inbox"],["reservations","Amenities","reservation.read","reservations"],["waitlist","Waitlist","waitlist.read","waitlist"]] },
-      { label: "Residents", items: [["agreements","Leases & stays","agreement.read","agreements"],["maintenance","Maintenance","maintenance.read","maintenance"],["insurance","Insurance","insurance.read","insurance"],["turns","Make-ready","turn.read","turns"]] },
-      { label: "Leasing on site", items: [["tours","Tours","tour.read","tours"],["applications","Applications","application.read","applications"],["crm","Pipeline","crm.read","crm"]] }
+    { id: "operator", label: "Property operator", labelKey: "ws.operator.label", hint: "on-site desk", hintKey: "ws.operator.hint", icon: "properties", home: viewOperatorHome, sections: [
+      { label: null, items: [["dashboard", "Operations today", null, "dashboard", "ws.operator.home"]] },
+      { label: "Front desk", labelKey: "wsg.frontdesk", items: [["packages","Packages","package.read","packages","wsi.packages"],["inbox","Inbox","comms.read","inbox","wsi.inbox"],["reservations","Amenities","reservation.read","reservations","wsi.amenities"],["waitlist","Waitlist","waitlist.read","waitlist","wsi.waitlist"]] },
+      { label: "Residents", labelKey: "wsg.residents", items: [["agreements","Leases & stays","agreement.read","agreements","wsi.leases"],["maintenance","Maintenance","maintenance.read","maintenance","wsi.maintenance"],["insurance","Insurance","insurance.read","insurance","wsi.insurance"],["turns","Make-ready","turn.read","turns","wsi.makeready"]] },
+      { label: "Leasing on site", labelKey: "wsg.leasingsite", items: [["tours","Tours","tour.read","tours","wsi.tours"],["applications","Applications","application.read","applications","wsi.applications"],["crm","Pipeline","crm.read","crm","wsi.pipeline"]] }
     ] },
-    { id: "regional", label: "Regional operator", hint: "multi-community", icon: "reports", home: viewRegionalHome, sections: [
-      { label: null, items: [["dashboard", "Regional overview", null, "dashboard"]] },
-      { label: "Communities", items: [["properties","Communities","masterdata.read","properties"]] },
-      { label: "Operations", items: [["turns","Make-ready","turn.read","turns"],["maintenance","Maintenance","maintenance.read","maintenance"],["renewals","Renewals","renewal.read","renewals"],["insurance","Insurance","insurance.read","insurance"],["utilities","Utilities","utility.read","utilities"]] },
-      { label: "Leasing", items: [["crm","Pipeline","crm.read","crm"],["waitlist","Waitlist","waitlist.read","waitlist"],["applications","Applications","application.read","applications"],["tours","Tours","tour.read","tours"]] },
-      { label: "Insights", items: [["reports","Reports","reports.read","reports"]] }
+    { id: "regional", label: "Regional operator", labelKey: "ws.regional.label", hint: "multi-community", hintKey: "ws.regional.hint", icon: "reports", home: viewRegionalHome, sections: [
+      { label: null, items: [["dashboard", "Regional overview", null, "dashboard", "ws.regional.home"]] },
+      { label: "Communities", labelKey: "wsg.communities", items: [["properties","Communities","masterdata.read","properties","wsi.communities"]] },
+      { label: "Operations", labelKey: "wsg.operations", items: [["turns","Make-ready","turn.read","turns","wsi.makeready"],["maintenance","Maintenance","maintenance.read","maintenance","wsi.maintenance"],["renewals","Renewals","renewal.read","renewals","wsi.renewals"],["insurance","Insurance","insurance.read","insurance","wsi.insurance"],["utilities","Utilities","utility.read","utilities","wsi.utilities"]] },
+      { label: "Leasing", labelKey: "wsg.leasing", items: [["crm","Pipeline","crm.read","crm","wsi.pipeline"],["waitlist","Waitlist","waitlist.read","waitlist","wsi.waitlist"],["applications","Applications","application.read","applications","wsi.applications"],["tours","Tours","tour.read","tours","wsi.tours"]] },
+      { label: "Insights", labelKey: "wsg.insights", items: [["reports","Reports","reports.read","reports","wsi.reports"]] }
     ] },
-    { id: "commercial", label: "Sales & commercial", hint: "leasing · revenue", icon: "crm", home: viewCommercialHome, sections: [
-      { label: null, items: [["dashboard", "Leasing & revenue", null, "dashboard"]] },
-      { label: "Demand", items: [["website","Website & ILS","masterdata.read","website"],["crm","Pipeline","crm.read","crm"],["tours","Tours","tour.read","tours"],["waitlist","Waitlist","waitlist.read","waitlist"]] },
-      { label: "Convert", items: [["applications","Applications","application.read","applications"],["esign","E-sign","esign.read","esign"],["roommates","Roommates","roommate.read","roommates"]] },
-      { label: "Price & retain", items: [["pricing","Revenue","revenue.read","pricing"],["renewals","Renewals","renewal.read","renewals"]] },
-      { label: "Insights", items: [["reports","Reports","reports.read","reports"]] }
+    { id: "commercial", label: "Sales & commercial", labelKey: "ws.commercial.label", hint: "leasing · revenue", hintKey: "ws.commercial.hint", icon: "crm", home: viewCommercialHome, sections: [
+      { label: null, items: [["dashboard", "Leasing & revenue", null, "dashboard", "ws.commercial.home"]] },
+      { label: "Demand", labelKey: "wsg.demand", items: [["website","Website & ILS","masterdata.read","website","wsi.website"],["crm","Pipeline","crm.read","crm","wsi.pipeline"],["tours","Tours","tour.read","tours","wsi.tours"],["waitlist","Waitlist","waitlist.read","waitlist","wsi.waitlist"]] },
+      { label: "Convert", labelKey: "wsg.convert", items: [["applications","Applications","application.read","applications","wsi.applications"],["esign","E-sign","esign.read","esign","wsi.esign"],["roommates","Roommates","roommate.read","roommates","wsi.roommates"]] },
+      { label: "Price & retain", labelKey: "wsg.priceretain", items: [["pricing","Revenue","revenue.read","pricing","wsi.revenue"],["renewals","Renewals","renewal.read","renewals","wsi.renewals"]] },
+      { label: "Insights", labelKey: "wsg.insights", items: [["reports","Reports","reports.read","reports","wsi.reports"]] }
     ] },
-    { id: "finance", label: "Finance", hint: "books · cash", icon: "ledger", home: viewFinanceHome, sections: [
-      { label: null, items: [["dashboard", "Finance overview", null, "dashboard"]] },
-      { label: "Receivables", items: [["agreements","Billing & AR","agreement.read","agreements"],["reconcile","Reconcile","reconciliation.read","reconcile"]] },
-      { label: "Payables", items: [["bills","Bills","bill.read","bills"],["purchasing","Purchasing","procurement.read","purchasing"]] },
-      { label: "Books", items: [["ledger","Ledger","ledger.read","ledger"],["utilities","Utilities (RUBS)","utility.read","utilities"]] },
-      { label: "Capital", items: [["distributions","Distributions","distribution.read","distributions"]] },
-      { label: "Insights", items: [["reports","Reports","reports.read","reports"]] }
+    { id: "finance", label: "Finance", labelKey: "ws.finance.label", hint: "books · cash", hintKey: "ws.finance.hint", icon: "ledger", home: viewFinanceHome, sections: [
+      { label: null, items: [["dashboard", "Finance overview", null, "dashboard", "ws.finance.home"]] },
+      { label: "Receivables", labelKey: "wsg.receivables", items: [["agreements","Billing & AR","agreement.read","agreements","wsi.billingar"],["reconcile","Reconcile","reconciliation.read","reconcile","wsi.reconcile"]] },
+      { label: "Payables", labelKey: "wsg.payables", items: [["bills","Bills","bill.read","bills","wsi.bills"],["purchasing","Purchasing","procurement.read","purchasing","wsi.purchasing"]] },
+      { label: "Books", labelKey: "wsg.books", items: [["ledger","Ledger","ledger.read","ledger","wsi.ledger"],["utilities","Utilities (RUBS)","utility.read","utilities","wsi.utilitiesrubs"]] },
+      { label: "Capital", labelKey: "wsg.capital", items: [["distributions","Distributions","distribution.read","distributions","wsi.distributions"]] },
+      { label: "Insights", labelKey: "wsg.insights", items: [["reports","Reports","reports.read","reports","wsi.reports"]] }
     ] },
-    { id: "portfolio", label: "Portfolio & assets", hint: "ownership lens", icon: "distributions", home: viewPortfolioHome, sections: [
-      { label: null, items: [["dashboard", "Portfolio & assets", null, "dashboard"]] },
-      { label: "Assets", items: [["properties","Communities","masterdata.read","properties"],["reports","Owner statements","reports.read","reports"]] },
-      { label: "Capital", items: [["distributions","Distributions","distribution.read","distributions"],["ledger","Capital account","ledger.read","ledger"]] }
+    { id: "portfolio", label: "Portfolio & assets", labelKey: "ws.portfolio.label", hint: "ownership lens", hintKey: "ws.portfolio.hint", icon: "distributions", home: viewPortfolioHome, sections: [
+      { label: null, items: [["dashboard", "Portfolio & assets", null, "dashboard", "ws.portfolio.home"]] },
+      { label: "Assets", labelKey: "wsg.assets", items: [["properties","Communities","masterdata.read","properties","wsi.communities"],["reports","Owner statements","reports.read","reports","wsi.ownerstatements"]] },
+      { label: "Capital", labelKey: "wsg.capital", items: [["distributions","Distributions","distribution.read","distributions","wsi.distributions"],["ledger","Capital account","ledger.read","ledger","wsi.capitalaccount"]] }
     ] }
   ];
   // Appended to every workspace so admin/config surfaces stay reachable anywhere
   // (deduped against earlier sections, so an item shown above is not repeated).
   function setupSection() {
-    return { label: "Setup", items: [
-      ["properties","Properties","masterdata.read","properties"],
-      ["people","Users & roles","user.read","people"],
-      ["integrations","Integrations","integration.read","integrations"],
-      ["import","Import","masterdata.manage","importer"],
-      ["settings","Settings","config.read","settings"]
+    return { label: "Setup", labelKey: "wsg.setup", items: [
+      ["properties","Properties","masterdata.read","properties","wsi.properties"],
+      ["people","Users & roles","user.read","people","wsi.users"],
+      ["integrations","Integrations","integration.read","integrations","wsi.integrations"],
+      ["import","Import","masterdata.manage","importer","wsi.import"],
+      ["settings","Settings","config.read","settings","wsi.settings"]
     ] };
   }
   // Default workspace by role; falls back to the first the user can actually use.
@@ -532,13 +540,13 @@
     var opts = h("div", { class: "wopts" }, avail.map(function (w) {
       return h("button", { class: "wopt" + (w.id === ws.id ? " on" : ""), type: "button", onclick: function () { setWorkspace(w.id); } }, [
         svg(ICONS[w.icon] || ICONS.dashboard),
-        h("span", {}, [ w.label, h("small", {}, [w.hint]) ])
+        h("span", {}, [ tt(w.labelKey, w.label), h("small", {}, [tt(w.hintKey, w.hint)]) ])
       ]);
     }));
     return h("details", { class: "wsswitch" }, [
       h("summary", {}, [
-        h("div", { class: "wl" }, ["Workspace"]),
-        h("div", { class: "wn" }, [ ws.label, h("span", { class: "car" }, ["▾"]) ])
+        h("div", { class: "wl" }, [tt("ws.switcher", "Workspace")]),
+        h("div", { class: "wn" }, [ tt(ws.labelKey, ws.label), h("span", { class: "car" }, ["▾"]) ])
       ]),
       opts
     ]);
@@ -554,11 +562,11 @@
       if (!vis.length) return;
       vis.forEach(function (it) { seen[it[0]] = 1; });
       var children = [];
-      if (sec.label) children.push(h("div", { class: "grouphead" }, [sec.label]));
+      if (sec.label) children.push(h("div", { class: "grouphead" }, [tt(sec.labelKey, sec.label)]));
       vis.forEach(function (it) {
         children.push(h("button", { class: "item" + (state.view === it[0] ? " active" : ""),
           onclick: function () { state.view = it[0]; state.detailId = null; state.threadId = null; render(); } },
-          [ svg(ICONS[it[3]] || ICONS.dashboard), it[1] ]));
+          [ svg(ICONS[it[3]] || ICONS.dashboard), tt(it[4], it[1]) ]));
       });
       groups.push(h("div", { class: "navgroup" }, children));
     });
@@ -670,7 +678,7 @@
   // narrows the insight list to a persona's concerns.
   function attentionFeed(main, filterFn) {
     if (!can("reports.read")) return;
-    main.appendChild(h("h2", {}, ["What needs attention"]));
+    main.appendChild(h("h2", {}, [tt("wsh.attention", "What needs attention")]));
     var wrap = h("div", {}, [h("div", { class: "muted" }, ["Analyzing…"])]);
     main.appendChild(wrap);
     api("/reports/insights").then(function (r) {
@@ -678,7 +686,7 @@
       if (r.status !== 200) { wrap.appendChild(h("p", { class: "muted" }, [(r.body && r.body.error) || t("msg.denied")])); return; }
       var ins = (r.body.insights || []);
       if (filterFn) ins = ins.filter(filterFn);
-      if (!ins.length) { wrap.appendChild(h("div", { class: "panel muted" }, ["All clear — nothing needs attention right now."])); return; }
+      if (!ins.length) { wrap.appendChild(h("div", { class: "panel muted" }, [tt("wsh.allclear", "All clear — nothing needs attention right now.")])); return; }
       ins.slice(0, 6).forEach(function (i) { wrap.appendChild(insightCard(i)); });
     });
   }
@@ -742,7 +750,7 @@
   function pill(text, cls) { return h("span", { class: "pill " + (cls || "") }, [text]); }
 
   function viewOperatorHome(main) {
-    homeHead(main, "Operations today", "On-site desk · " + state.config.displayName);
+    homeHead(main, tt("ws.operator.home", "Operations today"), tt("wsh.op.sub", "On-site desk") + " · " + state.config.displayName);
     var cards = h("div", { class: "cards" }, []); main.appendChild(cards);
     api("/reporting/summary").then(function (r) {
       if (r.status !== 200) return;
@@ -754,7 +762,7 @@
     if (can("package.read")) api("/parcels").then(function (r) { if (r.status === 200) card(cards, "Packages waiting", String((r.body.parcels || []).filter(function (p) { return p.status !== "picked_up"; }).length)); });
     attentionFeed(main);
     if (can("maintenance.read")) listPanel(main, {
-      title: "Open work orders", endpoint: "/work-orders", view: "maintenance", moreLabel: "Maintenance board →",
+      title: tt("wsh.openwo", "Open work orders"), endpoint: "/work-orders", view: "maintenance", moreLabel: "Maintenance board →",
       pick: function (b) { return b.workOrders || []; },
       filter: function (w) { return w.status !== "completed" && w.status !== "cancelled"; },
       heads: ["Work order", "Category", "Priority", "Status"],
@@ -762,7 +770,7 @@
       empty: "No open work orders. 🎉"
     });
     if (can("turn.read")) listPanel(main, {
-      title: "Make-ready board", endpoint: "/turns", view: "turns", moreLabel: "Open board →",
+      title: tt("wsh.makeready", "Make-ready board"), endpoint: "/turns", view: "turns", moreLabel: "Open board →",
       pick: function (b) { return b.turns || []; },
       filter: function (tn) { return tn.status === "open" || tn.status === "in_progress"; },
       sort: function (a, b) { return (b.days || 0) - (a.days || 0); },
@@ -771,7 +779,7 @@
       empty: "No units in make-ready."
     });
     if (can("package.read")) listPanel(main, {
-      title: "Packages at the desk", endpoint: "/parcels", view: "packages", moreLabel: "All packages →",
+      title: tt("wsh.packagesdesk", "Packages at the desk"), endpoint: "/parcels", view: "packages", moreLabel: "All packages →",
       pick: function (b) { return b.parcels || []; },
       filter: function (p) { return p.status !== "picked_up"; },
       sort: function (a, b) { return (b.daysWaiting || 0) - (a.daysWaiting || 0); },
@@ -782,7 +790,7 @@
   }
 
   function viewRegionalHome(main) {
-    homeHead(main, "Regional overview", "Across all communities · " + state.config.displayName);
+    homeHead(main, tt("ws.regional.home", "Regional overview"), tt("wsh.reg.sub", "Across all communities") + " · " + state.config.displayName);
     var cards = h("div", { class: "cards" }, []); main.appendChild(cards);
     api("/reporting/summary").then(function (r) {
       if (r.status !== 200) return;
@@ -794,7 +802,7 @@
     if (can("revenue.read")) api("/revenue/summary").then(function (r) { if (r.status === 200) card(cards, "Occupancy", r.body.occupancyPct + "%"); });
     if (can("renewal.read")) api("/renewals").then(function (r) { if (r.status === 200) card(cards, "Renewals due", String((r.body.offers || []).length)); });
     if (can("exception.read")) listPanel(main, {
-      title: "Waiting on you — approvals", endpoint: "/exceptions",
+      title: tt("wsh.approvals", "Waiting on you — approvals"), endpoint: "/exceptions",
       pick: function (b) { return b.pending || []; },
       heads: ["Action", "Initiated by", "Status"],
       map: function (x) { var c = x.ctx || {}; return h("tr", {}, [ h("td", {}, [String(x.action || "escalated action")]), h("td", { class: "muted" }, [String(c.actor || "—")]), h("td", {}, [pill("parked", "draft")]) ]); },
@@ -802,7 +810,7 @@
     });
     attentionFeed(main);
     if (can("masterdata.read")) listPanel(main, {
-      title: "Communities", endpoint: "/properties", view: "properties", moreLabel: "Manage communities →",
+      title: tt("wsh.communities", "Communities"), endpoint: "/properties", view: "properties", moreLabel: "Manage communities →",
       pick: function (b) { return b.properties || []; },
       heads: ["Community", "Code", "Address"],
       map: function (p) { return h("tr", {}, [ h("td", {}, [p.name]), h("td", { class: "mono muted" }, [p.code || "—"]), h("td", { class: "muted" }, [p.address || "—"]) ]); },
@@ -811,7 +819,7 @@
   }
 
   function viewCommercialHome(main) {
-    homeHead(main, "Leasing & revenue", "Demand in, conversion through the funnel, price and retention out.");
+    homeHead(main, tt("ws.commercial.home", "Leasing & revenue"), tt("wsh.com.sub", "Demand in, conversion through the funnel, price and retention out."));
     var cards = h("div", { class: "cards" }, []); main.appendChild(cards);
     if (can("crm.read")) api("/crm/summary").then(function (r) {
       if (r.status !== 200) return;
@@ -822,7 +830,7 @@
     });
     if (can("revenue.read")) api("/revenue/summary").then(function (r) { if (r.status === 200) { card(cards, "ADR", fmt(r.body.adrCents)); card(cards, "RevPAR", fmt(r.body.revparCents)); } });
     if (can("crm.read")) {
-      main.appendChild(h("h2", {}, ["The funnel"]));
+      main.appendChild(h("h2", {}, [tt("wsh.funnel", "The funnel")]));
       var fwrap = h("div", {}, [h("div", { class: "muted" }, ["Loading…"])]); main.appendChild(fwrap);
       api("/crm/summary").then(function (r) {
         fwrap.innerHTML = "";
@@ -835,7 +843,7 @@
       });
     }
     if (can("renewal.read")) listPanel(main, {
-      title: "Renewals due — retention", endpoint: "/renewals", view: "renewals", moreLabel: "All renewals →",
+      title: tt("wsh.renewalsret", "Renewals due — retention"), endpoint: "/renewals", view: "renewals", moreLabel: "All renewals →",
       pick: function (b) { return b.offers || []; },
       sort: function (a, b) { return (a.daysToExpiry || 0) - (b.daysToExpiry || 0); },
       heads: ["Resident", "Expiry", "Current → proposed"],
@@ -843,7 +851,7 @@
       empty: "No leases in the renewal window."
     });
     if (can("tour.read")) listPanel(main, {
-      title: "Upcoming tours", endpoint: "/tours", view: "tours", moreLabel: "Tour calendar →",
+      title: tt("wsh.upcomingtours", "Upcoming tours"), endpoint: "/tours", view: "tours", moreLabel: "Tour calendar →",
       pick: function (b) { return b.tours || []; },
       filter: function (tr) { return tr.status === "requested" || tr.status === "confirmed"; },
       sort: function (a, b) { return (a.scheduledAt || "").localeCompare(b.scheduledAt || ""); },
@@ -854,7 +862,7 @@
   }
 
   function viewFinanceHome(main) {
-    homeHead(main, "Finance overview", "Cash, receivables, payables, the books and the close.");
+    homeHead(main, tt("ws.finance.home", "Finance overview"), tt("wsh.fin.sub", "Cash, receivables, payables, the books and the close."));
     var cards = reportKpiCards(main, "delinquency");
     if (can("bill.read")) api("/bills").then(function (r) {
       if (r.status !== 200) return;
@@ -863,9 +871,9 @@
       card(cards, "Payables outstanding", fmt(total));
     });
     attentionFeed(main, function (i) { return i.severity === "critical" || i.severity === "warning" || /revenue|collect|overdue|receivable|payable|ledger|deposit|budget/i.test(i.title + " " + i.detail); });
-    reportPanel(main, "ar_aging", "Receivables aging", "reconcile");
+    reportPanel(main, "ar_aging", tt("wsh.araging", "Receivables aging"), "reconcile");
     if (can("bill.read")) listPanel(main, {
-      title: "Payables due", endpoint: "/bills", view: "bills", moreLabel: "All bills →",
+      title: tt("wsh.payablesdue", "Payables due"), endpoint: "/bills", view: "bills", moreLabel: "All bills →",
       pick: function (b) { return b.bills || []; },
       filter: function (b) { return (b.totalCents - (b.paidCents || 0)) > 0; },
       sort: function (a, b) { return (a.dueAt || "").localeCompare(b.dueAt || ""); },
@@ -874,7 +882,7 @@
       empty: "No outstanding bills."
     });
     if (can("exception.read")) listPanel(main, {
-      title: "Waiting on approval", endpoint: "/exceptions",
+      title: tt("wsh.waitingapproval", "Waiting on approval"), endpoint: "/exceptions",
       pick: function (b) { return b.pending || []; },
       heads: ["Action", "Initiated by", "Status"],
       map: function (x) { var c = x.ctx || {}; return h("tr", {}, [ h("td", {}, [String(x.action || "escalated action")]), h("td", { class: "muted" }, [String(c.actor || "—")]), h("td", {}, [pill("parked", "draft")]) ]); },
@@ -883,7 +891,7 @@
   }
 
   function viewPortfolioHome(main) {
-    homeHead(main, "Portfolio & assets", "NOI per community, capital in and out per legal entity.");
+    homeHead(main, tt("ws.portfolio.home", "Portfolio & assets"), tt("wsh.por.sub", "NOI per community, capital in and out per legal entity."));
     var cards = h("div", { class: "cards" }, []); main.appendChild(cards);
     if (can("reports.read")) api("/reports/owner_statement").then(function (r) {
       if (r.status === 200 && r.body.report) (r.body.report.kpis || []).slice(0, 2).forEach(function (k) { card(cards, k.label, fmtKpi(k)); });
@@ -893,9 +901,9 @@
     });
     if (can("revenue.read")) api("/revenue/summary").then(function (r) { if (r.status === 200) card(cards, "Occupancy", r.body.occupancyPct + "%"); });
     attentionFeed(main, function (i) { return /noi|occup|distribut|expir|renewal|vacan|revenue/i.test(i.title + " " + i.detail); });
-    if (can("reports.read")) reportPanel(main, "owner_statement", "NOI by community", "reports");
-    if (can("reports.read")) reportPanel(main, "capital_account", "Capital accounts", "reports");
-    if (can("reports.read")) reportPanel(main, "lease_expirations", "Rent at risk — lease expirations", "reports");
+    if (can("reports.read")) reportPanel(main, "owner_statement", tt("wsh.noibycommunity", "NOI by community"), "reports");
+    if (can("reports.read")) reportPanel(main, "capital_account", tt("wsh.capitalaccounts", "Capital accounts"), "reports");
+    if (can("reports.read")) reportPanel(main, "lease_expirations", tt("wsh.rentatrisk", "Rent at risk — lease expirations"), "reports");
   }
 
   function viewAgreements(main) {
