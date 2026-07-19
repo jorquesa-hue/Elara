@@ -11,7 +11,8 @@
 //  E. concurrent flushes double-sent the append-only streams
 //  F. an oversized request got ECONNRESET instead of the documented 413
 //  G. pending policy escalations were silently lost on restart
-// 13 tests.
+// Plus the exception REJECT route (POST /exceptions/:id/reject) that pairs with
+// approve so the approvals screen can decline a parked action. 17 tests.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -265,6 +266,35 @@ test('approving a LIVE escalation still executes the deferred payment (executed:
   assert.equal((r.body as { executed: boolean }).executed, true);
   const bill = (D(app, 'GET', '/bills', 'mgr').body as { bills: Array<{ id: string; status: string }> }).bills.find((b) => b.id === 'b-big');
   assert.equal(bill!.status, 'paid');
+});
+
+test('rejecting a LIVE escalation records the decline, executes nothing, leaves the queue', () => {
+  const app = makeApp();
+  const excId = escalate(app);
+  const r = D(app, 'POST', '/exceptions/' + excId + '/reject', 'boss', { note: 'over budget' });
+  assert.equal(r.status, 200);
+  assert.equal((r.body as { status: string }).status, 'rejected');
+  // the deferred payment did NOT run — the bill stays open
+  const bill = (D(app, 'GET', '/bills', 'mgr').body as { bills: Array<{ id: string; status: string }> }).bills.find((b) => b.id === 'b-big');
+  assert.equal(bill!.status, 'open');
+  // and it is no longer pending
+  const pending = (D(app, 'GET', '/exceptions', 'mgr').body as { pending: Array<{ id: string }> }).pending;
+  assert.ok(!pending.some((x) => x.id === excId), 'a rejected escalation leaves the pending queue');
+});
+
+test('the initiator MAY reject their own escalation (no SoD block on a decline)', () => {
+  const app = makeApp();
+  const excId = escalate(app); // initiated by 'mgr'
+  const r = D(app, 'POST', '/exceptions/' + excId + '/reject', 'mgr', {}); // same actor — allowed for reject, unlike approve
+  assert.equal(r.status, 200);
+});
+
+test('rejecting an already-resolved escalation is a 409', () => {
+  const app = makeApp();
+  const excId = escalate(app);
+  D(app, 'POST', '/exceptions/' + excId + '/reject', 'boss', {});
+  const again = D(app, 'POST', '/exceptions/' + excId + '/reject', 'boss', {});
+  assert.equal(again.status, 409);
 });
 
 test('a rehydrated queue never reuses a loaded exception id for new escalations', () => {

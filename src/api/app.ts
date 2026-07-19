@@ -3683,6 +3683,19 @@ export class App {
       return { status: 200, body: { status: 'approved', executed, result: result ?? null } };
     });
 
+    // Reject a parked escalation: record the human decision to DECLINE and discard
+    // the deferred operation (nothing executes). Same authority as approving
+    // (exception.approve) and tenant-scoped, but — unlike approval — there is NO
+    // segregation-of-duties block: declining a parked action is not a self-dealing
+    // risk, so any authorized approver, including the initiator withdrawing their
+    // own request, may reject. The item is retained as 'rejected' (audit trail).
+    this.add('POST', '/exceptions/:id/reject', 'exception.approve', (ctx, p, body) => {
+      const item = this.exceptions.get(p['id']!); // throws -> 409 if unknown
+      if ((item.ctx as { tenantId?: string }).tenantId !== ctx.tenantId) throw new HttpError(404, 'exception not found');
+      this.exceptions.reject(p['id']!, ctx.actor, this.now(), this.optString(body, 'note'));
+      return { status: 200, body: { status: 'rejected' } };
+    });
+
     // Run the overdue-collections sweep. A scheduler (a Supabase pg_cron job or any
     // external cron) POSTs this on a cadence with the service role; a manager may
     // also run it on demand. For every open, past-due invoice it finds the highest

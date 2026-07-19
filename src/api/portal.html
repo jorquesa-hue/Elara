@@ -280,6 +280,7 @@
     advisor: '<path d="M12 3l1.9 4.3L18 9l-4.1 1.7L12 15l-1.9-4.3L6 9l4.1-1.7z"/><path d="M18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z"/>',
     properties: '<path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M10 21v-6h4v6"/><path d="M9 10h.01M15 10h.01"/>',
     website: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/>',
+    approvals: '<path d="M12 3l7 3v5c0 4.4-3 8.4-7 10-4-1.6-7-5.6-7-10V6z"/><path d="M9 11.5l2 2 4-4.5"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>',
     moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z"/>'
   };
@@ -529,6 +530,7 @@
       { label: "Communities", labelKey: "wsg.communities", items: [["properties","Communities","masterdata.read","properties","wsi.communities"]] },
       { label: "Operations", labelKey: "wsg.operations", items: [["turns","Make-ready","turn.read","turns","wsi.makeready"],["maintenance","Maintenance","maintenance.read","maintenance","wsi.maintenance"],["renewals","Renewals","renewal.read","renewals","wsi.renewals"],["insurance","Insurance","insurance.read","insurance","wsi.insurance"],["utilities","Utilities","utility.read","utilities","wsi.utilities"]] },
       { label: "Leasing", labelKey: "wsg.leasing", items: [["crm","Pipeline","crm.read","crm","wsi.pipeline"],["waitlist","Waitlist","waitlist.read","waitlist","wsi.waitlist"],["applications","Applications","application.read","applications","wsi.applications"],["tours","Tours","tour.read","tours","wsi.tours"]] },
+      { label: "Control", labelKey: "wsg.control", items: [["exceptions","Approvals","exception.read","approvals","wsi.approvals"]] },
       { label: "Insights", labelKey: "wsg.insights", items: [["reports","Reports","reports.read","reports","wsi.reports"]] }
     ] },
     { id: "commercial", label: "Sales & commercial", labelKey: "ws.commercial.label", hint: "leasing · revenue", hintKey: "ws.commercial.hint", icon: "crm", home: viewCommercialHome, sections: [
@@ -544,12 +546,14 @@
       { label: "Payables", labelKey: "wsg.payables", items: [["bills","Bills","bill.read","bills","wsi.bills"],["purchasing","Purchasing","procurement.read","purchasing","wsi.purchasing"]] },
       { label: "Books", labelKey: "wsg.books", items: [["ledger","Ledger","ledger.read","ledger","wsi.ledger"],["utilities","Utilities (RUBS)","utility.read","utilities","wsi.utilitiesrubs"]] },
       { label: "Capital", labelKey: "wsg.capital", items: [["distributions","Distributions","distribution.read","distributions","wsi.distributions"]] },
+      { label: "Control", labelKey: "wsg.control", items: [["exceptions","Approvals","exception.read","approvals","wsi.approvals"]] },
       { label: "Insights", labelKey: "wsg.insights", items: [["reports","Reports","reports.read","reports","wsi.reports"]] }
     ] },
     { id: "portfolio", label: "Portfolio & assets", labelKey: "ws.portfolio.label", hint: "ownership lens", hintKey: "ws.portfolio.hint", icon: "distributions", home: viewPortfolioHome, sections: [
       { label: null, items: [["dashboard", "Portfolio & assets", null, "dashboard", "ws.portfolio.home"]] },
       { label: "Assets", labelKey: "wsg.assets", items: [["properties","Communities","masterdata.read","properties","wsi.communities"],["reports","Owner statements","reports.read","reports","wsi.ownerstatements"]] },
-      { label: "Capital", labelKey: "wsg.capital", items: [["distributions","Distributions","distribution.read","distributions","wsi.distributions"],["ledger","Capital account","ledger.read","ledger","wsi.capitalaccount"]] }
+      { label: "Capital", labelKey: "wsg.capital", items: [["distributions","Distributions","distribution.read","distributions","wsi.distributions"],["ledger","Capital account","ledger.read","ledger","wsi.capitalaccount"]] },
+      { label: "Control", labelKey: "wsg.control", items: [["exceptions","Approvals","exception.read","approvals","wsi.approvals"]] }
     ] }
   ];
   // Appended to every workspace so admin/config surfaces stay reachable anywhere
@@ -644,7 +648,7 @@
     ]));
     var main = document.getElementById("main");
     var hb = healthBanner(); if (hb) main.appendChild(hb);
-    var views = { dashboard: viewDashboard, agreements: viewAgreements, properties: viewProperties, website: viewWebsite, pricing: viewPricing, crm: viewCrm, applications: viewApplications, tours: viewTours, turns: viewTurns, insurance: viewInsurance, utilities: viewUtilities, packages: viewPackages, waitlist: viewWaitlist, distributions: viewDistributions, renewals: viewRenewals, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings };
+    var views = { dashboard: viewDashboard, agreements: viewAgreements, properties: viewProperties, website: viewWebsite, pricing: viewPricing, crm: viewCrm, applications: viewApplications, tours: viewTours, turns: viewTurns, insurance: viewInsurance, utilities: viewUtilities, packages: viewPackages, waitlist: viewWaitlist, distributions: viewDistributions, renewals: viewRenewals, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, exceptions: viewExceptions, people: viewPeople, settings: viewSettings };
     var fn = (state.view === "dashboard") ? (ws.home || viewDashboard) : (views[state.view] || ws.home || viewDashboard);
     fn(main);
   }
@@ -856,7 +860,7 @@
     if (can("revenue.read")) api("/revenue/summary").then(function (r) { if (r.status === 200) card(cards, "Occupancy", r.body.occupancyPct + "%"); });
     if (can("renewal.read")) api("/renewals").then(function (r) { if (r.status === 200) card(cards, "Renewals due", String((r.body.offers || []).length)); });
     if (can("exception.read")) listPanel(main, {
-      title: tt("wsh.approvals", "Waiting on you — approvals"), endpoint: "/exceptions",
+      title: tt("wsh.approvals", "Waiting on you — approvals"), endpoint: "/exceptions", view: "exceptions", moreLabel: "Open approvals →",
       pick: function (b) { return b.pending || []; },
       heads: ["Action", "Initiated by", "Status"],
       map: function (x) { var c = x.ctx || {}; return h("tr", {}, [ h("td", {}, [String(x.action || "escalated action")]), h("td", { class: "muted" }, [String(c.actor || "—")]), h("td", {}, [pill("parked", "draft")]) ]); },
@@ -936,7 +940,7 @@
       empty: "No outstanding bills."
     });
     if (can("exception.read")) listPanel(main, {
-      title: tt("wsh.waitingapproval", "Waiting on approval"), endpoint: "/exceptions",
+      title: tt("wsh.waitingapproval", "Waiting on approval"), endpoint: "/exceptions", view: "exceptions", moreLabel: "Open approvals →",
       pick: function (b) { return b.pending || []; },
       heads: ["Action", "Initiated by", "Status"],
       map: function (x) { var c = x.ctx || {}; return h("tr", {}, [ h("td", {}, [String(x.action || "escalated action")]), h("td", { class: "muted" }, [String(c.actor || "—")]), h("td", {}, [pill("parked", "draft")]) ]); },
@@ -958,6 +962,60 @@
     if (can("reports.read")) reportPanel(main, "owner_statement", tt("wsh.noibycommunity", "NOI by community"), "reports");
     if (can("reports.read")) reportPanel(main, "capital_account", tt("wsh.capitalaccounts", "Capital accounts"), "reports");
     if (can("reports.read")) reportPanel(main, "lease_expirations", tt("wsh.rentatrisk", "Rent at risk — lease expirations"), "reports");
+  }
+
+  // ---- approvals (policy escalation queue) --------------------------------
+  // Money-moving / regulated actions that tripped a policy ESCALATE rule wait here
+  // for a human decision. Reading is exception.read (broad); approving/rejecting is
+  // exception.approve (manager/staff/owner). Segregation of duties: the initiator
+  // cannot approve their own — the API enforces it, and we surface the 403 reason.
+  function viewExceptions(main) {
+    homeHead(main, tt("wsi.approvals", "Approvals"),
+      tt("wsh.approvalsSub", "Actions parked by policy for human sign-off — large payouts, distributions and other money-moving or regulated steps. Whoever initiated the action cannot approve it (segregation of duties)."));
+    var canDecide = can("exception.approve");
+    if (!canDecide) main.appendChild(h("div", { class: "panel muted", style: "margin-bottom:16px" }, [tt("wsh.approvalsReadonly", "You can view the queue, but only a manager/owner can approve or reject.")]));
+    var wrap = h("div", {}, [h("div", { class: "muted" }, ["Loading…"])]);
+    main.appendChild(wrap);
+    refreshExceptions(wrap, canDecide);
+  }
+  function refreshExceptions(wrap, canDecide) {
+    api("/exceptions").then(function (r) {
+      wrap.innerHTML = "";
+      if (r.status !== 200) { wrap.appendChild(h("p", { class: "muted" }, [(r.body && r.body.error) || t("msg.denied")])); return; }
+      var pending = (r.body.pending || []);
+      if (!pending.length) { wrap.appendChild(h("div", { class: "panel muted", style: "text-align:center" }, [tt("wsh.approvalsEmpty", "No approvals pending. Nothing is parked. 🎉")])); return; }
+      pending.forEach(function (x) { wrap.appendChild(exceptionCard(x, wrap, canDecide)); });
+    });
+  }
+  function exceptionCard(x, wrap, canDecide) {
+    var ctx = x.ctx || {};
+    var amount = (typeof ctx.amountCents === "number") ? fmt(ctx.amountCents) : null;
+    var cells = [ cell("Action", x.action), cell("Initiated by", ctx.actor || "—") ];
+    if (amount) cells.splice(1, 0, cell("Amount", amount));
+    if (x.createdAt) cells.push(cell("Raised", String(x.createdAt).replace("T", " ").slice(0, 16)));
+    var acts = h("div", { class: "row", style: "margin-top:13px" }, []);
+    if (canDecide) {
+      acts.appendChild(h("button", { class: "btn sm", onclick: function () { decideException(x.id, "approve", null, wrap, canDecide); } }, ["Approve"]));
+      acts.appendChild(h("button", { class: "btn ghost sm", onclick: function () { var note = prompt("Reason for rejecting (optional):"); decideException(x.id, "reject", note || undefined, wrap, canDecide); } }, ["Reject"]));
+    }
+    return h("div", { class: "panel", style: "margin:0 0 12px;border-left:3px solid var(--warn)" }, [
+      h("div", { style: "display:flex;align-items:center;gap:9px;margin-bottom:9px" }, [
+        pill("parked", "warnp"),
+        h("strong", {}, [x.action]),
+        amount ? h("span", { class: "muted", style: "margin-left:auto;font-variant-numeric:tabular-nums" }, [amount]) : null
+      ]),
+      x.reason ? h("div", { class: "muted", style: "font-size:13px;margin-bottom:10px" }, [x.reason]) : null,
+      h("div", { class: "kv" }, cells),
+      acts
+    ]);
+  }
+  function decideException(id, action, note, wrap, canDecide) {
+    api("/exceptions/" + id + "/" + action, { method: "POST", body: note ? { note: note } : {} }).then(function (r) {
+      if (r.status !== 200) { toast((r.body && r.body.error) || t("msg.denied"), "err"); return; }
+      if (action === "approve") toast(r.body.executed ? "Approved and executed" : "Approved — decision recorded. Re-initiate the action to run it.", "ok");
+      else toast("Rejected", "ok");
+      refreshExceptions(wrap, canDecide);
+    });
   }
 
   function viewAgreements(main) {
