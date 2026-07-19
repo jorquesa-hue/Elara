@@ -59,6 +59,29 @@
   nav button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
   nav button.active::before { content:""; position:absolute; left:-14px; top:9px; bottom:9px; width:3px;
     background: var(--accent); border-radius: 0 3px 3px 0; }
+  .navgroup { display: flex; flex-direction: column; gap: 2px; }
+  .navgroup + .navgroup { margin-top: 9px; }
+  .grouphead { padding: 4px 11px 5px; color: var(--subtle); font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .1em; }
+  /* Workspace switcher (native <details> — robust, keyboard-accessible) */
+  .wsswitch { margin: 0 2px 12px; }
+  .wsswitch summary { list-style: none; cursor: pointer; background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 11px; padding: 9px 12px; display: block; transition: border-color .15s; }
+  .wsswitch summary:hover { border-color: var(--border-strong); }
+  .wsswitch summary::-webkit-details-marker { display: none; }
+  .wsswitch summary:focus-visible { outline: 0; box-shadow: var(--ring); }
+  .wsswitch .wl { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .11em; color: var(--accent); }
+  .wsswitch .wn { font-size: 13px; font-weight: 600; margin-top: 2px; display: flex; align-items: center; gap: 6px; }
+  .wsswitch .wn .car { margin-left: auto; color: var(--subtle); font-size: 10px; transition: transform .15s; }
+  .wsswitch[open] .wn .car { transform: rotate(180deg); }
+  .wsswitch .wopts { margin-top: 6px; display: flex; flex-direction: column; gap: 2px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 5px; }
+  .wsswitch .wopt { display: flex; align-items: flex-start; gap: 10px; width: 100%; text-align: left; background: none;
+    border: 0; color: var(--muted); padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; }
+  .wsswitch .wopt svg { width: 17px; height: 17px; margin-top: 1px; flex: none; opacity: .85; }
+  .wsswitch .wopt:hover { background: var(--surface-2); color: var(--text); }
+  .wsswitch .wopt.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .wsswitch .wopt small { display: block; color: var(--subtle); font-weight: 500; font-size: 11px; margin-top: 1px; }
   .side-foot { border-top: 1px solid var(--border); padding-top: 12px; display: flex; align-items: center; gap: 8px; }
   .chip { flex: 1; font-size: 11.5px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border);
     padding: 6px 10px; border-radius: 8px; display: flex; align-items: center; gap: 6px; overflow: hidden; }
@@ -175,7 +198,8 @@
 "use strict";
 (function () {
   var TOKEN_KEY = "usos.token", THEME_KEY = "usos.theme", REFRESH_KEY = "usos.refresh";
-  var state = { token: localStorage.getItem(TOKEN_KEY) || "", refresh: localStorage.getItem(REFRESH_KEY) || "", auth: null, me: null, config: null, options: null, cat: {}, view: "dashboard", detailId: null };
+  var state = { token: localStorage.getItem(TOKEN_KEY) || "", refresh: localStorage.getItem(REFRESH_KEY) || "", auth: null, me: null, config: null, options: null, cat: {}, view: "dashboard", detailId: null, workspace: null };
+  function wsKey(){ return "usos.ws." + ((state.config && state.config.tenantId) || "_"); }
   function setSession(access, refresh){ state.token = access || ""; state.refresh = refresh || ""; if (access) localStorage.setItem(TOKEN_KEY, access); else localStorage.removeItem(TOKEN_KEY); if (refresh) localStorage.setItem(REFRESH_KEY, refresh); else localStorage.removeItem(REFRESH_KEY); }
   function logout(){ setSession("", ""); state.me = null; boot(); }
 
@@ -316,6 +340,7 @@
         return api("/i18n/" + state.config.locale).then(function (i) {
           state.cat = i.body;
           if (state.config.displayName === state.config.tenantId) return renderSetup(true);
+          try { state.workspace = localStorage.getItem(wsKey()) || state.workspace; } catch (e) {}
           render();
         });
       });
@@ -423,42 +448,121 @@
   }
   function field(labelText, control) { return h("div", { style:"margin:0 0 13px" }, [h("label", {}, [labelText]), control]); }
 
+  // ---- workspaces ---------------------------------------------------------
+  // Five role-shaped lenses over one resident lifecycle. Each workspace is a
+  // navigation model (sections of permission-gated items) plus a home view.
+  // A nav item is [viewKey, label, permission|null, iconKey]; an item shows
+  // only when the signed-in role can(permission). Every existing view is
+  // reachable — nothing was removed, the menu was regrouped by persona. This is
+  // presentation only: items route to the same views, still gated by RBAC, and
+  // the home screens read existing endpoints.
+  var WORKSPACES = [
+    { id: "operator", label: "Property operator", hint: "on-site desk", icon: "properties", home: viewOperatorHome, sections: [
+      { label: null, items: [["dashboard", "Operations today", null, "dashboard"]] },
+      { label: "Front desk", items: [["packages","Packages","package.read","packages"],["inbox","Inbox","comms.read","inbox"],["reservations","Amenities","reservation.read","reservations"],["waitlist","Waitlist","waitlist.read","waitlist"]] },
+      { label: "Residents", items: [["agreements","Leases & stays","agreement.read","agreements"],["maintenance","Maintenance","maintenance.read","maintenance"],["insurance","Insurance","insurance.read","insurance"],["turns","Make-ready","turn.read","turns"]] },
+      { label: "Leasing on site", items: [["tours","Tours","tour.read","tours"],["applications","Applications","application.read","applications"],["crm","Pipeline","crm.read","crm"]] }
+    ] },
+    { id: "regional", label: "Regional operator", hint: "multi-community", icon: "reports", home: viewRegionalHome, sections: [
+      { label: null, items: [["dashboard", "Regional overview", null, "dashboard"]] },
+      { label: "Communities", items: [["properties","Communities","masterdata.read","properties"]] },
+      { label: "Operations", items: [["turns","Make-ready","turn.read","turns"],["maintenance","Maintenance","maintenance.read","maintenance"],["renewals","Renewals","renewal.read","renewals"],["insurance","Insurance","insurance.read","insurance"],["utilities","Utilities","utility.read","utilities"]] },
+      { label: "Leasing", items: [["crm","Pipeline","crm.read","crm"],["waitlist","Waitlist","waitlist.read","waitlist"],["applications","Applications","application.read","applications"],["tours","Tours","tour.read","tours"]] },
+      { label: "Insights", items: [["reports","Reports","reports.read","reports"]] }
+    ] },
+    { id: "commercial", label: "Sales & commercial", hint: "leasing · revenue", icon: "crm", home: viewCommercialHome, sections: [
+      { label: null, items: [["dashboard", "Leasing & revenue", null, "dashboard"]] },
+      { label: "Demand", items: [["website","Website & ILS","masterdata.read","website"],["crm","Pipeline","crm.read","crm"],["tours","Tours","tour.read","tours"],["waitlist","Waitlist","waitlist.read","waitlist"]] },
+      { label: "Convert", items: [["applications","Applications","application.read","applications"],["esign","E-sign","esign.read","esign"],["roommates","Roommates","roommate.read","roommates"]] },
+      { label: "Price & retain", items: [["pricing","Revenue","revenue.read","pricing"],["renewals","Renewals","renewal.read","renewals"]] },
+      { label: "Insights", items: [["reports","Reports","reports.read","reports"]] }
+    ] },
+    { id: "finance", label: "Finance", hint: "books · cash", icon: "ledger", home: viewFinanceHome, sections: [
+      { label: null, items: [["dashboard", "Finance overview", null, "dashboard"]] },
+      { label: "Receivables", items: [["agreements","Billing & AR","agreement.read","agreements"],["reconcile","Reconcile","reconciliation.read","reconcile"]] },
+      { label: "Payables", items: [["bills","Bills","bill.read","bills"],["purchasing","Purchasing","procurement.read","purchasing"]] },
+      { label: "Books", items: [["ledger","Ledger","ledger.read","ledger"],["utilities","Utilities (RUBS)","utility.read","utilities"]] },
+      { label: "Capital", items: [["distributions","Distributions","distribution.read","distributions"]] },
+      { label: "Insights", items: [["reports","Reports","reports.read","reports"]] }
+    ] },
+    { id: "portfolio", label: "Portfolio & assets", hint: "ownership lens", icon: "distributions", home: viewPortfolioHome, sections: [
+      { label: null, items: [["dashboard", "Portfolio & assets", null, "dashboard"]] },
+      { label: "Assets", items: [["properties","Communities","masterdata.read","properties"],["reports","Owner statements","reports.read","reports"]] },
+      { label: "Capital", items: [["distributions","Distributions","distribution.read","distributions"],["ledger","Capital account","ledger.read","ledger"]] }
+    ] }
+  ];
+  // Appended to every workspace so admin/config surfaces stay reachable anywhere
+  // (deduped against earlier sections, so an item shown above is not repeated).
+  function setupSection() {
+    return { label: "Setup", items: [
+      ["properties","Properties","masterdata.read","properties"],
+      ["people","Users & roles","user.read","people"],
+      ["integrations","Integrations","integration.read","integrations"],
+      ["import","Import","masterdata.manage","importer"],
+      ["settings","Settings","config.read","settings"]
+    ] };
+  }
+  // Default workspace by role; falls back to the first the user can actually use.
+  var WS_BY_ROLE = { front_desk: "operator", staff: "regional", read_only: "operator", agent: "commercial", accountant: "finance", manager: "regional", owner: "portfolio", service: "regional" };
+  function itemVisible(it) { return !it[2] || can(it[2]); }
+  function wsHasContent(ws) { // at least one non-home item the user can see
+    return ws.sections.concat([setupSection()]).some(function (sec) {
+      return sec.items.some(function (it) { return it[0] !== "dashboard" && itemVisible(it); });
+    });
+  }
+  function availableWorkspaces() {
+    var avail = WORKSPACES.filter(wsHasContent);
+    return avail.length ? avail : WORKSPACES.slice(); // never leave the switcher empty
+  }
+  function currentWorkspace() {
+    var avail = availableWorkspaces();
+    var found = avail.filter(function (w) { return w.id === state.workspace; })[0];
+    if (found) return found;
+    var want = WS_BY_ROLE[state.me && state.me.role] || "operator";
+    return avail.filter(function (w) { return w.id === want; })[0] || avail[0];
+  }
+  function setWorkspace(id) {
+    state.workspace = id;
+    try { localStorage.setItem(wsKey(), id); } catch (e) {}
+    state.view = "dashboard"; state.detailId = null; state.threadId = null;
+    render();
+  }
+  function wsSwitcher(ws) {
+    var avail = availableWorkspaces();
+    var opts = h("div", { class: "wopts" }, avail.map(function (w) {
+      return h("button", { class: "wopt" + (w.id === ws.id ? " on" : ""), type: "button", onclick: function () { setWorkspace(w.id); } }, [
+        svg(ICONS[w.icon] || ICONS.dashboard),
+        h("span", {}, [ w.label, h("small", {}, [w.hint]) ])
+      ]);
+    }));
+    return h("details", { class: "wsswitch" }, [
+      h("summary", {}, [
+        h("div", { class: "wl" }, ["Workspace"]),
+        h("div", { class: "wn" }, [ ws.label, h("span", { class: "car" }, ["▾"]) ])
+      ]),
+      opts
+    ]);
+  }
+
   // ---- shell --------------------------------------------------------------
   function render() {
-    var items = [
-      ["dashboard", t("nav.dashboard"), ICONS.dashboard],
-      ["agreements", t("nav.agreements"), ICONS.agreements],
-      ["ledger", t("nav.ledger"), ICONS.ledger],
-      ["people", t("nav.people"), ICONS.people],
-      ["settings", t("nav.settings"), ICONS.settings]
-    ];
-    if (can("bill.read")) items.splice(3, 0, ["bills", "Bills", ICONS.bills]);
-    if (can("distribution.read")) items.splice(3, 0, ["distributions", "Distributions", ICONS.distributions]);
-    if (can("procurement.read")) items.splice(3, 0, ["purchasing", "Purchasing", ICONS.purchasing]);
-    if (can("maintenance.read")) items.splice(can("bill.read") ? 4 : 3, 0, ["maintenance", "Maintenance", ICONS.maintenance]);
-    if (can("turn.read")) items.splice(can("bill.read") ? 4 : 3, 0, ["turns", "Make-ready", ICONS.turns]);
-    if (can("insurance.read")) items.splice(items.length - 1, 0, ["insurance", "Insurance", ICONS.insurance]);
-    if (can("utility.read")) items.splice(items.length - 1, 0, ["utilities", "Utilities", ICONS.utilities]);
-    if (can("package.read")) items.splice(items.length - 1, 0, ["packages", "Packages", ICONS.packages]);
-    if (can("waitlist.read")) items.splice(2, 0, ["waitlist", "Waitlist", ICONS.waitlist]);
-    if (can("reservation.read")) items.splice(3, 0, ["reservations", "Reservations", ICONS.reservations]);
-    if (can("comms.read")) items.splice(items.length - 1, 0, ["inbox", "Inbox", ICONS.inbox]);
-    if (can("reconciliation.read")) items.splice(items.length - 1, 0, ["reconcile", "Reconcile", ICONS.reconcile]);
-    if (can("integration.read")) items.splice(items.length - 1, 0, ["integrations", "Integrations", ICONS.integrations]);
-    if (can("reports.read")) items.splice(1, 0, ["reports", "Reports", ICONS.reports]);
-    if (can("revenue.read")) items.splice(1, 0, ["pricing", "Revenue", ICONS.pricing]);
-    if (can("crm.read")) items.splice(1, 0, ["crm", "Pipeline", ICONS.crm]);
-    if (can("tour.read")) items.splice(2, 0, ["tours", "Tours", ICONS.tours]);
-    if (can("application.read")) items.splice(2, 0, ["applications", "Applications", ICONS.applications]);
-    if (can("renewal.read")) items.splice(3, 0, ["renewals", "Renewals", ICONS.renewals]);
-    if (can("esign.read")) items.splice(2, 0, ["esign", "E-sign", ICONS.esign]);
-    if (can("roommate.read")) items.splice(items.length - 1, 0, ["roommates", "Roommates", ICONS.roommates]);
-    if (can("masterdata.read")) items.splice(1, 0, ["properties", "Properties", ICONS.properties]);
-    if (can("masterdata.read")) items.splice(items.length - 1, 0, ["website", "Website", ICONS.website]);
-    if (can("masterdata.manage")) items.splice(items.length - 1, 0, ["import", "Import", ICONS.importer]);
-    var nav = h("nav", {}, items.map(function (it) {
-      return h("button", { class: state.view === it[0] ? "active" : "", onclick: function () { state.view = it[0]; state.detailId = null; state.threadId = null; render(); } }, [ svg(it[2]), it[1] ]);
-    }));
+    var ws = currentWorkspace();
+    var seen = {};
+    var groups = [];
+    ws.sections.concat([setupSection()]).forEach(function (sec) {
+      var vis = sec.items.filter(function (it) { return itemVisible(it) && !seen[it[0]]; });
+      if (!vis.length) return;
+      vis.forEach(function (it) { seen[it[0]] = 1; });
+      var children = [];
+      if (sec.label) children.push(h("div", { class: "grouphead" }, [sec.label]));
+      vis.forEach(function (it) {
+        children.push(h("button", { class: "item" + (state.view === it[0] ? " active" : ""),
+          onclick: function () { state.view = it[0]; state.detailId = null; state.threadId = null; render(); } },
+          [ svg(ICONS[it[3]] || ICONS.dashboard), it[1] ]));
+      });
+      groups.push(h("div", { class: "navgroup" }, children));
+    });
+    var nav = h("nav", {}, groups);
     applyBrand();
     var brandMark = state.config.logoDataUrl
       ? h("img", { src: state.config.logoDataUrl, alt: state.config.displayName, style: "height:30px;width:auto;border-radius:6px" })
@@ -467,6 +571,7 @@
     root.appendChild(h("div", { class: "app" }, [
       h("aside", {}, [
         h("div", { class: "brand" }, [ brandMark, h("div",{class:"wm"},[state.config.displayName, h("small",{},["Unified Stay OS"])]) ]),
+        wsSwitcher(ws),
         nav,
         h("div", { class: "side-foot" }, [
           h("div", { class: "chip" }, [ h("span",{class:"dot"}), state.me.role + " · " + state.config.currency + " · " + state.config.locale ]),
@@ -477,7 +582,9 @@
       h("main", { id: "main" }, [])
     ]));
     var main = document.getElementById("main");
-    ({ dashboard: viewDashboard, agreements: viewAgreements, properties: viewProperties, website: viewWebsite, pricing: viewPricing, crm: viewCrm, applications: viewApplications, tours: viewTours, turns: viewTurns, insurance: viewInsurance, utilities: viewUtilities, packages: viewPackages, waitlist: viewWaitlist, distributions: viewDistributions, renewals: viewRenewals, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings }[state.view] || viewDashboard)(main);
+    var views = { dashboard: viewDashboard, agreements: viewAgreements, properties: viewProperties, website: viewWebsite, pricing: viewPricing, crm: viewCrm, applications: viewApplications, tours: viewTours, turns: viewTurns, insurance: viewInsurance, utilities: viewUtilities, packages: viewPackages, waitlist: viewWaitlist, distributions: viewDistributions, renewals: viewRenewals, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, people: viewPeople, settings: viewSettings };
+    var fn = (state.view === "dashboard") ? (ws.home || viewDashboard) : (views[state.view] || ws.home || viewDashboard);
+    fn(main);
   }
 
   // ---- views --------------------------------------------------------------
@@ -547,6 +654,249 @@
     container.appendChild(h("div", { class: "card" }, [ h("div", { class:"k" }, [k]), h("div", { class:"v" }, [ pill ? h("span",{class:"pill "+pill},[v]) : v ]) ]));
   }
   function prettyBiz(b){ return String(b).replace(/_/g," "); }
+
+  // ---- workspace home screens ---------------------------------------------
+  // Each persona home reads existing endpoints and degrades gracefully: a panel
+  // whose endpoint the role cannot read is simply skipped. Home views never
+  // mutate — they are read-only dashboards that link into the operational views.
+  function homeHead(main, title, sub) {
+    main.appendChild(h("h1", {}, [title]));
+    if (sub) main.appendChild(h("p", { class: "sub" }, [sub]));
+  }
+  function goBtn(view, label) {
+    return h("button", { class: "btn ghost sm", onclick: function () { state.view = view; state.detailId = null; state.threadId = null; render(); } }, [label || "Open →"]);
+  }
+  // The shared "what needs attention" feed (reports.read). filterFn optionally
+  // narrows the insight list to a persona's concerns.
+  function attentionFeed(main, filterFn) {
+    if (!can("reports.read")) return;
+    main.appendChild(h("h2", {}, ["What needs attention"]));
+    var wrap = h("div", {}, [h("div", { class: "muted" }, ["Analyzing…"])]);
+    main.appendChild(wrap);
+    api("/reports/insights").then(function (r) {
+      wrap.innerHTML = "";
+      if (r.status !== 200) { wrap.appendChild(h("p", { class: "muted" }, [(r.body && r.body.error) || t("msg.denied")])); return; }
+      var ins = (r.body.insights || []);
+      if (filterFn) ins = ins.filter(filterFn);
+      if (!ins.length) { wrap.appendChild(h("div", { class: "panel muted" }, ["All clear — nothing needs attention right now."])); return; }
+      ins.slice(0, 6).forEach(function (i) { wrap.appendChild(insightCard(i)); });
+    });
+  }
+  // Render every KPI of a catalog report as a stat-card row.
+  function reportKpiCards(main, key) {
+    var cards = h("div", { class: "cards" }, []); main.appendChild(cards);
+    api("/reports/" + key).then(function (r) {
+      if (r.status !== 200 || !r.body.report) return;
+      (r.body.report.kpis || []).forEach(function (k) { card(cards, k.label, fmtKpi(k)); });
+    });
+    return cards;
+  }
+  // A report as a chart panel (falls back to a compact table).
+  function reportPanel(main, key, title, moreView) {
+    main.appendChild(h("h2", {}, [title]));
+    var wrap = h("div", {}, [h("div", { class: "muted" }, ["Loading…"])]); main.appendChild(wrap);
+    api("/reports/" + key).then(function (r) {
+      wrap.innerHTML = "";
+      if (r.status !== 200 || !r.body.report) { wrap.appendChild(h("div", { class: "panel muted" }, [(r.body && r.body.error) || "No data for this window."])); return; }
+      var rep = r.body.report;
+      if (rep.subtitle) wrap.appendChild(h("p", { class: "muted", style: "font-size:13px;margin:0 0 10px" }, [rep.subtitle]));
+      var series = seriesFromReport(rep);
+      var ctype = CATALOG_CHART[key] || "bar";
+      var charted = false;
+      if (ctype !== "table" && series) { var c = chartEl(series, ctype); if (c) { wrap.appendChild(c); charted = true; } }
+      if (!charted) {
+        var heads = (rep.columns || []).map(function (c) { return th(c.label); });
+        var rows = (rep.rows || []).slice(0, 8).map(function (row) {
+          return h("tr", {}, (rep.columns || []).map(function (c) {
+            var v = row[c.key];
+            if (c.kind === "money") return h("td", { class: "mono" }, [fmt(Number(v) || 0)]);
+            if (c.kind === "percent") return h("td", {}, [(v == null ? 0 : v) + "%"]);
+            if (c.kind === "number") return h("td", { class: "mono" }, [String(v == null ? 0 : v)]);
+            return h("td", {}, [v == null ? "—" : String(v)]);
+          }));
+        });
+        wrap.appendChild(tableEl(heads, rows, (rep.columns || []).length || 1, "No data for this window."));
+      }
+      if (moreView) wrap.appendChild(h("div", { class: "row", style: "justify-content:flex-end;margin-top:9px" }, [goBtn(moreView, "Open report →")]));
+    });
+  }
+  // A live list panel from a list endpoint. opts: {title, endpoint, pick, filter, sort, map, heads, empty, view, moreLabel}.
+  function listPanel(main, opts) {
+    main.appendChild(h("h2", {}, [opts.title]));
+    var wrap = h("div", {}, [h("div", { class: "muted" }, ["Loading…"])]); main.appendChild(wrap);
+    api(opts.endpoint).then(function (r) {
+      wrap.innerHTML = "";
+      if (r.status !== 200) { wrap.appendChild(h("div", { class: "panel muted" }, [(r.body && r.body.error) || t("msg.denied")])); return; }
+      var items = opts.pick(r.body) || [];
+      if (opts.filter) items = items.filter(opts.filter);
+      if (opts.sort) items = items.slice().sort(opts.sort);
+      var shown = items.slice(0, opts.limit || 6);
+      var rows = shown.map(opts.map);
+      wrap.appendChild(tableEl(opts.heads.map(th), rows, opts.heads.length, opts.empty || "Nothing here right now."));
+      var foot = [];
+      if (items.length > shown.length) foot.push(h("span", { class: "muted", style: "font-size:12px;margin-right:auto" }, ["Showing " + shown.length + " of " + items.length]));
+      if (opts.view) foot.push(goBtn(opts.view, opts.moreLabel || "Open →"));
+      if (foot.length) wrap.appendChild(h("div", { class: "row", style: "margin-top:9px;align-items:center" }, foot));
+    });
+  }
+  function pill(text, cls) { return h("span", { class: "pill " + (cls || "") }, [text]); }
+
+  function viewOperatorHome(main) {
+    homeHead(main, "Operations today", "On-site desk · " + state.config.displayName);
+    var cards = h("div", { class: "cards" }, []); main.appendChild(cards);
+    api("/reporting/summary").then(function (r) {
+      if (r.status !== 200) return;
+      var s = r.body;
+      card(cards, "Units", String(s.masterDataCounts.units));
+      card(cards, "Active leases", String((s.agreements.byStatus || {}).active || 0));
+    });
+    if (can("revenue.read")) api("/revenue/summary").then(function (r) { if (r.status === 200) card(cards, "Occupancy", r.body.occupancyPct + "%"); });
+    if (can("package.read")) api("/parcels").then(function (r) { if (r.status === 200) card(cards, "Packages waiting", String((r.body.parcels || []).filter(function (p) { return p.status !== "picked_up"; }).length)); });
+    attentionFeed(main);
+    if (can("maintenance.read")) listPanel(main, {
+      title: "Open work orders", endpoint: "/work-orders", view: "maintenance", moreLabel: "Maintenance board →",
+      pick: function (b) { return b.workOrders || []; },
+      filter: function (w) { return w.status !== "completed" && w.status !== "cancelled"; },
+      heads: ["Work order", "Category", "Priority", "Status"],
+      map: function (w) { return h("tr", {}, [ h("td", {}, [w.title || w.id]), h("td", { class: "muted" }, [(w.category || "—").replace(/_/g, " ")]), h("td", {}, [pill(w.priority || "normal", w.priority === "urgent" ? "bad" : (w.priority === "high" ? "draft" : "completed"))]), h("td", {}, [pill(w.status, w.status === "open" ? "draft" : "active")]) ]); },
+      empty: "No open work orders. 🎉"
+    });
+    if (can("turn.read")) listPanel(main, {
+      title: "Make-ready board", endpoint: "/turns", view: "turns", moreLabel: "Open board →",
+      pick: function (b) { return b.turns || []; },
+      filter: function (tn) { return tn.status === "open" || tn.status === "in_progress"; },
+      sort: function (a, b) { return (b.days || 0) - (a.days || 0); },
+      heads: ["Unit", "Days in turn", "Tasks open", "Status"],
+      map: function (tn) { return h("tr", {}, [ h("td", {}, [tn.unitLabel || tn.unitId || "—"]), h("td", {}, [pill((tn.days || 0) + "d", tn.days >= 7 ? "bad" : (tn.days >= 4 ? "draft" : "active"))]), h("td", { class: "mono" }, [String(tn.openTasks == null ? "—" : tn.openTasks)]), h("td", {}, [pill(tn.status, "draft")]) ]); },
+      empty: "No units in make-ready."
+    });
+    if (can("package.read")) listPanel(main, {
+      title: "Packages at the desk", endpoint: "/parcels", view: "packages", moreLabel: "All packages →",
+      pick: function (b) { return b.parcels || []; },
+      filter: function (p) { return p.status !== "picked_up"; },
+      sort: function (a, b) { return (b.daysWaiting || 0) - (a.daysWaiting || 0); },
+      heads: ["Recipient", "Unit", "Carrier", "Waiting"],
+      map: function (p) { return h("tr", {}, [ h("td", {}, [p.recipientName || "—"]), h("td", { class: "muted" }, [p.unitLabel || "—"]), h("td", { class: "muted" }, [p.carrier || "—"]), h("td", {}, [pill((p.daysWaiting || 0) + "d", p.daysWaiting >= 7 ? "bad" : (p.daysWaiting >= 3 ? "draft" : "active"))]) ]); },
+      empty: "No parcels awaiting pickup."
+    });
+  }
+
+  function viewRegionalHome(main) {
+    homeHead(main, "Regional overview", "Across all communities · " + state.config.displayName);
+    var cards = h("div", { class: "cards" }, []); main.appendChild(cards);
+    api("/reporting/summary").then(function (r) {
+      if (r.status !== 200) return;
+      var s = r.body;
+      card(cards, "Communities/units", String(s.masterDataCounts.units));
+      card(cards, "Active leases", String((s.agreements.byStatus || {}).active || 0));
+      card(cards, "Ledger", s.ledger.balanced ? "Balanced" : "Unbalanced", s.ledger.balanced ? "ok" : "bad");
+    });
+    if (can("revenue.read")) api("/revenue/summary").then(function (r) { if (r.status === 200) card(cards, "Occupancy", r.body.occupancyPct + "%"); });
+    if (can("renewal.read")) api("/renewals").then(function (r) { if (r.status === 200) card(cards, "Renewals due", String((r.body.offers || []).length)); });
+    if (can("exception.read")) listPanel(main, {
+      title: "Waiting on you — approvals", endpoint: "/exceptions",
+      pick: function (b) { return b.pending || []; },
+      heads: ["Action", "Initiated by", "Status"],
+      map: function (x) { var c = x.ctx || {}; return h("tr", {}, [ h("td", {}, [String(x.action || "escalated action")]), h("td", { class: "muted" }, [String(c.actor || "—")]), h("td", {}, [pill("parked", "draft")]) ]); },
+      empty: "No approvals pending. Nothing is parked."
+    });
+    attentionFeed(main);
+    if (can("masterdata.read")) listPanel(main, {
+      title: "Communities", endpoint: "/properties", view: "properties", moreLabel: "Manage communities →",
+      pick: function (b) { return b.properties || []; },
+      heads: ["Community", "Code", "Address"],
+      map: function (p) { return h("tr", {}, [ h("td", {}, [p.name]), h("td", { class: "mono muted" }, [p.code || "—"]), h("td", { class: "muted" }, [p.address || "—"]) ]); },
+      empty: "No communities yet — add one in Communities."
+    });
+  }
+
+  function viewCommercialHome(main) {
+    homeHead(main, "Leasing & revenue", "Demand in, conversion through the funnel, price and retention out.");
+    var cards = h("div", { class: "cards" }, []); main.appendChild(cards);
+    if (can("crm.read")) api("/crm/summary").then(function (r) {
+      if (r.status !== 200) return;
+      var k = r.body;
+      card(cards, "Open leads", String(k.openCount));
+      card(cards, "Pipeline value", fmt(k.pipelineValueCents));
+      card(cards, "Conversion", k.conversionPct + "%");
+    });
+    if (can("revenue.read")) api("/revenue/summary").then(function (r) { if (r.status === 200) { card(cards, "ADR", fmt(r.body.adrCents)); card(cards, "RevPAR", fmt(r.body.revparCents)); } });
+    if (can("crm.read")) {
+      main.appendChild(h("h2", {}, ["The funnel"]));
+      var fwrap = h("div", {}, [h("div", { class: "muted" }, ["Loading…"])]); main.appendChild(fwrap);
+      api("/crm/summary").then(function (r) {
+        fwrap.innerHTML = "";
+        if (r.status !== 200) { fwrap.appendChild(h("div", { class: "panel muted" }, [(r.body && r.body.error) || t("msg.denied")])); return; }
+        var bs = r.body.byStage || {};
+        var stages = [["new", "Leads"], ["toured", "Toured"], ["applied", "Applied"], ["approved", "Approved"], ["signed", "Signed"]];
+        var series = { labels: stages.map(function (s) { return s[1]; }), values: stages.map(function (s) { return bs[s[0]] || 0; }), valueKind: "number" };
+        fwrap.appendChild(barChart(series));
+        fwrap.appendChild(h("div", { class: "row", style: "justify-content:flex-end;margin-top:9px" }, [goBtn("crm", "Open pipeline →")]));
+      });
+    }
+    if (can("renewal.read")) listPanel(main, {
+      title: "Renewals due — retention", endpoint: "/renewals", view: "renewals", moreLabel: "All renewals →",
+      pick: function (b) { return b.offers || []; },
+      sort: function (a, b) { return (a.daysToExpiry || 0) - (b.daysToExpiry || 0); },
+      heads: ["Resident", "Expiry", "Current → proposed"],
+      map: function (o) { return h("tr", {}, [ h("td", {}, [o.residentName || o.agreementId]), h("td", {}, [pill((o.daysToExpiry) + "d", o.daysToExpiry <= 30 ? "bad" : "draft")]), h("td", { class: "mono" }, [fmt(o.currentRateCents) + " → " + fmt(o.proposedRateCents)]) ]); },
+      empty: "No leases in the renewal window."
+    });
+    if (can("tour.read")) listPanel(main, {
+      title: "Upcoming tours", endpoint: "/tours", view: "tours", moreLabel: "Tour calendar →",
+      pick: function (b) { return b.tours || []; },
+      filter: function (tr) { return tr.status === "requested" || tr.status === "confirmed"; },
+      sort: function (a, b) { return (a.scheduledAt || "").localeCompare(b.scheduledAt || ""); },
+      heads: ["Prospect", "When", "Status"],
+      map: function (tr) { return h("tr", {}, [ h("td", {}, [tr.prospectName]), h("td", { class: "muted" }, [(tr.scheduledAt || "").replace("T", " ").slice(0, 16)]), h("td", {}, [pill(tr.status, tr.status === "confirmed" ? "active" : "draft")]) ]); },
+      empty: "No tours scheduled."
+    });
+  }
+
+  function viewFinanceHome(main) {
+    homeHead(main, "Finance overview", "Cash, receivables, payables, the books and the close.");
+    var cards = reportKpiCards(main, "delinquency");
+    if (can("bill.read")) api("/bills").then(function (r) {
+      if (r.status !== 200) return;
+      var due = (r.body.bills || []).filter(function (b) { return (b.totalCents - (b.paidCents || 0)) > 0; });
+      var total = due.reduce(function (a, b) { return a + (b.totalCents - (b.paidCents || 0)); }, 0);
+      card(cards, "Payables outstanding", fmt(total));
+    });
+    attentionFeed(main, function (i) { return i.severity === "critical" || i.severity === "warning" || /revenue|collect|overdue|receivable|payable|ledger|deposit|budget/i.test(i.title + " " + i.detail); });
+    reportPanel(main, "ar_aging", "Receivables aging", "reconcile");
+    if (can("bill.read")) listPanel(main, {
+      title: "Payables due", endpoint: "/bills", view: "bills", moreLabel: "All bills →",
+      pick: function (b) { return b.bills || []; },
+      filter: function (b) { return (b.totalCents - (b.paidCents || 0)) > 0; },
+      sort: function (a, b) { return (a.dueAt || "").localeCompare(b.dueAt || ""); },
+      heads: ["Bill", "Due", "Status", "Outstanding"],
+      map: function (b) { return h("tr", {}, [ h("td", { class: "mono muted" }, [b.id]), h("td", { class: "muted" }, [b.dueAt || "—"]), h("td", {}, [pill(b.status, b.status === "paid" ? "active" : "draft")]), h("td", { class: "mono" }, [fmt(b.totalCents - (b.paidCents || 0))]) ]); },
+      empty: "No outstanding bills."
+    });
+    if (can("exception.read")) listPanel(main, {
+      title: "Waiting on approval", endpoint: "/exceptions",
+      pick: function (b) { return b.pending || []; },
+      heads: ["Action", "Initiated by", "Status"],
+      map: function (x) { var c = x.ctx || {}; return h("tr", {}, [ h("td", {}, [String(x.action || "escalated action")]), h("td", { class: "muted" }, [String(c.actor || "—")]), h("td", {}, [pill("parked", "draft")]) ]); },
+      empty: "Nothing parked for approval."
+    });
+  }
+
+  function viewPortfolioHome(main) {
+    homeHead(main, "Portfolio & assets", "NOI per community, capital in and out per legal entity.");
+    var cards = h("div", { class: "cards" }, []); main.appendChild(cards);
+    if (can("reports.read")) api("/reports/owner_statement").then(function (r) {
+      if (r.status === 200 && r.body.report) (r.body.report.kpis || []).slice(0, 2).forEach(function (k) { card(cards, k.label, fmtKpi(k)); });
+    });
+    if (can("reports.read")) api("/reports/owner_distributions").then(function (r) {
+      if (r.status === 200 && r.body.report) { var k = (r.body.report.kpis || [])[0]; if (k) card(cards, k.label, fmtKpi(k)); }
+    });
+    if (can("revenue.read")) api("/revenue/summary").then(function (r) { if (r.status === 200) card(cards, "Occupancy", r.body.occupancyPct + "%"); });
+    attentionFeed(main, function (i) { return /noi|occup|distribut|expir|renewal|vacan|revenue/i.test(i.title + " " + i.detail); });
+    if (can("reports.read")) reportPanel(main, "owner_statement", "NOI by community", "reports");
+    if (can("reports.read")) reportPanel(main, "capital_account", "Capital accounts", "reports");
+    if (can("reports.read")) reportPanel(main, "lease_expirations", "Rent at risk — lease expirations", "reports");
+  }
 
   function viewAgreements(main) {
     if (state.detailId) return viewAgreementDetail(main, state.detailId);
