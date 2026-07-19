@@ -45,26 +45,36 @@
   /* Layout */
   .app { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh; }
   aside { background: var(--surface); border-right: 1px solid var(--border); padding: 18px 14px;
-    display: flex; flex-direction: column; gap: 4px; position: sticky; top: 0; height: 100vh; }
-  .brand { display: flex; align-items: center; gap: 11px; padding: 8px 8px 16px; }
+    display: flex; flex-direction: column; gap: 4px; position: sticky; top: 0; height: 100vh; overflow: hidden; }
+  .brand { display: flex; align-items: center; gap: 11px; padding: 8px 8px 16px; flex: none; }
   .brand .mark { width: 30px; height: 30px; flex: none; filter: drop-shadow(0 3px 8px rgba(101,114,255,.35)); }
   .brand .wm { font-weight: 700; font-size: 15.5px; letter-spacing: -.01em; line-height: 1.15; }
   .brand .wm small { display: block; color: var(--subtle); font-weight: 500; font-size: 11.5px; letter-spacing: .02em; }
-  nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  /* The menu is its own scroll region so a workspace with many items can scroll
+     independently while the brand/switcher stay pinned at top and Sign-out at the
+     bottom. min-height:0 lets this flex child shrink below its content height so
+     overflow-y actually engages. */
+  nav { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-height: 0;
+    overflow-y: auto; overflow-x: hidden; padding-right: 2px;
+    scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; overscroll-behavior: contain; }
+  nav::-webkit-scrollbar { width: 8px; }
+  nav::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
+  nav::-webkit-scrollbar-thumb:hover { background: var(--subtle); }
+  nav::-webkit-scrollbar-track { background: transparent; }
   nav button { display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
     background: none; border: 0; color: var(--muted); padding: 9px 11px; border-radius: 10px;
     cursor: pointer; font-size: 13.5px; font-weight: 500; position: relative; transition: background .15s, color .15s; }
   nav button svg { width: 18px; height: 18px; opacity: .85; }
   nav button:hover { background: var(--surface-2); color: var(--text); }
   nav button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-  nav button.active::before { content:""; position:absolute; left:-14px; top:9px; bottom:9px; width:3px;
+  nav button.active::before { content:""; position:absolute; left:0; top:9px; bottom:9px; width:3px;
     background: var(--accent); border-radius: 0 3px 3px 0; }
   .navgroup { display: flex; flex-direction: column; gap: 2px; }
   .navgroup + .navgroup { margin-top: 9px; }
   .grouphead { padding: 4px 11px 5px; color: var(--subtle); font-size: 10px; font-weight: 700;
     text-transform: uppercase; letter-spacing: .1em; }
   /* Workspace switcher (native <details> — robust, keyboard-accessible) */
-  .wsswitch { margin: 0 2px 12px; }
+  .wsswitch { margin: 0 2px 12px; flex: none; }
   .wsswitch summary { list-style: none; cursor: pointer; background: var(--surface-2); border: 1px solid var(--border);
     border-radius: 11px; padding: 9px 12px; display: block; transition: border-color .15s; }
   .wsswitch summary:hover { border-color: var(--border-strong); }
@@ -82,7 +92,7 @@
   .wsswitch .wopt:hover { background: var(--surface-2); color: var(--text); }
   .wsswitch .wopt.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
   .wsswitch .wopt small { display: block; color: var(--subtle); font-weight: 500; font-size: 11px; margin-top: 1px; }
-  .side-foot { border-top: 1px solid var(--border); padding-top: 12px; display: flex; align-items: center; gap: 8px; }
+  .side-foot { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 4px; display: flex; align-items: center; gap: 8px; flex: none; }
   .chip { flex: 1; font-size: 11.5px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border);
     padding: 6px 10px; border-radius: 8px; display: flex; align-items: center; gap: 6px; overflow: hidden; }
   .chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); flex: none; box-shadow: 0 0 0 3px var(--success-soft); }
@@ -189,7 +199,7 @@
   .tl-ty { font-weight: 600; font-size: 13.5px; }
   .tl-at { color: var(--subtle); font-size: 12px; }
 
-  @media (max-width: 720px){ .app{ grid-template-columns: 1fr; } aside{ position: static; height: auto; flex-direction: column; } }
+  @media (max-width: 720px){ .app{ grid-template-columns: 1fr; } aside{ position: static; height: auto; flex-direction: column; overflow: visible; } nav{ overflow: visible; min-height: 0; } }
 </style>
 </head>
 <body>
