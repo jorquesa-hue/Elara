@@ -28,9 +28,9 @@ const firstArray = (body: unknown): unknown[] =>
 
 test('the portfolio seed is institutional scale in one balanced pass', () => {
   const { app, counts } = seeded();
-  assert.ok(counts.units >= 600, `600+ units, got ${counts.units}`);
-  assert.ok(counts.agreements >= 500, `500+ leases, got ${counts.agreements}`);
-  assert.ok(counts.parties >= 500, `a resident per lease, got ${counts.parties}`);
+  assert.ok((counts.units ?? 0) >= 600, `600+ units, got ${counts.units}`);
+  assert.ok((counts.agreements ?? 0) >= 500, `500+ leases, got ${counts.agreements}`);
+  assert.ok((counts.parties ?? 0) >= 500, `a resident per lease, got ${counts.parties}`);
   assert.equal((app.dispatch({ method: 'GET', path: '/properties', bearer: 'Bearer own', body: {} }).body as { properties: unknown[] }).properties.length, 3);
   const tb = D(app, 'GET', '/ledger/trial-balance').body as { balanced: boolean; net: number };
   assert.equal(tb.balanced, true);

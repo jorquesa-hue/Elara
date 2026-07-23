@@ -37,6 +37,10 @@ test('every non-English locale defines the newly-referenced UI keys', () => {
     'res.title', 'res.kpi.balance', 'res.pay.confirm', 'res.insurance', 'res.pkg.many', 'res.maintenance',
     // owner SPA
     'own.title', 'own.noi', 'own.dist.note', 'own.capaccount', 'own.communities',
+    // inner-view sweep: table columns (col.*), buttons (btn.*), form labels (fld.*)
+    'col.status', 'col.owning_entity', 'col.floorplan', 'col.resident', 'col.amount',
+    'btn.approve', 'btn.raise_work_order', 'btn.close_period', 'btn.schedule_tour', 'btn.reserve',
+    'fld.owning_entity', 'fld.guarantor', 'fld.property_name', 'fld.check_in', 'fld.nights_2',
   ];
   for (const loc of ['pt-BR', 'es', 'fr', 'it', 'de']) {
     const cat = mergedCatalog(loc);

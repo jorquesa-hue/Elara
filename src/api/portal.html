@@ -303,6 +303,13 @@
   // key shows the readable default rather than the raw key. Used for the
   // workspace menu + home screens (translations live in i18n.ts pt-BR/es).
   function tt(key, fallback) { return (state.cat && state.cat[key]) || fallback; }
+  // Translate a table-column header by its English source string (col.* keys).
+  var COLKEY = {"#":"x","Account":"account","Action":"action","Active levers":"active_levers","Actual":"actual","Address":"address","Amount":"amount","Applicant":"applicant","Area":"area","Base":"base","Basis":"basis","Baths":"baths","Beds":"beds","Billed":"billed","Budget":"budget","Cadence":"cadence","Carrier":"carrier","Ceiling":"ceiling","Closed by":"closed_by","Code":"code","Committed":"committed","Community":"community","Coverage":"coverage","Created":"created","Current end":"current_end","Date":"date","Description":"description","Details":"details","Document":"document","Effect":"effect","Email":"email","End":"end","Est. value":"est_value","Expected":"expected","Expires":"expires","Expires in":"expires_in","Factor":"factor","Fit":"fit","Floor":"floor","Floorplan":"floorplan","GL cash account":"gl_cash_account","Income":"income","Item":"item","Kind":"kind","Label":"label","Lead":"lead","Liability":"liability","Location":"location","Market rent":"market_rent","Memo":"memo","Move-in":"move_in","Name":"name","Next due":"next_due","Owning entity":"owning_entity","PO":"po","Party":"party","Period":"period","Posted":"posted","Preferences":"preferences","Price":"price","Priority":"priority","Property":"property","Property / unit":"property_unit","Proposed end":"proposed_end","Prospect":"prospect","Provider":"provider","Recipient":"recipient","Remaining":"remaining","Rent (\u2192 proposed)":"rent_proposed","Resident":"resident","Role":"role","Row":"row","Rule":"rule","Screening":"screening","Secret ref":"secret_ref","Share":"share","Signers":"signers","Source":"source","Space":"space","Stage":"stage","Start":"start","Status":"status","Subject":"subject","Task":"task","Title":"title","Total":"total","Unit":"unit","Variance":"variance","Waiting":"waiting","When":"when"};
+  function tcol(en){ var k=COLKEY[en]; return k ? tt("col."+k, en) : en; }
+  var BTNKEY = {"+ expense line":"expense_line","+ revenue line":"revenue_line","Activate":"activate","Add application":"add_application","Add bill":"add_bill","Add lead":"add_lead","Add policy":"add_policy","Add prospect":"add_prospect","Add schedule":"add_schedule","Approve":"approve","Assign":"assign","Bill residents":"bill_residents","Cancel":"cancel","Commit":"commit","Complete":"complete","Confirm":"confirm","Connect":"connect","Convert":"convert","Copy":"copy","Create pricing rule":"create_pricing_rule","Create this custom role \u2192":"create_this_custom_role","Deny":"deny","Ignore":"ignore","Import line":"import_line","Join waitlist":"join_waitlist","Log parcel":"log_parcel","Lose":"lose","Mark rent-ready":"mark_rent_ready","Matches":"matches","Months \u25be":"months","Move in":"move_in","Move out":"move_out","No-show":"no_show","Notify":"notify","Offer":"offer","Open thread":"open_thread","Open turn":"open_turn","Picked up":"picked_up","Prepare envelope":"prepare_envelope","Preview":"preview","Quote stay":"quote_stay","Raise PO":"raise_po","Raise work order":"raise_work_order","Record bill":"record_bill","Record contribution":"record_contribution","Record distribution":"record_distribution","Record move-in":"record_move_in","Record move-out":"record_move_out","Remove":"remove","Remove logo":"remove_logo","Request re-open":"request_re_open","Reserve":"reserve","Resolve":"resolve","Save budget":"save_budget","Schedule tour":"schedule_tour","Screen":"screen","Send":"send","Set budget":"set_budget","Suggest groups":"suggest_groups","Verify":"verify","Void":"void","Withdraw":"withdraw","\u26a1 Generate units":"generate_units","\u2b07 Download CSV":"download_csv","\uff0b Add bank account":"add_bank_account","\uff0b Add floorplan":"add_floorplan","\uff0b Add property":"add_property","\uff0b Add unit":"add_unit","\uff0b Save to dashboard":"save_to_dashboard","\ud83d\udd12 Close period":"close_period"};
+  function tbtn(en){ var k=BTNKEY[en]; return k ? tt("btn."+k, en) : en; }
+  var FLDKEY = {"Account":"account","Address":"address","Aggregate":"aggregate","Allocation":"allocation","Amenities (comma-separated)":"amenities_comma_separated","Amount":"amount","Amount (cents)":"amount_cents","Amount (minor)":"amount_minor","Amount (signed minor)":"amount_signed_minor","Area m²":"area_m","Base rate (cents)":"base_rate_cents","Basis":"basis","Bathrooms":"bathrooms","Bedrooms":"bedrooms","Beds per room":"beds_per_room","Brand color":"brand_color","Budget (cents)":"budget_cents","CSV":"csv","Carrier":"carrier","Category":"category","Ceiling (cents)":"ceiling_cents","Chart":"chart","Check-in":"check_in","Cleanliness":"cleanliness","Code":"code","Code prefix":"code_prefix","Community":"community","Contact email":"contact_email","Corners":"corners","Country":"country","Data source":"data_source","Description":"description","Desired move-in":"desired_move_in","Document":"document","Due":"due","Effective":"effective","Email":"email","End":"end","Endpoint":"endpoint","Est. value (cents)":"est_value_cents","Every (days)":"every_days","Existing party":"existing_party","Expected":"expected","Expires":"expires","Facebook":"facebook","Filter":"filter","First due":"first_due","First number":"first_number","Floor (cents)":"floor_cents","Floorplan":"floorplan","From":"from","Group by":"group_by","Guarantor":"guarantor","Guarantor email":"guarantor_email","Headline":"headline","Hero layout":"hero_layout","Hero photo (≤256 KB)":"hero_photo_256_kb","Hero title":"hero_title","How many":"how_many","Income (cents)":"income_cents","Instagram":"instagram","Kind":"kind","Label":"label","Lead":"lead","Lease":"lease","Liability coverage":"liability_coverage","Location":"location","Logo (PNG/SVG, ≤256 KB)":"logo_png_svg_256_kb","Market rent":"market_rent","Master total":"master_total","Max guests":"max_guests","Measure":"measure","Memo":"memo","Name":"name","New end (optional)":"new_end_optional","New rent (optional)":"new_rent_optional","Nights":"nights","Nights ≥":"nights_2","Notify recipient":"notify_recipient","Occupancy % (demand signal)":"occupancy_demand_signal","Occupancy tier 1 — at %":"occupancy_tier_1_at","Occupancy tier 2 — at %":"occupancy_tier_2_at","Owning entity":"owning_entity","Password":"password","Payee":"payee","Period (YYYY-MM)":"period_yyyy_mm","Period end":"period_end","Period start":"period_start","Phone":"phone","Photo (≤256 KB)":"photo_256_kb","Plan code":"plan_code","Plan name":"plan_name","Policy number":"policy_number","Posted":"posted","Price (minor)":"price_minor","Priority":"priority","Property":"property","Property / unit name":"property_unit_name","Property code":"property_code","Property name":"property_name","Prospect":"prospect","Provider":"provider","Quoting as-of (lead time)":"quoting_as_of_lead_time","Recipient":"recipient","Reply":"reply","Reserved by":"reserved_by","Resident":"resident","Resident email":"resident_email","Role":"role","Rule":"rule","Save as":"save_as","Schedule":"schedule","Season uplift %":"season_uplift","Secret ref":"secret_ref","Social":"social","Source":"source","Space":"space","Start":"start","Subject":"subject","Tagline":"tagline","Task":"task","Title":"title","To":"to","To unit/space":"to_unit_space","Token":"token","Typography":"typography","Unit":"unit","Unit cards":"unit_cards","Unit code":"unit_code","Utility":"utility","Vacated (optional)":"vacated_optional","Value":"value","Vendor":"vendor","Weekend uplift %":"weekend_uplift","What":"what","WhatsApp":"whatsapp","When":"when","… discount %":"discount","… uplift %":"uplift","…or new person":"or_new_person","About your properties (shown on the site)":"about_your_properties_shown_on_the_site","Listing syndication (ILS)":"listing_syndication_ils","Logo preview":"logo_preview","Responsibilities matched":"responsibilities_matched","Your public booking link":"your_public_booking_link"};
+  function tfld(en){ if(typeof en!=="string") return en; var k=FLDKEY[en]; return k ? tt("fld."+k, en) : en; }
   function svg(inner, attrs) {
     var s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + inner + '</svg>';
     return h("span", { html: s, style: "display:inline-flex" + (attrs || "") });
@@ -650,7 +657,7 @@
   function selectFrom(pairs, sel) {
     return h("select", {}, pairs.map(function (p){ return h("option", { value: p[0], selected: p[0]===sel ? "selected" : null }, [p[1]]); }));
   }
-  function field(labelText, control) { return h("div", { style:"margin:0 0 13px" }, [h("label", {}, [labelText]), control]); }
+  function field(labelText, control) { return h("div", { style:"margin:0 0 13px" }, [h("label", {}, [tfld(labelText)]), control]); }
 
   // ---- workspaces ---------------------------------------------------------
   // Five role-shaped lenses over one resident lifecycle. Each workspace is a
@@ -1171,7 +1178,7 @@
     if (x.createdAt) cells.push(cell("Raised", String(x.createdAt).replace("T", " ").slice(0, 16)));
     var acts = h("div", { class: "row", style: "margin-top:13px" }, []);
     if (canDecide) {
-      acts.appendChild(h("button", { class: "btn sm", onclick: function () { decideException(x.id, "approve", null, wrap, canDecide); } }, ["Approve"]));
+      acts.appendChild(h("button", { class: "btn sm", onclick: function () { decideException(x.id, "approve", null, wrap, canDecide); } }, [tbtn("Approve")]));
       acts.appendChild(h("button", { class: "btn ghost sm", onclick: function () { var note = prompt("Reason for rejecting (optional):"); decideException(x.id, "reject", note || undefined, wrap, canDecide); } }, ["Reject"]));
     }
     return h("div", { class: "panel", style: "margin:0 0 12px;border-left:3px solid var(--warn)" }, [
@@ -1244,7 +1251,7 @@
         }
         return h("tr",{},[ h("td",{class:"mono"},[a.id]), h("td",{},[t("kind."+a.kind)]), h("td",{},[h("span",{class:"pill "+a.status},[t("status."+a.status)])]), h("td",{class:"mono"},[fmt(a.rateCents)]), h("td",{},[actions]) ]);
       });
-      wrap.appendChild(tableEl([th(t("field.id")),th(t("field.kind")),th(t("field.status")),th(t("field.rate")),th("")], rows, 5, t("dash.noAgreements")));
+      wrap.appendChild(tableEl([th(t("field.id")),th(t("field.kind")),th(t("field.status")),th(t("field.rate")),th(tcol(""))], rows, 5, t("dash.noAgreements")));
     });
   }
 
@@ -1314,9 +1321,9 @@
     return h("div",{class:"steprail"},[ h("div",{class:"stepper"}, kids) ]);
   }
   // Dedicated one-tap cards for the stage's primary next step.
-  function activateCard(id){ return h("div",{class:"mini now"},[ h("h4",{},["Activate this agreement"]), h("div",{class:"stack"},[ h("div",{class:"muted",style:"font-size:12px"},["It's a draft. Activate it to start the lease and begin billing."]), h("button",{class:"btn sm",onclick:function(){ api("/agreements/"+id+"/activate",{method:"POST",body:{}}).then(actThen); }},["Activate"]) ]) ]); }
-  function moveInCard(id){ return h("div",{class:"mini now"},[ h("h4",{},["Record move-in"]), h("div",{class:"stack"},[ h("div",{class:"muted",style:"font-size:12px"},["The resident is ready to take possession — record the move-in and hand over keys."]), h("button",{class:"btn sm",onclick:function(){ api("/agreements/"+id+"/move-in",{method:"POST",body:{}}).then(actThen); }},["Record move-in"]) ]) ]); }
-  function moveOutCard(id){ return h("div",{class:"mini now"},[ h("h4",{},["Record move-out"]), h("div",{class:"stack"},[ h("div",{class:"muted",style:"font-size:12px"},["The resident is leaving — record the move-out, then run the inspection and refund the deposit."]), h("button",{class:"btn sm",onclick:function(){ api("/agreements/"+id+"/move-out",{method:"POST",body:{}}).then(actThen); }},["Record move-out"]) ]) ]); }
+  function activateCard(id){ return h("div",{class:"mini now"},[ h("h4",{},["Activate this agreement"]), h("div",{class:"stack"},[ h("div",{class:"muted",style:"font-size:12px"},["It's a draft. Activate it to start the lease and begin billing."]), h("button",{class:"btn sm",onclick:function(){ api("/agreements/"+id+"/activate",{method:"POST",body:{}}).then(actThen); }},[tbtn("Activate")]) ]) ]); }
+  function moveInCard(id){ return h("div",{class:"mini now"},[ h("h4",{},[tbtn("Record move-in")]), h("div",{class:"stack"},[ h("div",{class:"muted",style:"font-size:12px"},["The resident is ready to take possession — record the move-in and hand over keys."]), h("button",{class:"btn sm",onclick:function(){ api("/agreements/"+id+"/move-in",{method:"POST",body:{}}).then(actThen); }},[tbtn("Record move-in")]) ]) ]); }
+  function moveOutCard(id){ return h("div",{class:"mini now"},[ h("h4",{},[tbtn("Record move-out")]), h("div",{class:"stack"},[ h("div",{class:"muted",style:"font-size:12px"},["The resident is leaving — record the move-out, then run the inspection and refund the deposit."]), h("button",{class:"btn sm",onclick:function(){ api("/agreements/"+id+"/move-out",{method:"POST",body:{}}).then(actThen); }},[tbtn("Record move-out")]) ]) ]); }
 
   // Stage-aware action layout: the step the lease is AT is promoted into a
   // highlighted "Do now" group; routine billing sits under "Everyday"; state
@@ -1387,8 +1394,8 @@
   function moveForm(id){
     return mini("Move in / out",[
       h("div",{class:"row"},[
-        h("button",{class:"btn ghost sm",onclick:function(){ api("/agreements/"+id+"/move-in",{method:"POST",body:{}}).then(actThen); }},["Move in"]),
-        h("button",{class:"btn ghost sm",onclick:function(){ api("/agreements/"+id+"/move-out",{method:"POST",body:{}}).then(actThen); }},["Move out"])
+        h("button",{class:"btn ghost sm",onclick:function(){ api("/agreements/"+id+"/move-in",{method:"POST",body:{}}).then(actThen); }},[tbtn("Move in")]),
+        h("button",{class:"btn ghost sm",onclick:function(){ api("/agreements/"+id+"/move-out",{method:"POST",body:{}}).then(actThen); }},[tbtn("Move out")])
       ])
     ]);
   }
@@ -1426,7 +1433,7 @@
         var payer=l.partyId===pr.billToPartyId;
         return h("tr",{},[ h("td",{},[nameOf(l.partyId)]), h("td",{},[h("span",{class:"pill "+(payer?"active":"draft")},[l.role.replace(/_/g," ")])]), h("td",{class:"muted"},[payer?"bill-to":""]) ]);
       });
-      box.appendChild(tableEl([th("Party"),th("Role"),th("")], rows, 3, "No people assigned yet."));
+      box.appendChild(tableEl([th(tcol("Party")),th(tcol("Role")),th(tcol(""))], rows, 3, "No people assigned yet."));
       if (can("party.manage")) box.appendChild(assignPartyForm(id, all));
     });
     return box;
@@ -1446,7 +1453,7 @@
         api("/parties",{method:"POST",body:{id:pid,kind:"person",displayName:name.value}}).then(function(r){
           if(r.status!==201) return toast(r.body.error||t("msg.denied"),"err"); doAssign(pid);
         });
-      }},["Assign"]));
+      }},[tbtn("Assign")]));
     return mini("Add a person", controls);
   }
   function issueInvoiceForm(id){
@@ -1555,14 +1562,14 @@
     }},[
       h("strong",{},["Bank accounts"]),
       h("p",{class:"sub",style:"margin:6px 0 10px"},["Add a trust account to segregate security-deposit cash from operating cash — deposits book into its own GL cash account, and refunds return from the same one."]),
-      h("div",{class:"grid"},[ field("Code",code), field("Name",name), field("Kind",kind), h("div",{},[h("button",{class:"btn",type:"submit"},["＋ Add bank account"])]) ])
+      h("div",{class:"grid"},[ field("Code",code), field("Name",name), field("Kind",kind), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("＋ Add bank account")])]) ])
     ]);
     wrap.innerHTML=""; wrap.appendChild(form);
     api("/bank-accounts").then(function(r){
       var bs=((r.body||{}).bankAccounts||[]);
       if(!bs.length) return;
       var rows=bs.map(function(b){ return h("tr",{},[ h("td",{class:"mono muted"},[b.code]), h("td",{},[b.name]), h("td",{},[h("span",{class:"pill "+(b.kind==="trust"?"active":"")},[b.kind])]), h("td",{class:"mono muted"},[b.glAccount]) ]); });
-      wrap.appendChild(h("div",{style:"margin-top:12px"},[tableEl([th("Code"),th("Name"),th("Kind"),th("GL cash account")], rows, 4, "")]));
+      wrap.appendChild(h("div",{style:"margin-top:12px"},[tableEl([th(tcol("Code")),th(tcol("Name")),th(tcol("Kind")),th(tcol("GL cash account"))], rows, 4, "")]));
     });
   }
   // Month-end period close: closing a period locks it — no entry may post into
@@ -1578,7 +1585,7 @@
     }},[
       h("strong",{},["Month-end close"]),
       h("p",{class:"sub",style:"margin:6px 0 10px"},["Closing a period locks it — no invoice, payment or bill may post into it afterward, so numbers a fund/owner received can't change. Re-opening a closed period requires approval."]),
-      h("div",{class:"row",style:"gap:8px;align-items:flex-end"},[ field("Period (YYYY-MM)",per), h("button",{class:"btn",type:"submit"},["🔒 Close period"]) ])
+      h("div",{class:"row",style:"gap:8px;align-items:flex-end"},[ field("Period (YYYY-MM)",per), h("button",{class:"btn",type:"submit"},[tbtn("🔒 Close period")]) ])
     ]);
     wrap.innerHTML=""; wrap.appendChild(form);
     api("/periods").then(function(r){
@@ -1586,10 +1593,10 @@
       if(!ps.length) return;
       var rows=ps.map(function(p){
         var act=h("div",{},[]);
-        if(p.status==="closed") act.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/periods/reopen",{method:"POST",body:{period:p.period}}).then(function(x){ if(x.status===202) toast("Re-open requested — needs approval","ok"); else if(x.status===200){ toast("Re-opened","ok"); periodClosePanel(wrap);} else toast((x.body&&x.body.error)||"err","err"); }); }},["Request re-open"]));
+        if(p.status==="closed") act.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/periods/reopen",{method:"POST",body:{period:p.period}}).then(function(x){ if(x.status===202) toast("Re-open requested — needs approval","ok"); else if(x.status===200){ toast("Re-opened","ok"); periodClosePanel(wrap);} else toast((x.body&&x.body.error)||"err","err"); }); }},[tbtn("Request re-open")]));
         return h("tr",{},[ h("td",{class:"mono"},[p.period]), h("td",{},[h("span",{class:"pill "+(p.status==="closed"?"terminated":"active")},[p.status])]), h("td",{class:"muted"},[p.closedBy||"—"]), h("td",{},[act]) ]);
       });
-      wrap.appendChild(h("div",{style:"margin-top:12px"},[tableEl([th("Period"),th(t("field.status")),th("Closed by"),th("")], rows, 4, "")]));
+      wrap.appendChild(h("div",{style:"margin-top:12px"},[tableEl([th(tcol("Period")),th(t("field.status")),th(tcol("Closed by")),th(tcol(""))], rows, 4, "")]));
     });
   }
 
@@ -1661,7 +1668,7 @@
       var body={id:"b-"+Date.now(),payeeId:payee.value,dueAt:due.value,lines:[{description:desc.value||"bill",account:acct.value,amountCents:parseInt(amt.value,10)}]};
       if(prop.value) body.propertyId=prop.value;
       api("/bills",{method:"POST",body:body}).then(function(r){ handleMut(r,"bills"); });
-    }},[ field("Payee",payee), field("Description",desc), field("Account",acct), field("Amount (minor)",amt), field("Property",prop), field("Due",due), h("div",{},[h("button",{class:"btn",type:"submit"},["Record bill"])]) ]);
+    }},[ field("Payee",payee), field("Description",desc), field("Account",acct), field("Amount (minor)",amt), field("Property",prop), field("Due",due), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Record bill")])]) ]);
   }
   function refreshBills(wrap, kpis){
     api("/bills").then(function(r){
@@ -1714,7 +1721,7 @@
       var body={ id:"pm-"+Date.now(), title:title.value, cadenceDays:parseInt(cadence.value,10), nextDueAt:due.value, priority:pri.value };
       if(space.value) body.spaceId=space.value;
       api("/pm-schedules",{method:"POST",body:body}).then(function(r){ if(r.status===201){ toast(t("msg.saved"),"ok"); title.value=""; refreshPm(wrap);} else toast((r.body||{}).error||"err","err"); });
-    }},[ field("Task",title), field("Every (days)",cadence), field("First due",due), field("Priority",pri), field("Space",space), h("div",{},[h("button",{class:"btn",type:"submit"},["Add schedule"])]) ]);
+    }},[ field("Task",title), field("Every (days)",cadence), field("First due",due), field("Priority",pri), field("Space",space), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Add schedule")])]) ]);
     if(can("maintenance.manage")) bar.appendChild(h("button",{class:"btn sm",onclick:function(){ api("/maintenance/pm-sweep",{method:"POST",body:{}}).then(function(r){ if(r.status===200){ toast("Raised "+((r.body||{}).raised||[]).length+" work order(s)","ok"); refreshPm(wrap);} else toast((r.body||{}).error||"err","err"); }); }},["Run PM sweep"]));
     return h("div",{},[form, bar]);
   }
@@ -1732,7 +1739,7 @@
           h("td",{},[act])
         ]);
       });
-      wrap.appendChild(tableEl([th("Task"),th("Cadence"),th("Next due"),th("Status"),th("")], rows, 5, "No preventive-maintenance schedules."));
+      wrap.appendChild(tableEl([th(tcol("Task")),th(tcol("Cadence")),th(tcol("Next due")),th(tcol("Status")),th(tcol(""))], rows, 5, "No preventive-maintenance schedules."));
     });
   }
   function workOrderForm(spaces){
@@ -1743,7 +1750,7 @@
     return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
       if(!title.value){ return toast("Enter a title","err"); }
       api("/work-orders",{method:"POST",body:{id:"wo-"+Date.now(),title:title.value,spaceId:space.value||undefined,category:cat.value,priority:pri.value}}).then(function(r){ handleMut(r,"maintenance"); });
-    }},[ field("Title",title), field("Space",space), field("Category",cat), field("Priority",pri), h("div",{},[h("button",{class:"btn",type:"submit"},["Raise work order"])]) ]);
+    }},[ field("Title",title), field("Space",space), field("Category",cat), field("Priority",pri), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Raise work order")])]) ]);
   }
   function woPill(s){ return (s==="completed"||s==="in_progress")?"active":s==="cancelled"?"terminated":"draft"; }
   function woBtn(id,action,label){ return h("button",{class:"btn ghost sm",onclick:function(){ api("/work-orders/"+id+"/"+action,{method:"POST",body:{}}).then(function(x){handleMut(x,"maintenance");}); }},[label]); }
@@ -1758,16 +1765,16 @@
               var vsel=selectFrom([["","— vendor —"]].concat(parties.map(function(p){return [p.id,p.displayName];})), wo.assignedVendorPartyId||"");
               vsel.style.marginRight="6px";
               actions.appendChild(vsel);
-              actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ if(!vsel.value) return toast("Pick a vendor","err"); api("/work-orders/"+wo.id+"/assign",{method:"POST",body:{vendorPartyId:vsel.value}}).then(function(x){handleMut(x,"maintenance");}); }},["Assign"]));
+              actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ if(!vsel.value) return toast("Pick a vendor","err"); api("/work-orders/"+wo.id+"/assign",{method:"POST",body:{vendorPartyId:vsel.value}}).then(function(x){handleMut(x,"maintenance");}); }},[tbtn("Assign")]));
             }
             actions.appendChild(woBtn(wo.id,"start","Start"));
           }
           if(wo.status==="in_progress") actions.appendChild(woBtn(wo.id,"complete","Complete"));
-          if(wo.status!=="completed"&&wo.status!=="cancelled") actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/work-orders/"+wo.id+"/cancel",{method:"POST",body:{reason:"cancelled from portal"}}).then(function(x){handleMut(x,"maintenance");}); }},["Cancel"]));
+          if(wo.status!=="completed"&&wo.status!=="cancelled") actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/work-orders/"+wo.id+"/cancel",{method:"POST",body:{reason:"cancelled from portal"}}).then(function(x){handleMut(x,"maintenance");}); }},[tbtn("Cancel")]));
         }
         return h("tr",{},[ h("td",{},[wo.title]), h("td",{class:"mono"},[wo.spaceId||"—"]), h("td",{},[h("span",{class:"pill "+woPill(wo.status)},[wo.status.replace(/_/g," ")])]), h("td",{},[wo.priority]), h("td",{},[actions]) ]);
       });
-      wrap.appendChild(tableEl([th("Title"),th("Space"),th(t("field.status")),th("Priority"),th("")], rows, 5, "No work orders yet."));
+      wrap.appendChild(tableEl([th(tcol("Title")),th(tcol("Space")),th(t("field.status")),th(tcol("Priority")),th(tcol(""))], rows, 5, "No work orders yet."));
     });
   }
 
@@ -1795,17 +1802,17 @@
         if(r.status===409) return toast("That slot is already booked","err");
         handleMut(r,"reservations");
       });
-    }},[ field("Space",space), field("Reserved by",holder), field("Start",start), field("End",end), field("Price (minor)",price), h("div",{},[h("button",{class:"btn",type:"submit"},["Reserve"])]) ]);
+    }},[ field("Space",space), field("Reserved by",holder), field("Start",start), field("End",end), field("Price (minor)",price), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Reserve")])]) ]);
   }
   function refreshReservations(wrap){
     api("/reservations").then(function(r){
       wrap.innerHTML="";
       var rows=((r.body||{}).reservations||[]).map(function(rv){
         var actions=h("div",{class:"row"},[]);
-        if(rv.status==="reserved" && can("reservation.manage")) actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/reservations/"+rv.id+"/cancel",{method:"POST",body:{}}).then(function(x){handleMut(x,"reservations");}); }},["Cancel"]));
+        if(rv.status==="reserved" && can("reservation.manage")) actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/reservations/"+rv.id+"/cancel",{method:"POST",body:{}}).then(function(x){handleMut(x,"reservations");}); }},[tbtn("Cancel")]));
         return h("tr",{},[ h("td",{class:"mono"},[rv.spaceId]), h("td",{class:"mono"},[rv.start]), h("td",{class:"mono"},[rv.end]), h("td",{class:"mono"},[rv.priceCents!=null?fmt(rv.priceCents):"—"]), h("td",{},[h("span",{class:"pill "+(rv.status==="reserved"?"active":"terminated")},[rv.status])]), h("td",{},[actions]) ]);
       });
-      wrap.appendChild(tableEl([th("Space"),th("Start"),th("End"),th("Price"),th(t("field.status")),th("")], rows, 6, "No reservations yet."));
+      wrap.appendChild(tableEl([th(tcol("Space")),th(tcol("Start")),th(tcol("End")),th(tcol("Price")),th(t("field.status")),th(tcol(""))], rows, 6, "No reservations yet."));
     });
   }
 
@@ -1824,7 +1831,7 @@
     return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
       if(!subject.value) return toast("Enter a subject","err");
       api("/threads",{method:"POST",body:{id:"th-"+Date.now(),subject:subject.value,kind:kind.value}}).then(function(r){ handleMut(r,"inbox"); });
-    }},[ field("Subject",subject), field("Kind",kind), h("div",{},[h("button",{class:"btn",type:"submit"},["Open thread"])]) ]);
+    }},[ field("Subject",subject), field("Kind",kind), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Open thread")])]) ]);
   }
   function refreshThreads(wrap){
     api("/threads").then(function(r){
@@ -1832,7 +1839,7 @@
       var rows=((r.body||{}).threads||[]).map(function(tr){
         return h("tr",{},[ h("td",{},[h("button",{class:"btn ghost sm",onclick:function(){ state.threadId=tr.id; render(); }},[tr.subject])]), h("td",{},[tr.kind]), h("td",{},[h("span",{class:"pill "+(tr.status==="open"?"active":"completed")},[tr.status])]) ]);
       });
-      wrap.appendChild(tableEl([th("Subject"),th("Kind"),th(t("field.status"))], rows, 3, "No conversations yet."));
+      wrap.appendChild(tableEl([th(tcol("Subject")),th(tcol("Kind")),th(t("field.status"))], rows, 3, "No conversations yet."));
     });
   }
   function viewThread(main, id){
@@ -1846,8 +1853,8 @@
       slot.appendChild(h("div",{class:"stack"}, msgs.map(function(m){ return h("div",{class:"mini"},[ h("div",{class:"muted",style:"font-size:11.5px"},[m.authorType+" · "+m.direction+" · "+m.at]), h("div",{},[m.body]) ]); })));
       if(can("comms.send") && th_.status==="open"){
         var body=h("input",{placeholder:"Type a reply…"});
-        slot.appendChild(h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault(); if(!body.value) return; api("/threads/"+id+"/messages",{method:"POST",body:{id:"m-"+Date.now(),body:body.value}}).then(function(x){ if(x.status===201){ viewThread(clear(main), id); } else toast(x.body.error||"err","err"); }); }},[ field("Reply",body), h("div",{},[h("button",{class:"btn",type:"submit"},["Send"])]) ]));
-        if(can("comms.manage")) slot.appendChild(h("button",{class:"btn ghost sm",style:"margin-top:8px",onclick:function(){ api("/threads/"+id+"/resolve",{method:"POST",body:{}}).then(function(){ viewThread(clear(main), id); }); }},["Resolve"]));
+        slot.appendChild(h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault(); if(!body.value) return; api("/threads/"+id+"/messages",{method:"POST",body:{id:"m-"+Date.now(),body:body.value}}).then(function(x){ if(x.status===201){ viewThread(clear(main), id); } else toast(x.body.error||"err","err"); }); }},[ field("Reply",body), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Send")])]) ]));
+        if(can("comms.manage")) slot.appendChild(h("button",{class:"btn ghost sm",style:"margin-top:8px",onclick:function(){ api("/threads/"+id+"/resolve",{method:"POST",body:{}}).then(function(){ viewThread(clear(main), id); }); }},[tbtn("Resolve")]));
       }
     });
   }
@@ -1866,7 +1873,7 @@
     var amt=h("input",{type:"number",value:"80000"}); var date=h("input",{type:"date",value:"2026-07-02"}); var desc=h("input",{placeholder:"PIX received"});
     return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
       api("/bank-transactions",{method:"POST",body:{id:"bt-"+Date.now(),amountCents:parseInt(amt.value,10),postedAt:date.value,description:desc.value||"import"}}).then(function(r){ handleMut(r,"reconcile"); });
-    }},[ field("Amount (signed minor)",amt), field("Posted",date), field("Description",desc), h("div",{},[h("button",{class:"btn",type:"submit"},["Import line"])]) ]);
+    }},[ field("Amount (signed minor)",amt), field("Posted",date), field("Description",desc), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Import line")])]) ]);
   }
   function refreshBankTxns(wrap){
     api("/bank-transactions").then(function(r){
@@ -1877,11 +1884,11 @@
           actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){
             api("/bank-transactions/"+txn.id).then(function(d){ var s=((d.body||{}).suggestions||[])[0]; if(!s) return toast("No match found","err"); api("/bank-transactions/"+txn.id+"/match",{method:"POST",body:{targetType:s.candidate.type,targetId:s.candidate.id}}).then(function(x){ handleMut(x,"reconcile"); }); });
           }},["Auto-match"]));
-          actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/bank-transactions/"+txn.id+"/ignore",{method:"POST",body:{}}).then(function(x){handleMut(x,"reconcile");}); }},["Ignore"]));
+          actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/bank-transactions/"+txn.id+"/ignore",{method:"POST",body:{}}).then(function(x){handleMut(x,"reconcile");}); }},[tbtn("Ignore")]));
         }
         return h("tr",{},[ h("td",{class:"mono"},[txn.postedAt]), h("td",{class:"mono"},[fmt(txn.amountCents)]), h("td",{},[txn.description]), h("td",{},[h("span",{class:"pill "+(txn.status==="matched"?"active":txn.status==="ignored"?"terminated":"draft")},[txn.status])]), h("td",{},[actions]) ]);
       });
-      wrap.appendChild(tableEl([th("Posted"),th("Amount"),th("Description"),th(t("field.status")),th("")], rows, 5, "No bank lines yet."));
+      wrap.appendChild(tableEl([th(tcol("Posted")),th(tcol("Amount")),th(tcol("Description")),th(t("field.status")),th(tcol(""))], rows, 5, "No bank lines yet."));
     });
   }
 
@@ -1903,7 +1910,7 @@
       if(!provider.value) return toast("Enter a provider","err");
       var config={}; if(endpoint.value) config.endpoint=endpoint.value;
       api("/integrations",{method:"POST",body:{id:"int-"+Date.now(),kind:kind.value,provider:provider.value,config:config,secretRef:secretRef.value||undefined}}).then(function(r){ handleMut(r,"integrations"); });
-    }},[ field("Kind",kind), field("Provider",provider), field("Secret ref",secretRef), field("Endpoint",endpoint), h("div",{},[h("button",{class:"btn",type:"submit"},["Connect"])]) ]);
+    }},[ field("Kind",kind), field("Provider",provider), field("Secret ref",secretRef), field("Endpoint",endpoint), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Connect")])]) ]);
   }
   function refreshIntegrations(wrap, cmdWrap){
     api("/integrations").then(function(r){
@@ -1913,12 +1920,12 @@
         if(can("connector.dispatch") && it.status==="active"){
           var act=h("input",{placeholder:"lock.unlock",style:"width:130px;margin-right:6px"});
           actions.appendChild(act);
-          actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ var a=act.value||"lock.unlock"; api("/integrations/"+it.id+"/commands",{method:"POST",body:{id:"cmd-"+Date.now(),action:a}}).then(function(x){ if(x.status===201){ toast(t("msg.saved"),"ok"); refreshCommands(cmdWrap);} else toast(x.body.error||"err","err"); }); }},["Send"]));
+          actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ var a=act.value||"lock.unlock"; api("/integrations/"+it.id+"/commands",{method:"POST",body:{id:"cmd-"+Date.now(),action:a}}).then(function(x){ if(x.status===201){ toast(t("msg.saved"),"ok"); refreshCommands(cmdWrap);} else toast(x.body.error||"err","err"); }); }},[tbtn("Send")]));
         }
         if(can("integration.manage")) actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/integrations/"+it.id+"/status",{method:"POST",body:{status:it.status==="active"?"disabled":"active"}}).then(function(x){handleMut(x,"integrations");}); }},[it.status==="active"?"Disable":"Enable"]));
         return h("tr",{},[ h("td",{class:"mono"},[it.provider]), h("td",{},[it.kind.replace(/_/g," ")]), h("td",{class:"mono muted"},[it.secretRef||"—"]), h("td",{},[h("span",{class:"pill "+(it.status==="active"?"active":"terminated")},[it.status])]), h("td",{},[actions]) ]);
       });
-      wrap.appendChild(tableEl([th("Provider"),th("Kind"),th("Secret ref"),th(t("field.status")),th("")], rows, 5, "No integrations connected."));
+      wrap.appendChild(tableEl([th(tcol("Provider")),th(tcol("Kind")),th(tcol("Secret ref")),th(t("field.status")),th(tcol(""))], rows, 5, "No integrations connected."));
     });
   }
   function refreshCommands(wrap){
@@ -1927,7 +1934,7 @@
       var rows=((r.body||{}).commands||[]).map(function(c){
         return h("tr",{},[ h("td",{class:"mono"},[c.action]), h("td",{},[h("span",{class:"pill "+(c.status==="succeeded"?"active":c.status==="failed"?"terminated":"draft")},[c.status.replace(/_/g," ")])]), h("td",{class:"mono muted"},[c.createdAt]) ]);
       });
-      wrap.appendChild(tableEl([th("Action"),th(t("field.status")),th("Created")], rows, 3, "No commands yet."));
+      wrap.appendChild(tableEl([th(tcol("Action")),th(t("field.status")),th(tcol("Created"))], rows, 3, "No commands yet."));
     });
   }
 
@@ -1997,7 +2004,7 @@
       field("Nights ≥",los2n), field("… discount %",los2d),
       sub("Season window (optional)"),
       field("From",seasonS), field("To",seasonE), field("Season uplift %",seasonU),
-      h("div",{style:"grid-column:1/-1"},[h("button",{class:"btn",type:"submit"},["Create pricing rule"])])
+      h("div",{style:"grid-column:1/-1"},[h("button",{class:"btn",type:"submit"},[tbtn("Create pricing rule")])])
     ]);
   }
   function refreshPricing(wrap, quoteSlot){
@@ -2012,7 +2019,7 @@
         if((pr.seasons||[]).length) levers.push((pr.seasons.length)+" season");
         return h("tr",{},[ h("td",{},[pr.name]), h("td",{},[fmt(pr.baseCents)]), h("td",{class:"muted"},[pr.minCents!=null?fmt(pr.minCents):"—"]), h("td",{class:"muted"},[pr.maxCents!=null?fmt(pr.maxCents):"—"]), h("td",{class:"mono muted"},[levers.join(" · ")||"static"]) ]);
       });
-      wrap.appendChild(tableEl([th("Rule"),th("Base"),th("Floor"),th("Ceiling"),th("Active levers")], rows, 5, "No pricing rules yet — create one above to price dynamically."));
+      wrap.appendChild(tableEl([th(tcol("Rule")),th(tcol("Base")),th(tcol("Floor")),th(tcol("Ceiling")),th(tcol("Active levers"))], rows, 5, "No pricing rules yet — create one above to price dynamically."));
       if(quoteSlot){ quoteSlot.innerHTML=""; quoteSlot.appendChild(quoteForm(rules)); }
     });
   }
@@ -2039,10 +2046,10 @@
           var delta=f.factorBps===10000?"clamp":((f.factorBps>=10000?"+":"")+pctFromBps(f.factorBps)+"%");
           steps.push(h("tr",{},[ h("td",{},[f.name]), h("td",{class:"muted",style:"color:"+(f.factorBps>10000?"#3aa76d":(f.factorBps<10000?"#e0894a":"var(--muted)"))},[delta]), h("td",{style:"text-align:right"},[fmt(running)]) ]));
         });
-        out.appendChild(tableEl([th("Factor"),th("Effect"),h("th",{style:"text-align:right"},["Running rate"])], steps, 3, ""));
+        out.appendChild(tableEl([th(tcol("Factor")),th(tcol("Effect")),h("th",{style:"text-align:right"},["Running rate"])], steps, 3, ""));
         if(!(q.factors||[]).length) out.appendChild(h("div",{class:"muted"},["Base rate — no factors applied for these inputs."]));
       });
-    }},[ field("Rule",rule), field("Check-in",checkIn), field("Nights",nights), field("Occupancy % (demand signal)",occ), field("Quoting as-of (lead time)",asOf), h("div",{},[h("button",{class:"btn",type:"submit"},["Quote stay"])]) ]);
+    }},[ field("Rule",rule), field("Check-in",checkIn), field("Nights",nights), field("Occupancy % (demand signal)",occ), field("Quoting as-of (lead time)",asOf), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Quote stay")])]) ]);
     return h("div",{},[form, h("div",{class:"panel"},[out])]);
   }
 
@@ -2063,7 +2070,7 @@
       api("/leads",{method:"POST",body:{id:"ld-"+Date.now(), name:name.value, source:source.value||undefined, estValueCents:Number(est.value)}}).then(function(r){
         if(r.status===201){ toast(t("msg.saved"),"ok"); refreshLeads(wrap, kpiWrap); } else toast(r.body.error||"err","err");
       });
-    }},[ field("Name",name), field("Source",source), field("Est. value (cents)",est), h("div",{},[h("button",{class:"btn",type:"submit"},["Add lead"])]) ]);
+    }},[ field("Name",name), field("Source",source), field("Est. value (cents)",est), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Add lead")])]) ]);
   }
   function refreshLeads(wrap, kpiWrap){
     if(kpiWrap) api("/crm/summary").then(function(r){
@@ -2078,12 +2085,12 @@
         if(can("crm.manage") && l.stage!=="signed" && l.stage!=="lost"){
           var idx=STAGES.indexOf(l.stage); var next=STAGES[idx+1];
           if(next) actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/leads/"+l.id+"/advance",{method:"POST",body:{stage:next}}).then(function(x){handleLead(x,wrap,kpiWrap);}); }},["→ "+next]));
-          actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/leads/"+l.id+"/lose",{method:"POST",body:{reason:"lost"}}).then(function(x){handleLead(x,wrap,kpiWrap);}); }},["Lose"]));
+          actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/leads/"+l.id+"/lose",{method:"POST",body:{reason:"lost"}}).then(function(x){handleLead(x,wrap,kpiWrap);}); }},[tbtn("Lose")]));
         }
         var pillCls = l.stage==="signed"?"active":(l.stage==="lost"?"terminated":"draft");
         return h("tr",{},[ h("td",{},[l.name]), h("td",{class:"muted"},[l.source||"—"]), h("td",{},[fmt(l.estValueCents)]), h("td",{},[h("span",{class:"pill "+pillCls},[l.stage])]), h("td",{},[actions]) ]);
       });
-      wrap.appendChild(tableEl([th("Lead"),th("Source"),th("Est. value"),th("Stage"),th("")], rows, 5, "No leads yet."));
+      wrap.appendChild(tableEl([th(tcol("Lead")),th(tcol("Source")),th(tcol("Est. value")),th(tcol("Stage")),th(tcol(""))], rows, 5, "No leads yet."));
     });
   }
   function handleLead(x, wrap, kpiWrap){ if(x.status===200){ toast(t("msg.saved"),"ok"); refreshLeads(wrap, kpiWrap);} else toast(x.body.error||"err","err"); }
@@ -2113,7 +2120,7 @@
       api("/applications",{method:"POST",body:body}).then(function(r){
         if(r.status===201){ toast(t("msg.saved"),"ok"); nm.value=em.value=inc.value=""; refreshApplications(wrap); } else toast((r.body||{}).error||"err","err");
       });
-    }},[ field("Name",nm), field("Email",em), field("Income (cents)",inc), field("Unit",unit), field("Lead",lead), h("div",{},[h("button",{class:"btn",type:"submit"},["Add application"])]) ]);
+    }},[ field("Name",nm), field("Email",em), field("Income (cents)",inc), field("Unit",unit), field("Lead",lead), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Add application")])]) ]);
   }
   function refreshApplications(wrap){
     api("/applications").then(function(r){
@@ -2123,15 +2130,15 @@
         var decided = a.status==="approved"||a.status==="denied"||a.status==="withdrawn";
         if(can("application.manage") && !decided){
           if(a.status==="submitted"||a.status==="screening")
-            actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/applications/"+a.id+"/screen",{method:"POST",body:{}}).then(function(x){handleApp(x,wrap);}); }},["Screen"]));
-          actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/applications/"+a.id+"/decide",{method:"POST",body:{decision:"approve"}}).then(function(x){handleApp(x,wrap);}); }},["Approve"]));
-          actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ var reason=prompt("Adverse-action reason (required to deny)"); if(!reason) return; api("/applications/"+a.id+"/decide",{method:"POST",body:{decision:"deny",reason:reason}}).then(function(x){handleApp(x,wrap);}); }},["Deny"]));
+            actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/applications/"+a.id+"/screen",{method:"POST",body:{}}).then(function(x){handleApp(x,wrap);}); }},[tbtn("Screen")]));
+          actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/applications/"+a.id+"/decide",{method:"POST",body:{decision:"approve"}}).then(function(x){handleApp(x,wrap);}); }},[tbtn("Approve")]));
+          actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ var reason=prompt("Adverse-action reason (required to deny)"); if(!reason) return; api("/applications/"+a.id+"/decide",{method:"POST",body:{decision:"deny",reason:reason}}).then(function(x){handleApp(x,wrap);}); }},[tbtn("Deny")]));
         }
         var pillCls = a.status==="approved"?"active":(a.status==="denied"||a.status==="withdrawn"?"terminated":"draft");
         var scr = a.screening ? (a.screening.recommendation||"—")+(a.screening.creditScore?(" · "+a.screening.creditScore):"") : "—";
         return h("tr",{},[ h("td",{},[a.applicantName]), h("td",{class:"muted"},[a.applicantEmail||"—"]), h("td",{},[a.incomeCents?fmt(a.incomeCents):"—"]), h("td",{class:"muted"},[scr]), h("td",{},[h("span",{class:"pill "+pillCls},[a.status])]), h("td",{},[actions]) ]);
       });
-      wrap.appendChild(tableEl([th("Applicant"),th("Email"),th("Income"),th("Screening"),th("Status"),th("")], rows, 6, "No applications yet."));
+      wrap.appendChild(tableEl([th(tcol("Applicant")),th(tcol("Email")),th(tcol("Income")),th(tcol("Screening")),th(tcol("Status")),th(tcol(""))], rows, 6, "No applications yet."));
     });
   }
   function handleApp(x, wrap){ if(x.status===200){ toast(t("msg.saved"),"ok"); refreshApplications(wrap);} else toast((x.body||{}).error||"err","err"); }
@@ -2162,7 +2169,7 @@
       api("/tours",{method:"POST",body:body}).then(function(r){
         if(r.status===201){ toast(t("msg.saved"),"ok"); nm.value=em.value=when.value=""; refreshTours(wrap); } else toast((r.body||{}).error||"err","err");
       });
-    }},[ field("Prospect",nm), field("Email",em), field("When",when), field("Unit",unit), field("Lead",lead), h("div",{},[h("button",{class:"btn",type:"submit"},["Schedule tour"])]) ]);
+    }},[ field("Prospect",nm), field("Email",em), field("When",when), field("Unit",unit), field("Lead",lead), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Schedule tour")])]) ]);
   }
   function refreshTours(wrap){
     api("/tours").then(function(r){
@@ -2171,16 +2178,16 @@
         var act=h("div",{class:"row"},[]);
         var open = tr.status==="requested"||tr.status==="confirmed";
         if(can("tour.manage") && open){
-          if(tr.status==="requested") act.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ tourAct(tr.id,"confirm",{},wrap); }},["Confirm"]));
-          act.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ tourAct(tr.id,"complete",{},wrap); }},["Complete"]));
-          act.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ tourAct(tr.id,"no-show",{},wrap); }},["No-show"]));
-          act.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ tourAct(tr.id,"cancel",{reason:"cancelled"},wrap); }},["Cancel"]));
+          if(tr.status==="requested") act.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ tourAct(tr.id,"confirm",{},wrap); }},[tbtn("Confirm")]));
+          act.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ tourAct(tr.id,"complete",{},wrap); }},[tbtn("Complete")]));
+          act.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ tourAct(tr.id,"no-show",{},wrap); }},[tbtn("No-show")]));
+          act.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ tourAct(tr.id,"cancel",{reason:"cancelled"},wrap); }},[tbtn("Cancel")]));
         }
         var cls = tr.status==="completed"?"active":(tr.status==="cancelled"||tr.status==="no_show"?"terminated":"draft");
         var whenTxt = (tr.scheduledAt||"").replace("T"," ").slice(0,16);
         return h("tr",{},[ h("td",{},[tr.prospectName]), h("td",{class:"muted"},[whenTxt]), h("td",{class:"muted"},[tr.unitId||"—"]), h("td",{},[h("span",{class:"pill "+cls},[tr.status])]), h("td",{},[act]) ]);
       });
-      wrap.appendChild(tableEl([th("Prospect"),th("When"),th("Unit"),th("Status"),th("")], rows, 5, "No tours scheduled."));
+      wrap.appendChild(tableEl([th(tcol("Prospect")),th(tcol("When")),th(tcol("Unit")),th(tcol("Status")),th(tcol(""))], rows, 5, "No tours scheduled."));
     });
   }
   function tourAct(id, action, body, wrap){ api("/tours/"+id+"/"+action,{method:"POST",body:body||{}}).then(function(x){ if(x.status===200){ toast(t("msg.saved"),"ok"); refreshTours(wrap);} else toast((x.body||{}).error||"err","err"); }); }
@@ -2203,7 +2210,7 @@
       var body={ id:"turn-"+Date.now(), unitId:unit.value };
       if(when.value) body.vacatedAt=new Date(when.value).toISOString();
       api("/turns",{method:"POST",body:body}).then(function(r){ if(r.status===201){ toast("Turn opened","ok"); refreshTurns(wrap);} else toast((r.body||{}).error||"err","err"); });
-    }},[ field("Unit",unit), field("Vacated (optional)",when), h("div",{},[h("button",{class:"btn",type:"submit"},["Open turn"])]) ]);
+    }},[ field("Unit",unit), field("Vacated (optional)",when), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Open turn")])]) ]);
   }
   function refreshTurns(wrap){
     api("/turns").then(function(r){
@@ -2221,8 +2228,8 @@
         }));
         var actions=h("div",{class:"row",style:"gap:8px;margin-top:10px"},[]);
         if(open && can("turn.manage")){
-          actions.appendChild(h("button",{class:"btn sm",disabled:(tn.openTasks>0)?"disabled":null,title:tn.openTasks>0?"Complete all tasks first":"",onclick:function(){ api("/turns/"+tn.id+"/ready",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast("Unit rent-ready 🎉","ok"); refreshTurns(wrap);} else toast((x.body||{}).error||"err","err"); }); }},["Mark rent-ready"]));
-          actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/turns/"+tn.id+"/cancel",{method:"POST",body:{reason:"cancelled"}}).then(function(x){ if(x.status===200){ toast(t("msg.saved"),"ok"); refreshTurns(wrap);} else toast((x.body||{}).error||"err","err"); }); }},["Cancel"]));
+          actions.appendChild(h("button",{class:"btn sm",disabled:(tn.openTasks>0)?"disabled":null,title:tn.openTasks>0?"Complete all tasks first":"",onclick:function(){ api("/turns/"+tn.id+"/ready",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast("Unit rent-ready 🎉","ok"); refreshTurns(wrap);} else toast((x.body||{}).error||"err","err"); }); }},[tbtn("Mark rent-ready")]));
+          actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/turns/"+tn.id+"/cancel",{method:"POST",body:{reason:"cancelled"}}).then(function(x){ if(x.status===200){ toast(t("msg.saved"),"ok"); refreshTurns(wrap);} else toast((x.body||{}).error||"err","err"); }); }},[tbtn("Cancel")]));
         }
         wrap.appendChild(h("div",{class:"panel",style:"margin-bottom:12px"},[
           h("div",{class:"row",style:"justify-content:space-between;flex-wrap:wrap;gap:8px"},[
@@ -2260,7 +2267,7 @@
       var body={ id:"ins-"+Date.now(), agreementId:ag.value, carrier:carrier.value, policyNumber:polno.value,
         liabilityCents:Math.round((parseFloat(liab.value)||0)*100), effectiveAt:eff.value, expiresAt:exp.value };
       api("/insurance-policies",{method:"POST",body:body}).then(function(r){ if(r.status===201){ toast("Policy added","ok"); carrier.value="";polno.value="";liab.value=""; refreshInsurance(wrap,kpis);} else toast((r.body||{}).error||"err","err"); });
-    }},[ field("Lease",ag), field("Carrier",carrier), field("Policy number",polno), field("Liability coverage",liab), field("Effective",eff), field("Expires",exp), h("div",{},[h("button",{class:"btn",type:"submit"},["Add policy"])]) ]);
+    }},[ field("Lease",ag), field("Carrier",carrier), field("Policy number",polno), field("Liability coverage",liab), field("Effective",eff), field("Expires",exp), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Add policy")])]) ]);
   }
   function refreshInsurance(wrap,kpis){
     api("/reports/insurance_compliance").then(function(r){
@@ -2276,8 +2283,8 @@
       var rows=pols.map(function(p){
         var actions=h("div",{class:"row",style:"gap:6px"},[]);
         if(can("insurance.manage")){
-          if(!p.verifiedAt) actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/insurance-policies/"+p.id+"/verify",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast("Verified","ok"); refreshInsurance(wrap,kpis);} else toast((x.body||{}).error||"err","err"); }); }},["Verify"]));
-          if(p.status==="active") actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/insurance-policies/"+p.id+"/cancel",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast("Cancelled","ok"); refreshInsurance(wrap,kpis);} else toast((x.body||{}).error||"err","err"); }); }},["Cancel"]));
+          if(!p.verifiedAt) actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/insurance-policies/"+p.id+"/verify",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast("Verified","ok"); refreshInsurance(wrap,kpis);} else toast((x.body||{}).error||"err","err"); }); }},[tbtn("Verify")]));
+          if(p.status==="active") actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/insurance-policies/"+p.id+"/cancel",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast("Cancelled","ok"); refreshInsurance(wrap,kpis);} else toast((x.body||{}).error||"err","err"); }); }},[tbtn("Cancel")]));
         }
         return h("tr",{},[
           h("td",{},[p.residentName||"—"]), h("td",{},[p.unitLabel||"—"]), h("td",{},[p.carrier]),
@@ -2286,7 +2293,7 @@
           h("td",{},[actions])
         ]);
       });
-      wrap.appendChild(tableEl([th("Resident"),th("Unit"),th("Carrier"),th("Liability"),th("Expires"),th("Coverage"),th("")], rows, 7, "No policies."));
+      wrap.appendChild(tableEl([th(tcol("Resident")),th(tcol("Unit")),th(tcol("Carrier")),th(tcol("Liability")),th(tcol("Expires")),th(tcol("Coverage")),th(tcol(""))], rows, 7, "No policies."));
     });
   }
 
@@ -2312,7 +2319,7 @@
       var body={ id:"util-"+Date.now(), propertyId:prop.value, utility:util.value, method:method.value,
         totalCents:Math.round((parseFloat(total.value)||0)*100), periodStart:ps.value, periodEnd:pe.value };
       api("/utility-bills",{method:"POST",body:body}).then(function(r){ if(r.status===201){ toast("Utility bill added","ok"); total.value=""; refreshUtilities(wrap);} else toast((r.body||{}).error||"err","err"); });
-    }},[ field("Property",prop), field("Utility",util), field("Allocation",method), field("Master total",total), field("Period start",ps), field("Period end",pe), h("div",{},[h("button",{class:"btn",type:"submit"},["Add bill"])]) ]);
+    }},[ field("Property",prop), field("Utility",util), field("Allocation",method), field("Master total",total), field("Period start",ps), field("Period end",pe), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Add bill")])]) ]);
   }
   function refreshUtilities(wrap){
     api("/utility-bills").then(function(r){
@@ -2327,9 +2334,9 @@
           h("div",{class:"row",style:"gap:8px"},[ h("span",{class:"pill "},[fmt(b.totalCents)+" · "+b.method]), h("span",{class:"pill "+stCls},[b.status]) ])
         ]);
         var actions=h("div",{class:"row",style:"gap:8px;margin-top:10px"},[]);
-        if(b.status!=="billed" && can("utility.manage")) actions.appendChild(h("button",{class:"btn sm",onclick:function(){ api("/utility-bills/"+b.id+"/bill",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast("Billed "+(x.body||{}).billed+" resident(s)","ok"); refreshUtilities(wrap);} else toast((x.body||{}).error||"err","err"); }); }},["Bill residents"]));
+        if(b.status!=="billed" && can("utility.manage")) actions.appendChild(h("button",{class:"btn sm",onclick:function(){ api("/utility-bills/"+b.id+"/bill",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast("Billed "+(x.body||{}).billed+" resident(s)","ok"); refreshUtilities(wrap);} else toast((x.body||{}).error||"err","err"); }); }},[tbtn("Bill residents")]));
         wrap.appendChild(h("div",{class:"panel",style:"margin-bottom:12px"},[ head,
-          h("table",{style:"margin-top:10px"},[ h("thead",{},[h("tr",{},[th("Resident"),th("Unit"),th("Basis"),th("Share")])]), h("tbody",{},rows) ]),
+          h("table",{style:"margin-top:10px"},[ h("thead",{},[h("tr",{},[th(tcol("Resident")),th(tcol("Unit")),th(tcol("Basis")),th(tcol("Share"))])]), h("tbody",{},rows) ]),
           actions
         ]));
       });
@@ -2357,7 +2364,7 @@
       if(!recip.value) return toast("Pick a recipient","err");
       var body={ id:"pcl-"+Date.now(), partyId:recip.value, carrier:carrier.value, description:desc.value||undefined, location:loc.value||undefined, notify:!!notify.checked };
       api("/parcels",{method:"POST",body:body}).then(function(r){ if(r.status===201){ toast(notify.checked?"Logged + resident notified":"Parcel logged","ok"); desc.value="";loc.value=""; refreshParcels(wrap);} else toast((r.body||{}).error||"err","err"); });
-    }},[ field("Recipient",recip), field("Carrier",carrier), field("Description",desc), field("Location",loc), field("Notify recipient",notify), h("div",{},[h("button",{class:"btn",type:"submit"},["Log parcel"])]) ]);
+    }},[ field("Recipient",recip), field("Carrier",carrier), field("Description",desc), field("Location",loc), field("Notify recipient",notify), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Log parcel")])]) ]);
   }
   function refreshParcels(wrap){
     api("/parcels").then(function(r){
@@ -2367,8 +2374,8 @@
       var rows=parcels.map(function(p){
         var actions=h("div",{class:"row",style:"gap:6px"},[]);
         if(p.status!=="picked_up" && can("package.manage")){
-          if(p.status!=="notified") actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/parcels/"+p.id+"/notify",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast("Recipient notified","ok"); refreshParcels(wrap);} else toast((x.body||{}).error||"err","err"); }); }},["Notify"]));
-          actions.appendChild(h("button",{class:"btn sm",onclick:function(){ api("/parcels/"+p.id+"/pickup",{method:"POST",body:{pickedUpBy:p.recipientName}}).then(function(x){ if(x.status===200){ toast("Picked up","ok"); refreshParcels(wrap);} else toast((x.body||{}).error||"err","err"); }); }},["Picked up"]));
+          if(p.status!=="notified") actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/parcels/"+p.id+"/notify",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast("Recipient notified","ok"); refreshParcels(wrap);} else toast((x.body||{}).error||"err","err"); }); }},[tbtn("Notify")]));
+          actions.appendChild(h("button",{class:"btn sm",onclick:function(){ api("/parcels/"+p.id+"/pickup",{method:"POST",body:{pickedUpBy:p.recipientName}}).then(function(x){ if(x.status===200){ toast("Picked up","ok"); refreshParcels(wrap);} else toast((x.body||{}).error||"err","err"); }); }},[tbtn("Picked up")]));
         }
         var daysCls = p.status==="picked_up" ? "" : (p.daysWaiting>=7 ? "terminated" : (p.daysWaiting>=3 ? "draft" : "active"));
         return h("tr",{},[
@@ -2379,7 +2386,7 @@
           h("td",{},[actions])
         ]);
       });
-      wrap.appendChild(tableEl([th("Recipient"),th("Unit"),th("Carrier"),th("Item"),th("Location"),th("Status"),th("Waiting"),th("")], rows, 8, "No parcels."));
+      wrap.appendChild(tableEl([th(tcol("Recipient")),th(tcol("Unit")),th(tcol("Carrier")),th(tcol("Item")),th(tcol("Location")),th(tcol("Status")),th(tcol("Waiting")),th(tcol(""))], rows, 8, "No parcels."));
     });
   }
 
@@ -2403,7 +2410,7 @@
       if(!name.value) return toast("Prospect name is required","err");
       var body={ id:"wl-"+Date.now(), prospectName:name.value, prospectEmail:email.value||undefined, typeId:type.value||undefined, desiredMoveIn:move.value||undefined };
       api("/waitlist",{method:"POST",body:body}).then(function(r){ if(r.status===201){ toast("Added to waitlist","ok"); name.value=email.value=""; refreshWaitlist(wrap);} else toast((r.body||{}).error||"err","err"); });
-    }},[ field("Prospect",name), field("Email",email), field("Floorplan",type), field("Desired move-in",move), h("div",{},[h("button",{class:"btn",type:"submit"},["Join waitlist"])]) ]);
+    }},[ field("Prospect",name), field("Email",email), field("Floorplan",type), field("Desired move-in",move), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Join waitlist")])]) ]);
   }
   function refreshWaitlist(wrap){
     api("/waitlist").then(function(r){
@@ -2413,10 +2420,10 @@
       var rows=entries.map(function(e){
         var actions=h("div",{class:"row",style:"gap:6px"},[]);
         if(can("waitlist.manage")){
-          if(e.status==="waiting") actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/waitlist/"+e.id+"/offer",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast("Offered","ok"); refreshWaitlist(wrap);} else toast((x.body||{}).error||"err","err"); }); }},["Offer"]));
+          if(e.status==="waiting") actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/waitlist/"+e.id+"/offer",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast("Offered","ok"); refreshWaitlist(wrap);} else toast((x.body||{}).error||"err","err"); }); }},[tbtn("Offer")]));
           if(e.status==="waiting"||e.status==="offered"){
-            actions.appendChild(h("button",{class:"btn sm",onclick:function(){ api("/waitlist/"+e.id+"/convert",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast("Converted to a pipeline lead","ok"); refreshWaitlist(wrap);} else toast((x.body||{}).error||"err","err"); }); }},["Convert"]));
-            actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/waitlist/"+e.id+"/withdraw",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast(t("msg.saved"),"ok"); refreshWaitlist(wrap);} else toast((x.body||{}).error||"err","err"); }); }},["Withdraw"]));
+            actions.appendChild(h("button",{class:"btn sm",onclick:function(){ api("/waitlist/"+e.id+"/convert",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast("Converted to a pipeline lead","ok"); refreshWaitlist(wrap);} else toast((x.body||{}).error||"err","err"); }); }},[tbtn("Convert")]));
+            actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/waitlist/"+e.id+"/withdraw",{method:"POST",body:{}}).then(function(x){ if(x.status===200){ toast(t("msg.saved"),"ok"); refreshWaitlist(wrap);} else toast((x.body||{}).error||"err","err"); }); }},[tbtn("Withdraw")]));
           }
         }
         var pos = (e.status==="waiting"||e.status==="offered") && e.position ? h("span",{class:"pill "},["#"+e.position]) : "—";
@@ -2427,7 +2434,7 @@
           h("td",{},[actions])
         ]);
       });
-      wrap.appendChild(tableEl([th("#"),th("Prospect"),th("Floorplan"),th("Move-in"),th("Status"),th("")], rows, 6, "No prospects."));
+      wrap.appendChild(tableEl([th(tcol("#")),th(tcol("Prospect")),th(tcol("Floorplan")),th(tcol("Move-in")),th(tcol("Status")),th(tcol(""))], rows, 6, "No prospects."));
     });
   }
 
@@ -2462,8 +2469,8 @@
     }
     // Seed with a couple of typical lines, pre-mapped to GL accounts so POs consume them.
     [["revenue","Base rent",null,"revenue:rent"],["expense","Repairs & maintenance",null,"expenses:repairs"],["expense","Property management",null,"expenses:management"]].forEach(function(s){ lineWrap.appendChild(lineRow(s[0],s[1],s[2],s[3])); });
-    var addRev=h("button",{class:"btn ghost sm",type:"button",onclick:function(){ lineWrap.appendChild(lineRow("revenue","",null)); }},["+ revenue line"]);
-    var addExp=h("button",{class:"btn ghost sm",type:"button",onclick:function(){ lineWrap.appendChild(lineRow("expense","",null)); }},["+ expense line"]);
+    var addRev=h("button",{class:"btn ghost sm",type:"button",onclick:function(){ lineWrap.appendChild(lineRow("revenue","",null)); }},[tbtn("+ revenue line")]);
+    var addExp=h("button",{class:"btn ghost sm",type:"button",onclick:function(){ lineWrap.appendChild(lineRow("expense","",null)); }},[tbtn("+ expense line")]);
     return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
       if(!prop.value) return toast("Pick a community","err");
       var lines=[].slice.call(lineWrap.children).map(function(r){return r._get();}).filter(Boolean);
@@ -2474,7 +2481,7 @@
       });
     }},[ field("Community",prop), field("Period start",start), field("Period end",end),
       h("div",{style:"grid-column:1/-1"},[ h("label",{class:"lbl"},["Budget lines"]), lineWrap, h("div",{style:"display:flex;gap:8px"},[addRev,addExp]) ]),
-      h("div",{style:"grid-column:1/-1"},[h("button",{class:"btn",type:"submit"},["Save budget"])]) ]);
+      h("div",{style:"grid-column:1/-1"},[h("button",{class:"btn",type:"submit"},[tbtn("Save budget")])]) ]);
   }
   function refreshPropBudgets(wrap){
     api("/property-budgets").then(function(r){
@@ -2496,7 +2503,7 @@
     }
     var bd=v.budgeted, ac=v.actual, va=v.variance;
     var tbl=tableEl(
-      [th(""),th("Budget"),th("Actual"),th("Variance")],
+      [th(tcol("")),th(tcol("Budget")),th(tcol("Actual")),th(tcol("Variance"))],
       [ line("Revenue", bd.revenueCents, ac.revenueCents, va.revenueCents, true),
         line("Expenses", bd.expenseCents, ac.expenseCents, va.expenseCents, false),
         line("NOI", bd.noiCents, ac.noiCents, va.noiCents, true) ], 4, "");
@@ -2562,7 +2569,7 @@
         if(r.status===201){ toast("Contribution recorded","ok"); amt.value=memo.value=""; refreshContributions(wrap); }
         else toast((r.body||{}).error||"err","err");
       });
-    }},[ field("Owning entity",ent), field("Community",prop), field("Amount",amt), field("Memo",memo), h("div",{},[h("button",{class:"btn",type:"submit"},["Record contribution"])]) ]);
+    }},[ field("Owning entity",ent), field("Community",prop), field("Amount",amt), field("Memo",memo), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Record contribution")])]) ]);
   }
   function refreshContributions(wrap){
     api("/contributions").then(function(r){
@@ -2570,7 +2577,7 @@
       var cs=((r.body||{}).contributions||[]);
       if(!cs.length){ wrap.appendChild(h("div",{class:"panel muted"},["No capital contributions recorded yet."])); return; }
       var rows=cs.map(function(c){ return h("tr",{},[ h("td",{},[(c.recordedAt||"").slice(0,10)]), h("td",{},[c.entityName||c.entityId]), h("td",{},[c.propertyName||"Portfolio"]), h("td",{class:"mono"},[fmt(c.amountCents)]), h("td",{},[c.memo||"—"]) ]); });
-      wrap.appendChild(tableEl([th("Date"),th("Owning entity"),th("Community"),th("Amount"),th("Memo")], rows, 5, "No contributions."));
+      wrap.appendChild(tableEl([th(tcol("Date")),th(tcol("Owning entity")),th(tcol("Community")),th(tcol("Amount")),th(tcol("Memo"))], rows, 5, "No contributions."));
     });
   }
   function distributionForm(wrap){
@@ -2597,7 +2604,7 @@
         else if(r.status===202){ toast("Parked for approval (over R$5k or over distributable)","ok"); }
         else toast((r.body||{}).error||"err","err");
       });
-    }},[ field("Owning entity",ent), field("Community",prop), field("Amount",amt), field("Memo",memo), head, h("div",{},[h("button",{class:"btn",type:"submit"},["Record distribution"])]) ]);
+    }},[ field("Owning entity",ent), field("Community",prop), field("Amount",amt), field("Memo",memo), head, h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Record distribution")])]) ]);
   }
   function refreshDistributions(wrap){
     api("/distributions").then(function(r){
@@ -2613,7 +2620,7 @@
           h("td",{},[d.memo||"—"])
         ]);
       });
-      wrap.appendChild(tableEl([th("Date"),th("Owning entity"),th("Community"),th("Amount"),th("Memo")], rows, 5, "No distributions."));
+      wrap.appendChild(tableEl([th(tcol("Date")),th(tcol("Owning entity")),th(tcol("Community")),th(tcol("Amount")),th(tcol("Memo"))], rows, 5, "No distributions."));
     });
   }
 
@@ -2653,7 +2660,7 @@
           h("td",{},[act])
         ]);
       });
-      wrap.appendChild(tableEl([th("Resident"),th("Expires in"),th("Current end"),th("Rent (→ proposed)"),th("Proposed end"),th("")], rows, 6, "No leases due for renewal."));
+      wrap.appendChild(tableEl([th(tcol("Resident")),th(tcol("Expires in")),th(tcol("Current end")),th(tcol("Rent (\u2192 proposed)")),th(tcol("Proposed end")),th(tcol(""))], rows, 6, "No leases due for renewal."));
     });
   }
 
@@ -2676,7 +2683,7 @@
       api("/signature-envelopes",{method:"POST",body:{id:"env-"+Date.now(), documentName:doc.value, provider:provider.value, signers:signers}}).then(function(r){
         if(r.status===201){ toast(t("msg.saved"),"ok"); refreshEnvelopes(wrap); } else toast(r.body.error||"err","err");
       });
-    }},[ field("Document",doc), field("Provider",provider), field("Resident",n1), field("Resident email",e1), field("Guarantor",n2), field("Guarantor email",e2), h("div",{},[h("button",{class:"btn",type:"submit"},["Prepare envelope"])]) ]);
+    }},[ field("Document",doc), field("Provider",provider), field("Resident",n1), field("Resident email",e1), field("Guarantor",n2), field("Guarantor email",e2), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Prepare envelope")])]) ]);
   }
   function refreshEnvelopes(wrap){
     api("/signature-envelopes").then(function(r){
@@ -2684,8 +2691,8 @@
       var rows=((r.body||{}).envelopes||[]).map(function(env){
         var actions=h("div",{class:"row"},[]);
         if(can("esign.manage")){
-          if(env.status==="draft"){ actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/signature-envelopes/"+env.id+"/send",{method:"POST",body:{providerRef:"ext-"+Date.now()}}).then(function(x){ handleEnv(x,wrap); }); }},["Send"])); }
-          if(env.status==="draft"||env.status==="sent"){ actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/signature-envelopes/"+env.id+"/void",{method:"POST",body:{reason:"cancelled"}}).then(function(x){ handleEnv(x,wrap); }); }},["Void"])); }
+          if(env.status==="draft"){ actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/signature-envelopes/"+env.id+"/send",{method:"POST",body:{providerRef:"ext-"+Date.now()}}).then(function(x){ handleEnv(x,wrap); }); }},[tbtn("Send")])); }
+          if(env.status==="draft"||env.status==="sent"){ actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/signature-envelopes/"+env.id+"/void",{method:"POST",body:{reason:"cancelled"}}).then(function(x){ handleEnv(x,wrap); }); }},[tbtn("Void")])); }
         }
         // Recording a signature IS the provider's webhook — relayed by the service
         // role (esign.complete), never forgeable from the operator UI. Signers sign
@@ -2696,7 +2703,7 @@
         var pillCls = env.status==="signed"?"active":(env.status==="declined"||env.status==="voided"?"terminated":"draft");
         return h("tr",{},[ h("td",{},[env.documentName]), h("td",{class:"mono muted"},[env.provider]), h("td",{class:"muted"},[signed+"/"+(env.signers||[]).length+" signed"]), h("td",{},[h("span",{class:"pill "+pillCls},[env.status])]), h("td",{},[actions]) ]);
       });
-      wrap.appendChild(tableEl([th("Document"),th("Provider"),th("Signers"),th(t("field.status")),th("")], rows, 5, "No envelopes yet."));
+      wrap.appendChild(tableEl([th(tcol("Document")),th(tcol("Provider")),th(tcol("Signers")),th(t("field.status")),th(tcol(""))], rows, 5, "No envelopes yet."));
     });
   }
   function handleEnv(x, wrap){ if(x.status===200){ toast(t("msg.saved"),"ok"); refreshEnvelopes(wrap);} else toast(x.body.error||"err","err"); }
@@ -2726,7 +2733,7 @@
       api("/purchase-orders",{method:"POST",body:{id:"po-"+Date.now(), vendorId:vendor.value, expectedAt:expected.value, lines:[{description:desc.value, account:account.value, amountCents:Number(amount.value)}]}}).then(function(r){
         if(r.status===201){ toast(t("msg.saved"),"ok"); refreshPurchaseOrders(poWrap, bgWrap); refreshBudgets(bgWrap); } else toast(r.body.error||"err","err");
       });
-    }},[ field("Vendor",vendor), field("Description",desc), field("Account",account), field("Amount (cents)",amount), field("Expected",expected), h("div",{},[h("button",{class:"btn",type:"submit"},["Raise PO"])]) ]);
+    }},[ field("Vendor",vendor), field("Description",desc), field("Account",account), field("Amount (cents)",amount), field("Expected",expected), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Raise PO")])]) ]);
   }
   function refreshPurchaseOrders(wrap, bgWrap){
     api("/purchase-orders").then(function(r){
@@ -2742,7 +2749,7 @@
         var pillCls = po.status==="closed"?"active":(po.status==="cancelled"?"terminated":"draft");
         return h("tr",{},[ h("td",{class:"mono muted"},[po.id.replace(/^po-/,"")]), h("td",{},[fmt(po.totalCents)]), h("td",{class:"mono muted"},[po.expectedAt||"—"]), h("td",{},[h("span",{class:"pill "+pillCls},[po.status])]), h("td",{},[po.billedCents?fmt(po.billedCents):"—"]), h("td",{},[actions]) ]);
       });
-      wrap.appendChild(tableEl([th("PO"),th("Total"),th("Expected"),th(t("field.status")),th("Billed"),th("")], rows, 6, "No purchase orders yet."));
+      wrap.appendChild(tableEl([th(tcol("PO")),th(tcol("Total")),th(tcol("Expected")),th(t("field.status")),th(tcol("Billed")),th(tcol(""))], rows, 6, "No purchase orders yet."));
     });
   }
   function budgetForm(bgWrap){
@@ -2752,7 +2759,7 @@
       api("/budgets",{method:"POST",body:{id:"bg-"+Date.now(), account:account.value, periodStart:start.value, periodEnd:end.value, amountCents:Number(amount.value), label:label.value||undefined}}).then(function(r){
         if(r.status===201){ toast(t("msg.saved"),"ok"); refreshBudgets(bgWrap); } else toast(r.body.error||"err","err");
       });
-    }},[ field("Account",account), field("From",start), field("To",end), field("Budget (cents)",amount), field("Label",label), h("div",{},[h("button",{class:"btn",type:"submit"},["Set budget"])]) ]);
+    }},[ field("Account",account), field("From",start), field("To",end), field("Budget (cents)",amount), field("Label",label), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Set budget")])]) ]);
   }
   function refreshBudgets(wrap){
     api("/budgets").then(function(r){
@@ -2761,10 +2768,10 @@
       var rows=((r.body||{}).budgets||[]).map(function(b){
         var s=b.status||{}; var pct=Math.min(100, s.usedPct||0);
         var bar=h("div",{style:"height:6px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:5px"},[ h("div",{style:"height:6px;width:"+pct+"%;background:"+(s.overBudget?"var(--bad,#e5484d)":"var(--accent,#6d8bff)")},[]) ]);
-        var monthsBtn=h("button",{class:"btn ghost sm",style:"margin-top:6px",onclick:function(){ budgetMonths(b.id, detail); }},["Months ▾"]);
+        var monthsBtn=h("button",{class:"btn ghost sm",style:"margin-top:6px",onclick:function(){ budgetMonths(b.id, detail); }},[tbtn("Months ▾")]);
         return h("tr",{},[ h("td",{class:"mono"},[b.account]), h("td",{class:"muted"},[b.label||"—"]), h("td",{},[fmt(s.budgetedCents||0)]), h("td",{class:"muted"},[fmt(s.committedCents||0)]), h("td",{class:"muted"},[fmt(s.actualCents||0)]), h("td",{},[ h("div",{},[ h("span",{class:s.overBudget?"pill terminated":""},[fmt(s.remainingCents||0)]), bar, monthsBtn ]) ]) ]);
       });
-      wrap.appendChild(tableEl([th("Account"),th("Label"),th("Budget"),th("Committed"),th("Actual"),th("Remaining")], rows, 6, "No budgets set."));
+      wrap.appendChild(tableEl([th(tcol("Account")),th(tcol("Label")),th(tcol("Budget")),th(tcol("Committed")),th(tcol("Actual")),th(tcol("Remaining"))], rows, 6, "No budgets set."));
       wrap.appendChild(detail);
     });
   }
@@ -2817,7 +2824,7 @@
     }},[ field("Name",name), field("Cleanliness",clean), field("Social",social), field("Schedule",chrono),
       h("label",{style:"display:flex;gap:7px;align-items:center;margin-top:8px"},[smoker,"Smoker"]),
       h("label",{style:"display:flex;gap:7px;align-items:center;margin-top:8px"},[smokeFree,"Smoke-free only"]),
-      h("div",{},[h("button",{class:"btn",type:"submit"},["Add prospect"])]) ]);
+      h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Add prospect")])]) ]);
   }
   function refreshProspects(wrap, matchSlot, groupSlot){
     api("/prospects").then(function(r){
@@ -2826,9 +2833,9 @@
         var pr=p.preferences||{};
         var chips=[]; if(pr.cleanliness) chips.push("clean "+pr.cleanliness); if(pr.social) chips.push("social "+pr.social); if(pr.chronotype) chips.push(pr.chronotype); if(pr.smoker) chips.push("smoker"); if(pr.smokeFreeOnly) chips.push("smoke-free only");
         return h("tr",{},[ h("td",{},[p.name]), h("td",{},[h("div",{class:"perms"}, chips.map(function(c){return h("span",{class:"perm"},[c]);}))]),
-          h("td",{},[ h("button",{class:"btn ghost sm",onclick:function(){ showMatches(matchSlot, p); }},["Matches"]) ]) ]);
+          h("td",{},[ h("button",{class:"btn ghost sm",onclick:function(){ showMatches(matchSlot, p); }},[tbtn("Matches")]) ]) ]);
       });
-      wrap.appendChild(tableEl([th("Prospect"),th("Preferences"),th("")], rows, 3, "No prospects yet."));
+      wrap.appendChild(tableEl([th(tcol("Prospect")),th(tcol("Preferences")),th(tcol(""))], rows, 3, "No prospects yet."));
     });
   }
   function showMatches(slot, p){
@@ -2838,7 +2845,7 @@
       var rows=matches.map(function(m){
         return h("tr",{},[ h("td",{},[m.name]), h("td",{},[ m.compatible?h("span",{class:"pill active"},[m.score+"%"]):h("span",{class:"pill terminated"},["deal-breaker"]) ]) ]);
       });
-      slot.appendChild(h("div",{class:"panel"},[ h("strong",{},["Best roommates for "+p.name]), tableEl([th("Prospect"),th("Fit")], rows, 2, "No other prospects to match.") ]));
+      slot.appendChild(h("div",{class:"panel"},[ h("strong",{},["Best roommates for "+p.name]), tableEl([th(tcol("Prospect")),th(tcol("Fit"))], rows, 2, "No other prospects to match.") ]));
     });
   }
   function groupingForm(groupSlot){
@@ -2854,7 +2861,7 @@
           out.appendChild(h("div",{class:"panel"},[ h("div",{class:"row"},[ h("strong",{},["Room "+(i+1)]), h("span",{class:"muted"},["avg fit "+g.avgScore+"%"]) ]), h("div",{class:"perms",style:"margin-top:8px"}, g.members.map(function(id){ return h("span",{class:"perm"},[id.replace(/^pr-/,"")]); })) ]));
         });
       });
-    }},[ field("Beds per room",cap), h("div",{},[h("button",{class:"btn",type:"submit"},["Suggest groups"])]) ]);
+    }},[ field("Beds per room",cap), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Suggest groups")])]) ]);
     return h("div",{},[form, out]);
   }
 
@@ -2902,7 +2909,7 @@
     main.appendChild(h("form",{class:"panel",onsubmit:function(e){e.preventDefault();run("preview");}},[
       h("div",{class:"grid"},[ field("What",kind) ]),
       field("CSV", ta),
-      h("div",{class:"row"},[ h("button",{class:"btn ghost",type:"submit"},["Preview"]), h("button",{class:"btn",type:"button",onclick:function(){run("commit");}},["Commit"]) ])
+      h("div",{class:"row"},[ h("button",{class:"btn ghost",type:"submit"},[tbtn("Preview")]), h("button",{class:"btn",type:"button",onclick:function(){run("commit");}},[tbtn("Commit")]) ])
     ]));
     main.appendChild(out);
   }
@@ -2915,7 +2922,7 @@
       var rec=r.record||{}; var summary=r.status==="ok"?Object.keys(rec).map(function(k){return k+"="+rec[k];}).join(" · "):r.errors.join("; ");
       return h("tr",{},[ h("td",{class:"mono muted"},[String(r.index+1)]), h("td",{},[ h("span",{class:"pill "+(r.status==="ok"?"active":"terminated")},[r.status]) ]), h("td",{class:(r.status==="ok"?"muted":"")},[summary]) ]);
     });
-    out.appendChild(tableEl([th("Row"),th(t("field.status")),th("Details")], rows, 3, "No data rows."));
+    out.appendChild(tableEl([th(tcol("Row")),th(t("field.status")),th(tcol("Details"))], rows, 3, "No data rows."));
   }
 
   function viewPeople(main) {
@@ -2959,7 +2966,7 @@
     api("/users").then(function(r){
       wrap.innerHTML="";
       var rows=(r.body.users||[]).map(function(u){ return h("tr",{},[h("td",{},[u.displayName]),h("td",{class:"mono"},[u.code]),h("td",{},[h("span",{class:"pill active"},[u.roleId])]),h("td",{class:"muted"},[u.active?"active":"inactive"])]); });
-      wrap.appendChild(tableEl([th(t("people.name")),th(t("people.code")),th(t("field.role")),th("")], rows, 4, t("people.noUsers")));
+      wrap.appendChild(tableEl([th(t("people.name")),th(t("people.code")),th(t("field.role")),th(tcol(""))], rows, 4, t("people.noUsers")));
     });
   }
   function addUserForm(usersWrap){
@@ -3004,13 +3011,13 @@
     var tagline=h("input",{value:cfg.tagline||"",placeholder:"Your beachfront home away from home"});
     var logoData = cfg.logoDataUrl||"";
     var preview=h("div",{class:"row",style:"gap:12px;align-items:center"},[]);
-    function drawPreview(){ preview.innerHTML=""; if(logoData){ var img=document.createElement("img"); img.src=logoData; img.style.cssText="height:44px;width:auto;border-radius:8px;border:1px solid var(--border)"; preview.appendChild(img); preview.appendChild(h("button",{class:"btn ghost sm",onclick:function(e){ e.preventDefault(); logoData=""; drawPreview(); }},["Remove logo"])); } else { preview.appendChild(h("span",{class:"muted"},["No logo uploaded"])); } }
+    function drawPreview(){ preview.innerHTML=""; if(logoData){ var img=document.createElement("img"); img.src=logoData; img.style.cssText="height:44px;width:auto;border-radius:8px;border:1px solid var(--border)"; preview.appendChild(img); preview.appendChild(h("button",{class:"btn ghost sm",onclick:function(e){ e.preventDefault(); logoData=""; drawPreview(); }},[tbtn("Remove logo")])); } else { preview.appendChild(h("span",{class:"muted"},["No logo uploaded"])); } }
     drawPreview();
     var file=h("input",{type:"file",accept:"image/png,image/jpeg,image/svg+xml,image/webp"});
     file.addEventListener("change",function(){ var f=file.files&&file.files[0]; if(!f) return; if(f.size>256*1024) return toast("Logo too large (max 256 KB)","err"); var rd=new FileReader(); rd.onload=function(){ logoData=String(rd.result); drawPreview(); }; rd.readAsDataURL(f); });
     main.appendChild(h("div",{class:"panel"},[
       h("div",{class:"grid"},[ field("Brand color",color), field("Tagline",tagline), field("Logo (PNG/SVG, ≤256 KB)",file) ]),
-      h("div",{style:"margin:12px 0"},[h("label",{},["Logo preview"]), preview]),
+      h("div",{style:"margin:12px 0"},[h("label",{},[tfld("Logo preview")]), preview]),
       h("div",{style:"margin-top:8px"},[h("button",{class:"btn",onclick:function(){
         api("/config",{method:"PUT",body:{ brandColor:color.value, tagline:tagline.value, logoDataUrl:logoData }}).then(function(r){
           if(r.status!==200) return toast((r.body&&r.body.error)||t("msg.denied"),"err");
@@ -3063,7 +3070,7 @@
       ]));
     } else if (rec.proposedRole) {
       var pr = rec.proposedRole;
-      var applyBtn = can("role.manage") ? h("button",{class:"btn sm",style:"margin-top:8px",onclick:function(){ prefillCustomRole(pr); }},["Create this custom role →"]) : null;
+      var applyBtn = can("role.manage") ? h("button",{class:"btn sm",style:"margin-top:8px",onclick:function(){ prefillCustomRole(pr); }},[tbtn("Create this custom role →")]) : null;
       box.appendChild(h("div", { class:"panel", style:"background:var(--accent-soft);margin:0 0 12px" }, [
         h("div",{},[ h("strong",{},["Proposed custom role: "+pr.name]), h("span",{class:"pill "+confCls,style:"margin-left:8px"},[rec.confidence+" confidence"]) ]),
         h("div",{class:"muted",style:"font-size:12.5px;margin-top:6px"},["No built-in fit cleanly; a custom role with exactly "+pr.permissions.length+" permissions is proposed."]),
@@ -3072,7 +3079,7 @@
     }
     // Matched capabilities.
     if (rec.capabilities.length) {
-      box.appendChild(h("div",{style:"margin:0 0 8px"},[ h("label",{},["Responsibilities matched"]),
+      box.appendChild(h("div",{style:"margin:0 0 8px"},[ h("label",{},[tfld("Responsibilities matched")]),
         h("div",{class:"perms"}, rec.capabilities.map(function(c){ return h("span",{class:"perm",title:c.note,style:c.sensitive?"border-color:#e0894a;color:#e0894a":""},[c.label+(c.sensitive?" ⚠":"")]); })) ]));
     }
     // Permissions.
@@ -3137,7 +3144,7 @@
           if(x.status===201){ toast("Property added","ok"); render(); }
           else toast((x.body&&x.body.error)||t("msg.denied"),"err");
         });
-      }},[ field("Property code",pCode), field("Property name",pName), field("Address",pAddr), field("Owning entity",pEntity), h("div",{},[h("button",{class:"btn",type:"submit"},["＋ Add property"])]) ]);
+      }},[ field("Property code",pCode), field("Property name",pName), field("Address",pAddr), field("Owning entity",pEntity), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("＋ Add property")])]) ]);
       var propRows=props.map(function(pp){
         var owner=entities.find(function(le){return le.id===pp.entityId;});
         return h("tr",{},[ h("td",{class:"mono muted"},[pp.code]), h("td",{},[pp.name]), h("td",{class:"muted"},[pp.address||"—"]), h("td",{class:"muted"},[owner?owner.name:"—"]) ]);
@@ -3146,7 +3153,7 @@
         h("strong",{},["Properties / communities"]),
         h("p",{class:"sub",style:"margin:6px 0 10px"},["Group units into properties (communities) — the rollup for per-property rent roll, occupancy, financials and owner statements. Link a property to its owning legal entity (SPE/landlord) to scope owner books."]),
         propForm,
-        props.length?tableEl([th("Code"),th("Property"),th("Address"),th("Owning entity")], propRows, 4, ""):h("span",{},[])
+        props.length?tableEl([th(tcol("Code")),th(tcol("Property")),th(tcol("Address")),th(tcol("Owning entity"))], propRows, 4, ""):h("span",{},[])
       ]));
       // -- floorplans: the multifamily merchandising unit, defined once --------
       var tCode=h("input",{placeholder:"1BR"}); var tName=h("input",{placeholder:"One bedroom — Garden"});
@@ -3165,7 +3172,7 @@
           if(x.status===201){ toast("Floorplan added","ok"); render(); }
           else toast((x.body&&x.body.error)||t("msg.denied"),"err");
         });
-      }},[ field("Plan code",tCode), field("Plan name",tName), field("Bedrooms",tBeds), field("Bathrooms",tBaths), field("Max guests",tGuests), field("Area m²",tArea), field("Market rent",tRent), h("div",{},[h("button",{class:"btn",type:"submit"},["＋ Add floorplan"])]) ]);
+      }},[ field("Plan code",tCode), field("Plan name",tName), field("Bedrooms",tBeds), field("Bathrooms",tBaths), field("Max guests",tGuests), field("Area m²",tArea), field("Market rent",tRent), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("＋ Add floorplan")])]) ]);
       var typeRows=types.map(function(t2){
         return h("tr",{},[ h("td",{class:"mono muted"},[t2.code]), h("td",{},[t2.name]),
           h("td",{},[t2.bedrooms!=null?String(t2.bedrooms):"—"]), h("td",{},[t2.bathrooms!=null?String(t2.bathrooms):"—"]),
@@ -3175,7 +3182,7 @@
         h("strong",{},["Floorplans / unit types"]),
         h("p",{class:"sub",style:"margin:6px 0 10px"},["A 200-unit building is a handful of floorplans. Define each type once — beds, baths, area, market rent — and every unit of that type inherits it (on the website, in reports, in pricing fallbacks)."]),
         typeForm,
-        types.length?tableEl([th("Code"),th("Floorplan"),th("Beds"),th("Baths"),th("Area"),th("Market rent")], typeRows, 6, ""):h("span",{},[])
+        types.length?tableEl([th(tcol("Code")),th(tcol("Floorplan")),th(tcol("Beds")),th(tcol("Baths")),th(tcol("Area")),th(tcol("Market rent"))], typeRows, 6, ""):h("span",{},[])
       ]));
       // -- add one unit ---------------------------------------------------------
       var code=h("input",{placeholder:"ILH-201"}); var label=h("input",{placeholder:"Praia do Curral — Apto 201"});
@@ -3189,7 +3196,7 @@
           if(r2.status===201){ toast("Unit added","ok"); code.value=""; label.value=""; refreshProperties(wrap); }
           else toast((r2.body&&r2.body.error)||t("msg.denied"),"err");
         });
-      }},[ field("Unit code",code), field("Property / unit name",label), field("Floorplan",oneType), field("Property",oneProp), h("div",{},[h("button",{class:"btn",type:"submit"},["＋ Add unit"])]) ]));
+      }},[ field("Unit code",code), field("Property / unit name",label), field("Floorplan",oneType), field("Property",oneProp), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("＋ Add unit")])]) ]));
       // -- bulk add: generate a building ---------------------------------------
       var bPrefix=h("input",{placeholder:"TOWER-A-"}); var bStart=h("input",{type:"number",min:"1",placeholder:"101",value:"101"});
       var bCount=h("input",{type:"number",min:"1",max:"500",placeholder:"50"});
@@ -3203,7 +3210,7 @@
           if(r2.status===201){ toast("Created "+r2.body.created+" units"+(r2.body.skipped?" · "+r2.body.skipped+" already existed":""),"ok"); refreshProperties(wrap); }
           else toast((r2.body&&r2.body.error)||t("msg.denied"),"err");
         });
-      }},[ field("Code prefix",bPrefix), field("First number",bStart), field("How many",bCount), field("Floorplan",bType), field("Property",bProp), h("div",{},[h("button",{class:"btn",type:"submit"},["⚡ Generate units"])]) ]));
+      }},[ field("Code prefix",bPrefix), field("First number",bStart), field("How many",bCount), field("Floorplan",bType), field("Property",bProp), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("⚡ Generate units")])]) ]));
     });
     return box;
   }
@@ -3228,7 +3235,7 @@
       wrap.lastChild.appendChild(mkCard("Active",String(units.filter(function(u){return u.active!==false;}).length)));
       wrap.lastChild.appendChild(mkCard("Properties",String(props.length)));
       wrap.lastChild.appendChild(mkCard("Floorplans",String(Object.keys(typesById).length)));
-      wrap.appendChild(tableEl([th("Code"),th("Property / unit"),th("Property"),th("Floorplan"),th(t("field.status")),th("")], rows, 6, "No units yet — add one above or import a portfolio."));
+      wrap.appendChild(tableEl([th(tcol("Code")),th(tcol("Property / unit")),th(tcol("Property")),th(tcol("Floorplan")),th(t("field.status")),th(tcol(""))], rows, 6, "No units yet — add one above or import a portfolio."));
     });
   }
   function mkCard(k,v){ return h("div",{class:"card"},[ h("div",{class:"k"},[k]), h("div",{class:"v"},[v]) ]); }
@@ -3240,10 +3247,10 @@
     var tenant=(state.me&&state.me.tenantId)||(state.config&&state.config.tenantId)||"";
     var url=location.origin+"/site/"+tenant;
     main.appendChild(h("div",{class:"panel"},[
-      h("label",{},["Your public booking link"]),
+      h("label",{},[tfld("Your public booking link")]),
       h("div",{class:"row",style:"gap:10px;flex-wrap:wrap;margin-top:6px"},[
         h("input",{value:url,readonly:"readonly",style:"flex:1;min-width:240px"}),
-        h("button",{class:"btn sm",onclick:function(){ if(navigator.clipboard) navigator.clipboard.writeText(url); toast("Link copied","ok"); }},["Copy"]),
+        h("button",{class:"btn sm",onclick:function(){ if(navigator.clipboard) navigator.clipboard.writeText(url); toast("Link copied","ok"); }},[tbtn("Copy")]),
         h("a",{class:"btn ghost sm",href:url,target:"_blank",rel:"noopener",style:"text-decoration:none"},["Open site ↗"])
       ]),
       h("div",{class:"muted",style:"font-size:12.5px;margin-top:8px"},["Logo, brand color and tagline come from Settings → Branding. Point elarapms.com (or any domain) at this path to make it your own."])
@@ -3258,7 +3265,7 @@
   }
   function ilsPanel(){
     var wrap=h("div",{class:"panel",style:"margin-top:14px"},[
-      h("label",{},["Listing syndication (ILS)"]),
+      h("label",{},[tfld("Listing syndication (ILS)")]),
       h("div",{class:"muted",style:"font-size:12.5px;margin:6px 0 10px"},["Push this portfolio's published listings to an internet listing service (Zillow / Apartments.com / Zumper…). Connect an ILS provider in Integrations first; prospects come back into your Pipeline tagged source=ils."])
     ]);
     var body=h("div",{},[h("span",{class:"muted"},["Loading…"])]); wrap.appendChild(body);
@@ -3311,7 +3318,7 @@
       adjHero=selectFrom([["","Template default"],["classic","Classic hero"],["banner","Photo banner hero"],["split","Split hero"],["minimal","Minimal hero"],["editorial","Editorial hero"]], opts.hero||"");
       adjCards=selectFrom([["","Template default"],["grid","Grid cards"],["wide","Wide cards"],["list","List cards"]], opts.cards||"");
       var heroPrev=h("div",{class:"row",style:"gap:10px;align-items:center"},[]);
-      function drawHero(){ heroPrev.innerHTML=""; if(heroPhotoData){ var im=document.createElement("img"); im.src=heroPhotoData; im.style.cssText="height:54px;width:120px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"; heroPrev.appendChild(im); var rm=h("button",{class:"btn ghost sm"},["Remove"]); rm.addEventListener("click",function(e){e.preventDefault(); heroPhotoData=""; drawHero();}); heroPrev.appendChild(rm); } else heroPrev.appendChild(h("span",{class:"muted",style:"font-size:12.5px"},["No hero photo (banner/split heroes use your colors)"])); }
+      function drawHero(){ heroPrev.innerHTML=""; if(heroPhotoData){ var im=document.createElement("img"); im.src=heroPhotoData; im.style.cssText="height:54px;width:120px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"; heroPrev.appendChild(im); var rm=h("button",{class:"btn ghost sm"},[tbtn("Remove")]); rm.addEventListener("click",function(e){e.preventDefault(); heroPhotoData=""; drawHero();}); heroPrev.appendChild(rm); } else heroPrev.appendChild(h("span",{class:"muted",style:"font-size:12.5px"},["No hero photo (banner/split heroes use your colors)"])); }
       drawHero();
       var heroFile=h("input",{type:"file",accept:"image/png,image/jpeg,image/webp"});
       heroFile.addEventListener("change",function(){ var f=heroFile.files&&heroFile.files[0]; if(!f) return; if(f.size>256*1024) return toast("Hero photo too large (max 256 KB)","err"); var rd=new FileReader(); rd.onload=function(){ heroPhotoData=String(rd.result); drawHero(); }; rd.readAsDataURL(f); });
@@ -3366,7 +3373,7 @@
     slot.appendChild(h("h2",{},["Page content"]));
     slot.appendChild(h("div",{class:"panel"},[
       h("div",{class:"grid"},[ field("Hero title",heroTitle), field("Contact email",cEmail), field("Phone",cPhone), field("WhatsApp",cWhats), field("Instagram",cInsta), field("Facebook",cFace) ]),
-      h("div",{style:"margin-top:10px"},[ h("label",{},["About your properties (shown on the site)"]), about ])
+      h("div",{style:"margin-top:10px"},[ h("label",{},[tfld("About your properties (shown on the site)")]), about ])
     ]));
     // --- per-unit presentation ---------------------------------------------
     slot.appendChild(h("h2",{},["Units on your website"]));
@@ -3384,7 +3391,7 @@
       desc.value = d.description||"";
       var photoData = d.photoDataUrl||"";
       var preview=h("div",{class:"row",style:"gap:10px;align-items:center"},[]);
-      function drawP(){ preview.innerHTML=""; if(photoData){ var img=document.createElement("img"); img.src=photoData; img.style.cssText="height:54px;width:86px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"; preview.appendChild(img); var rm=h("button",{class:"btn ghost sm"},["Remove"]); rm.addEventListener("click",function(e){e.preventDefault(); photoData=""; drawP();}); preview.appendChild(rm); } else preview.appendChild(h("span",{class:"muted",style:"font-size:12.5px"},["No photo"])); }
+      function drawP(){ preview.innerHTML=""; if(photoData){ var img=document.createElement("img"); img.src=photoData; img.style.cssText="height:54px;width:86px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"; preview.appendChild(img); var rm=h("button",{class:"btn ghost sm"},[tbtn("Remove")]); rm.addEventListener("click",function(e){e.preventDefault(); photoData=""; drawP();}); preview.appendChild(rm); } else preview.appendChild(h("span",{class:"muted",style:"font-size:12.5px"},["No photo"])); }
       drawP();
       var file=h("input",{type:"file",accept:"image/png,image/jpeg,image/webp"});
       file.addEventListener("change",function(){ var f=file.files&&file.files[0]; if(!f) return; if(f.size>256*1024) return toast("Photo too large (max 256 KB) — resize it first","err"); var rd=new FileReader(); rd.onload=function(){ photoData=String(rd.result); drawP(); }; rd.readAsDataURL(f); });
@@ -3395,7 +3402,7 @@
         ]),
         h("div",{class:"grid"},[ field("Headline",headline), field("Bedrooms",beds), field("Bathrooms",baths), field("Max guests",guests), field("Amenities (comma-separated)",amen), field("Photo (≤256 KB)",file) ]),
         h("div",{style:"margin:8px 0"},[preview]),
-        h("div",{},[ h("label",{},["Description"]), desc ])
+        h("div",{},[ h("label",{},[tfld("Description")]), desc ])
       ]));
       return { unit:u, read:function(){
         var det={ published: pub.checked };
@@ -3696,14 +3703,14 @@
     ]));
     controls.appendChild(h("div",{style:"display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-top:4px"},[
       field("Save as",title),
-      h("button",{class:"btn sm",onclick:function(){ if(!state._lastSpec) return toast("Run a report first","err"); saveWidget(title.value||"Untitled report", state._lastSpec); toast("Saved to My dashboard","ok"); }},["＋ Save to dashboard"])
+      h("button",{class:"btn sm",onclick:function(){ if(!state._lastSpec) return toast("Run a report first","err"); saveWidget(title.value||"Untitled report", state._lastSpec); toast("Saved to My dashboard","ok"); }},[tbtn("＋ Save to dashboard")])
     ]));
     run();
   }
   function renderBuiltReport(out, rep, spec, titleInput){
     if(titleInput && !titleInput.value) titleInput.value = rep.title;
     var kpiWrap=h("div",{class:"cards"},[]); (rep.kpis||[]).forEach(function(k){ card(kpiWrap,k.label,fmtKpi(k)); }); out.appendChild(kpiWrap);
-    out.appendChild(h("div",{class:"row",style:"justify-content:space-between;align-items:center;margin:8px 0 10px"},[ h("h3",{style:"margin:0"},[rep.title]), h("button",{class:"btn ghost sm",onclick:function(){ downloadCsv(rep, rep.title); }},["⬇ Download CSV"]) ]));
+    out.appendChild(h("div",{class:"row",style:"justify-content:space-between;align-items:center;margin:8px 0 10px"},[ h("h3",{style:"margin:0"},[rep.title]), h("button",{class:"btn ghost sm",onclick:function(){ downloadCsv(rep, rep.title); }},[tbtn("⬇ Download CSV")]) ]));
     if(spec.chart!=="table"){ var c=chartEl(rep.series, spec.chart); if(c) out.appendChild(c); }
     var heads=(rep.columns||[]).map(function(c){return th(c.label);});
     var rows=(rep.rows||[]).map(function(row){ return h("tr",{},(rep.columns||[]).map(function(c){
