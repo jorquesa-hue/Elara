@@ -40,6 +40,47 @@ function jwtRole(auth: string | null): string | null {
   }
 }
 
+/**
+ * Coalesce consecutive single-row INSERTs that share identical SQL text into
+ * multi-row INSERTs. projectWorld emits rows table-by-table, so same-table
+ * inserts arrive consecutively with byte-identical text — a large world of
+ * thousands of one-row statements collapses to a few dozen multi-row ones,
+ * which is the difference between the edge finishing inside its execution
+ * budget and timing out (rolling the whole batch back). Placeholders are
+ * renumbered per merged statement and each group is chunked so the parameter
+ * count stays well under Postgres's 65535-per-statement limit. The ON CONFLICT
+ * suffix (upsert or do-nothing) is preserved verbatim.
+ */
+function coalesce(statements: SqlStatement[]): SqlStatement[] {
+  const out: SqlStatement[] = [];
+  let i = 0;
+  while (i < statements.length) {
+    const cur = statements[i];
+    const m = /^(insert into \w+ \([^)]*\) values )\([^)]*\)(.*)$/is.exec(cur.text);
+    // gather the run of consecutive statements with identical text
+    let j = i;
+    while (j < statements.length && statements[j].text === cur.text) j++;
+    const run = statements.slice(i, j);
+    i = j;
+    if (!m || run.length === 1 || cur.values.length === 0) { out.push(...run); continue; }
+    const prefix = m[1], suffix = m[2];
+    const cols = cur.values.length;
+    const maxRows = Math.max(1, Math.floor(60000 / cols));
+    for (let k = 0; k < run.length; k += maxRows) {
+      const chunk = run.slice(k, k + maxRows);
+      const values: unknown[] = [];
+      const tuples: string[] = [];
+      let p = 1;
+      for (const st of chunk) {
+        tuples.push('(' + st.values.map(() => '$' + p++).join(', ') + ')');
+        for (const v of st.values) values.push(v);
+      }
+      out.push({ text: prefix + tuples.join(', ') + suffix, values });
+    }
+  }
+  return out;
+}
+
 function balanceOf(w: WorldData): number {
   return (w.journalLines ?? []).reduce(
     (acc, l) => acc + (Number(l.debitCents) || 0) - (Number(l.creditCents) || 0),
@@ -73,7 +114,7 @@ Deno.serve(async (req: Request) => {
     return json(422, { error: 'unbalanced_journal', trialBalance: balance });
   }
 
-  const statements = projectWorld(world);
+  const statements = coalesce(projectWorld(world));
 
   const sql = postgres(DB_URL, { prepare: false, max: 1, idle_timeout: 5 });
   try {
