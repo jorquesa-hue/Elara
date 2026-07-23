@@ -847,14 +847,17 @@
       main.appendChild(h("div", { class: "panel" }, [ h("div", { class:"muted" }, [ line || t("dash.noAgreements") ]) ]));
       // First-run helper: an empty portfolio can load a realistic mixed-portfolio
       // sample so every screen has something to show. Only offered to operators.
-      if (s.agreements.total === 0 && s.masterDataCounts.units === 0 && can("masterdata.manage")) {
-        var seedRow = h("div", { class: "row", style: "gap:8px" }, []);
+      // Sample-data loader — always available to operators (not just on an empty
+      // workspace) so the institutional portfolio can be loaded onto any tenant.
+      if (can("masterdata.manage")) {
+        var isEmpty = s.agreements.total === 0 && s.masterDataCounts.units === 0;
+        var seedRow = h("div", { class: "row", style: "gap:8px;flex-wrap:wrap" }, []);
         function seeder(label, variant, note) {
           var btn = h("button", { class: "btn" + (variant ? " ghost" : ""), onclick: function () {
             btn.disabled = true; btn.textContent = "Loading…";
             api("/demo/seed", { method: "POST", body: variant ? { variant: variant } : {} }).then(function (r) {
               if (r.status === 201 && r.body.seeded) { toast(note + " loaded", "ok"); render(); }
-              else if (r.status === 201) { toast("Sample data already present", ""); render(); }
+              else if (r.status === 201) { btn.disabled = false; btn.textContent = label; toast("That sample is already loaded on this workspace", ""); }
               else { btn.disabled = false; btn.textContent = label; toast((r.body && r.body.error) || t("msg.denied"), "err"); }
             });
           } }, [label]);
@@ -864,8 +867,8 @@
         seedRow.appendChild(seeder("Brazil sample", "", "Ilhabela portfolio"));
         seedRow.appendChild(seeder("Europe sample", "europe", "Meridian European portfolio"));
         main.appendChild(h("div", { class: "panel", style: "border:1px dashed var(--border); margin-top:12px" }, [
-          h("strong", {}, ["Start with sample data"]),
-          h("div", { class: "muted", style: "margin:6px 0 12px; font-size:13px" }, ["Load a realistic portfolio so you can explore every screen. Institutional = Meridian Residential, a US operator with 600+ homes across three communities: Aurora Heights (208-unit long-lease high-rise), Harborview (204-unit multifamily that also runs short stay), and Metro Student Commons (220 by-the-bed student beds) — hundreds of residents & leases, floorplans, applications, tours, waitlist, insurance, packages, work orders, unit turns, preventive maintenance, utility billing, budgets vs NOI, owner distributions/contributions, and every other module. Brazil = a small mixed island portfolio; Europe = Meridian Living across four communities. Clear it by starting a fresh tenant."]),
+          h("strong", {}, [isEmpty ? "Start with sample data" : "Load more sample data"]),
+          h("div", { class: "muted", style: "margin:6px 0 12px; font-size:13px" }, ["Institutional = Meridian Residential, a US operator with 600+ homes across three communities: Aurora Heights (208-unit long-lease high-rise), Harborview (204-unit multifamily that also runs short stay), and Metro Student Commons (220 by-the-bed student beds) — hundreds of residents & leases, floorplans, applications, tours, waitlist, insurance, packages, work orders, unit turns, preventive maintenance, utility billing, budgets vs NOI, owner distributions/contributions, and every other module. Brazil = a small mixed island portfolio; Europe = Meridian Living across four communities. For the cleanest look, load onto a fresh workspace." + (isEmpty ? "" : " Each button adds its portfolio alongside what's already here.")]),
           seedRow
         ]));
       }
