@@ -3302,7 +3302,7 @@
       var prevFrame=h("iframe",{style:"width:100%;height:520px;border:1px solid var(--border);border-radius:12px;background:#fff",title:"Design preview"},[]);
       var prevOpen=h("a",{target:"_blank",rel:"noopener",style:"font-size:12.5px;font-weight:600;color:var(--accent);text-decoration:none"},["Open full preview ↗"]);
       refreshPreview=function(){
-        var q=new URLSearchParams({ template: pickedTemplate });
+        var q=new URLSearchParams({ template: pickedTemplate, demo: "1" });
         if(adjRadius&&adjRadius.value) q.set("radius",adjRadius.value);
         if(adjFont&&adjFont.value) q.set("font",adjFont.value);
         if(adjHero&&adjHero.value) q.set("hero",adjHero.value);

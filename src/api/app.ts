@@ -4124,6 +4124,42 @@ export class App {
 
   private inquirySeq = 0;
 
+  /** A representative sample site (three floorplans) used only for the design
+   *  PREVIEW when the operator has not published real inventory yet — so the
+   *  template gallery always shows how the site would look, with the tenant's own
+   *  brand + any page content they've authored. Never served as the live site. */
+  private sampleBookingSiteInput(tenantId: string): BookingSiteInput {
+    const cfg = this.config.get(tenantId);
+    const cur = cfg.currency;
+    const types = [
+      { id: 'sample-studio', code: 'STU', name: 'Studio', bedrooms: 0, bathrooms: 1, maxGuests: 2, areaSqm: 32, baseRentCents: 180_000, description: 'A bright, efficient studio with a full kitchenette and city views.' },
+      { id: 'sample-1br', code: '1BR', name: 'One Bedroom', bedrooms: 1, bathrooms: 1, maxGuests: 3, areaSqm: 52, baseRentCents: 240_000, description: 'A comfortable one-bedroom with a separate living area and balcony.' },
+      { id: 'sample-2br', code: '2BR', name: 'Two Bedroom', bedrooms: 2, bathrooms: 2, maxGuests: 4, areaSqm: 78, baseRentCents: 320_000, description: 'A spacious two-bedroom, two-bath home — ideal for families or sharers.' },
+    ];
+    const amenities = ['In-unit laundry', 'Air conditioning', 'High-speed Wi-Fi', 'Fitness center', 'Rooftop terrace', 'Pet friendly'];
+    const units = types.map((t, i) => ({ id: `sample-unit-${i + 1}`, label: `${t.name} — Residence ${i + 1}0${i + 1}`, active: true, typeId: t.id }));
+    const content = {
+      ...(this.siteContent.get(tenantId) ?? {}),
+      units: Object.fromEntries(types.map((t, i) => [`sample-unit-${i + 1}`, {
+        published: true, headline: `${t.name} home`, description: t.description,
+        bedrooms: t.bedrooms, bathrooms: t.bathrooms, maxGuests: t.maxGuests,
+        amenities: amenities.slice(0, 3 + i),
+      }])),
+    } as BookingSiteInput['content'];
+    return {
+      tenantId,
+      displayName: cfg.displayName,
+      currency: cur,
+      units,
+      unitTypes: types,
+      holds: [],
+      agreements: [],
+      rule: this.revenue.listRules(tenantId)[0],
+      brand: { color: cfg.brandColor, logoDataUrl: cfg.logoDataUrl, tagline: cfg.tagline, locale: cfg.locale },
+      content,
+    };
+  }
+
   /** Gather a tenant's PUBLIC (marketing-only) booking-site slice: bookable units,
    *  their calendar holds, past agreement rates (for a per-unit base), the primary
    *  pricing rule. Returns null if the tenant has no bookable inventory. */
@@ -4195,8 +4231,17 @@ export class App {
     // WITHOUT touching the saved choice, so the operator can eyeball every design
     // on their real site before picking. Invalid values are dropped by sanitize.
     if (method === 'GET' && action === 'config') {
-      if (!inp) return { status: 404, body: { error: 'no published inventory for this site' } };
-      const listing = siteListing(inp);
+      // In design-preview mode (?demo=1) fall back to a representative sample
+      // site when the operator hasn't published real inventory yet, so the
+      // template gallery always shows how the site would look.
+      const demo = body['demo'] === '1' || body['demo'] === 1 || body['demo'] === true;
+      let effective = inp;
+      if (demo && (!effective || siteListing(effective).units.length === 0)) {
+        try { effective = this.sampleBookingSiteInput(tenant); } catch { effective = null; }
+      }
+      if (!effective) return { status: 404, body: { error: 'no published inventory for this site' } };
+      const listing = siteListing(effective);
+      if (demo && effective !== inp) listing.sampleData = true;
       const preview = this.optString(body, 'template');
       if (preview && isKnownTemplate(preview)) {
         const opts = sanitizeSiteContent({
@@ -4208,7 +4253,7 @@ export class App {
             cards: this.optString(body, 'cards'),
           },
         }).templateOptions;
-        listing.theme = resolveTheme(preview, opts, inp?.brand?.color);
+        listing.theme = resolveTheme(preview, opts, effective?.brand?.color);
         listing.previewTemplate = preview;
       }
       return { status: 200, body: listing };

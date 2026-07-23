@@ -128,9 +128,10 @@ export function bookingSiteHtml(): string {
   var PQS = new URLSearchParams(location.search);
   var PREVIEW = PQS.get("template");
   var PPARAMS = "";
-  if(PREVIEW){
-    var pq = new URLSearchParams({ template: PREVIEW });
-    ["radius","font","hero","cards"].forEach(function(k){ var v = PQS.get(k); if(v) pq.set(k, v); });
+  if(PREVIEW || PQS.get("demo")){
+    var pq = new URLSearchParams();
+    if(PREVIEW) pq.set("template", PREVIEW);
+    ["radius","font","hero","cards","demo"].forEach(function(k){ var v = PQS.get(k); if(v) pq.set(k, v); });
     PPARAMS = "?" + pq.toString();
   }
   api("/config" + PPARAMS).then(function(r){
@@ -153,7 +154,7 @@ export function bookingSiteHtml(): string {
       document.body.setAttribute("data-cards", th.cards||"grid");
       if(content.heroPhotoDataUrl){ rs.setProperty("--heroimg", "url("+JSON.stringify(content.heroPhotoDataUrl)+")"); }
       if(th.hero==="split"){ var hv=document.createElement("div"); hv.className="hero-visual"; var hd=document.querySelector("header.hero"); hd.insertBefore(hv, hd.querySelector(".searchbar")); }
-      if(cfg.previewTemplate){ var rb=document.createElement("div"); rb.textContent="Design preview: "+(th.name||cfg.previewTemplate)+" — not saved. Pick it in your Website settings to apply."; rb.style.cssText="position:fixed;left:0;right:0;bottom:0;z-index:60;background:#111827;color:#fff;font:600 13px system-ui;padding:9px 16px;text-align:center;opacity:.94"; document.body.appendChild(rb); }
+      if(cfg.previewTemplate||cfg.sampleData){ var rb=document.createElement("div"); rb.textContent=(cfg.sampleData?"Sample content — publish your own units to replace it. ":"")+(cfg.previewTemplate?("Design preview: "+(th.name||cfg.previewTemplate)+" — not saved. Pick it in your Website settings to apply."):"Design preview."); rb.style.cssText="position:fixed;left:0;right:0;bottom:0;z-index:60;background:#111827;color:#fff;font:600 13px system-ui;padding:9px 16px;text-align:center;opacity:.94"; document.body.appendChild(rb); }
     }
     // Brand: logo + tagline (accent already folded into the theme server-side).
     if(b.logoDataUrl){ var l=document.querySelector(".logo"); if(l){ var img=document.createElement("img"); img.src=b.logoDataUrl; img.alt=cfg.displayName; img.style.cssText="height:34px;width:auto;border-radius:6px"; l.replaceWith(img); } }

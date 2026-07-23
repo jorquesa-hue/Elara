@@ -61,6 +61,8 @@ export interface SiteListing {
   theme: ResolvedTheme;
   /** Set only when ?template= previews a design other than the saved one. */
   previewTemplate?: string;
+  /** True when the listing is representative sample data (design preview only). */
+  sampleData?: boolean;
   units: Array<{ id: string; label: string; fromCents: number | null; typeId?: string; details?: UnitSiteDetails }>;
   /** Floorplan sections (only types with ≥1 published unit), largest first. */
   floorplans: SiteFloorplan[];
