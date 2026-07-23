@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='8'%20fill='%236572ff'/%3E%3Crect%20x='6'%20y='18'%20width='4'%20height='8'%20rx='1.5'%20fill='%23fff'/%3E%3Crect%20x='14'%20y='13'%20width='4'%20height='13'%20rx='1.5'%20fill='%23fff'/%3E%3Crect%20x='22'%20y='7'%20width='4'%20height='19'%20rx='1.5'%20fill='%23fff'/%3E%3C/svg%3E" />
-<title>Unified Stay OS</title>
+<title>Elara</title>
 <style>
   :root {
     --accent: #6572ff; --accent-ink: #ffffff;
@@ -192,6 +192,24 @@
   .wizard .brand { justify-content: center; padding-bottom: 22px; }
   .wizard .mark { width: 34px; height: 34px; }
 
+  /* Auth / login — Elara product brand, co-branded with the operator workspace */
+  .authwrap { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 18px; padding: 24px; background: radial-gradient(1100px 560px at 50% -12%, var(--accent-soft), transparent 62%), var(--bg); }
+  .authcard { width: 100%; max-width: 404px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 18px; overflow: hidden; box-shadow: 0 28px 64px -34px rgba(20,28,74,.55); }
+  .authhero { display: flex; align-items: center; gap: 13px; padding: 26px 28px 22px; border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, var(--surface-2), var(--surface)); }
+  .elogo { flex: none; display: block; filter: drop-shadow(0 7px 15px rgba(101,114,255,.42)); }
+  .authbrand strong { display: block; font-size: 23px; font-weight: 750; letter-spacing: -.02em; line-height: 1; }
+  .authbrand span { display: block; font-size: 12.5px; color: var(--muted); margin-top: 5px; }
+  .authbody { padding: 24px 28px 28px; }
+  .authbody h2 { font-size: 18px; font-weight: 700; margin: 0 0 3px; text-transform: none; letter-spacing: -.01em; color: var(--text); }
+  .authbody .lead { color: var(--muted); font-size: 13.5px; margin: 0 0 18px; }
+  .authbody .btn { width: 100%; margin-top: 8px; padding: 12px; font-size: 14.5px; }
+  .authorg { display: flex; align-items: center; gap: 8px; color: var(--subtle); font-size: 12px; }
+  .authorg .mlogo { color: var(--muted); display: block; flex: none; }
+  .authorg b { color: var(--muted); font-weight: 600; }
+
   /* Agreement detail */
   .backbar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
   .kv { display: flex; gap: 26px; flex-wrap: wrap; }
@@ -305,6 +323,26 @@
       '<svg width="100%" height="100%" viewBox="0 0 28 28" fill="none"><defs><linearGradient id="lm" x1="0" y1="28" x2="28" y2="0"><stop stop-color="#6d8bff"/><stop offset="1" stop-color="#8b6cff"/></linearGradient></defs>'
       + '<rect x="3" y="16" width="5" height="9" rx="2" fill="url(#lm)"/><rect x="11.5" y="9" width="5" height="16" rx="2" fill="url(#lm)"/><rect x="20" y="3" width="5" height="22" rx="2" fill="url(#lm)"/></svg>' });
   }
+  // The Elara product mark — an app-icon badge with the ascending "growth" bars.
+  function elaraLogo(px) {
+    px = px || 44;
+    return h("span", { class: "elogo", style: "width:" + px + "px;height:" + px + "px", html:
+      '<svg viewBox="0 0 40 40" width="100%" height="100%" fill="none">'
+      + '<defs><linearGradient id="elg" x1="4" y1="40" x2="36" y2="2"><stop stop-color="#6d8bff"/><stop offset="1" stop-color="#9b6cff"/></linearGradient></defs>'
+      + '<rect width="40" height="40" rx="11" fill="url(#elg)"/>'
+      + '<rect x="9.5" y="22" width="5" height="8.5" rx="2.5" fill="#fff" opacity=".92"/>'
+      + '<rect x="17.5" y="16" width="5" height="14.5" rx="2.5" fill="#fff" opacity=".96"/>'
+      + '<rect x="25.5" y="9.5" width="5" height="21" rx="2.5" fill="#fff"/></svg>' });
+  }
+  // A fictitious operator mark for the co-branded workspace (meridian/globe).
+  function meridianLogo(px) {
+    px = px || 18;
+    return h("span", { class: "mlogo", style: "width:" + px + "px;height:" + px + "px", html:
+      '<svg viewBox="0 0 32 32" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">'
+      + '<circle cx="16" cy="16" r="12.5"/><path d="M16 3.5v25"/><ellipse cx="16" cy="16" rx="6.2" ry="12.5"/><path d="M3.5 16h25"/></svg>' });
+  }
+  // Deployment brand shown on the login (Elara = product; the operator co-brand).
+  var LOGIN_BRAND = { product: "Elara", tagline: "Property operations, unified", org: "Meridian Living", region: "Europe" };
 
   // ---- theme --------------------------------------------------------------
   function initTheme() {
@@ -421,13 +459,17 @@
     });
   }
 
-  function gateShell(panel) {
+  function gateShell(children) {
     var root = document.getElementById("root"); root.innerHTML = "";
-    root.appendChild(h("div", { class: "center" }, [
-      h("div", { class: "wizard" }, [
-        h("div", { class: "brand" }, [ mark(), h("div",{class:"wm"},["Unified Stay OS", h("small",{},["Operator portal"])]) ]),
-        panel
-      ])
+    root.appendChild(h("div", { class: "authwrap" }, [
+      h("div", { class: "authcard" }, [
+        h("div", { class: "authhero" }, [
+          elaraLogo(44),
+          h("div", { class: "authbrand" }, [ h("strong", {}, [LOGIN_BRAND.product]), h("span", {}, [LOGIN_BRAND.tagline]) ])
+        ]),
+        h("div", { class: "authbody" }, children)
+      ]),
+      h("div", { class: "authorg" }, [ meridianLogo(18), h("span", {}, [h("b", {}, [LOGIN_BRAND.org]), " · " + LOGIN_BRAND.region + " · powered by Elara"]) ])
     ]));
   }
 
@@ -454,25 +496,27 @@
       }).catch(function(){ fail("Could not reach the auth server."); });
     }
     pass.addEventListener("keydown", function(e){ if (e.key === "Enter") go(); });
-    gateShell(h("div", { class: "panel" }, [
-      h("p", { class: "sub", style:"margin-bottom:14px" }, ["Sign in to your operator account."]),
+    gateShell([
+      h("h2", {}, ["Welcome back"]),
+      h("p", { class: "lead" }, ["Sign in to the " + LOGIN_BRAND.org + " operator console."]),
       msg,
       field("Email", email),
       field("Password", pass),
-      h("button", { class: "btn", style:"margin-top:8px; width:100%", onclick: go }, ["Sign in"])
-    ]));
+      h("button", { class: "btn", onclick: go }, ["Sign in"])
+    ]);
   }
 
   function renderTokenGate(err) {
     var input = h("input", { placeholder: "Bearer token", value: state.token });
     input.addEventListener("keydown", function(e){ if (e.key === "Enter") go(); });
     function go(){ setSession(input.value.trim(), ""); boot(); }
-    gateShell(h("div", { class: "panel" }, [
-      h("p", { class: "sub", style:"margin-bottom:14px" }, ["Developer sign-in: paste an access token."]),
+    gateShell([
+      h("h2", {}, ["Developer sign-in"]),
+      h("p", { class: "lead" }, ["Paste an access token to continue."]),
       err ? h("p", { class: "pill bad", style: "padding:6px 10px; margin-bottom:12px" }, [err]) : null,
       field("Token", input),
-      h("button", { class: "btn", style:"margin-top:8px; width:100%", onclick: go }, ["Continue"])
-    ]));
+      h("button", { class: "btn", onclick: go }, ["Continue"])
+    ]);
   }
 
   // ---- setup wizard -------------------------------------------------------
@@ -494,7 +538,7 @@
     var root = document.getElementById("root"); root.innerHTML = "";
     root.appendChild(h("div", { class: "center" }, [
       h("div", { class: "wizard" }, [
-        h("div", { class: "brand" }, [ mark(), h("div",{class:"wm"},["Unified Stay OS", h("small",{},["Operator portal"])]) ]),
+        h("div", { class: "brand" }, [ mark(), h("div",{class:"wm"},["Elara", h("small",{},["Operator portal"])]) ]),
         healthBanner(),
         h("div", { class: "panel" }, [
           h("h1", { style:"font-size:19px" }, [t("setup.title")]),
@@ -651,7 +695,7 @@
     var root = document.getElementById("root"); root.innerHTML = "";
     root.appendChild(h("div", { class: "app" }, [
       h("aside", {}, [
-        h("div", { class: "brand" }, [ brandMark, h("div",{class:"wm"},[state.config.displayName, h("small",{},["Unified Stay OS"])]) ]),
+        h("div", { class: "brand" }, [ brandMark, h("div",{class:"wm"},[state.config.displayName, h("small",{},["powered by Elara"])]) ]),
         wsSwitcher(ws),
         nav,
         h("div", { class: "side-foot" }, [
