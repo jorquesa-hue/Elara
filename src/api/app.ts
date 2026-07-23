@@ -51,6 +51,7 @@ import { Parcels, parcelDaysWaiting } from '../packages.ts';
 import { Waitlist } from '../waitlist.ts';
 import { Distributions } from '../distributions.ts';
 import { Contributions } from '../contributions.ts';
+import { PropertyBudgets, budgetVsActual, budgetTotals, type PropertyBudget, type BudgetLine, type BudgetTotals } from '../property-budget.ts';
 import { PeriodLock } from '../period-lock.ts';
 import { BankAccounts } from '../bank-account.ts';
 import { gaapViewFromLines } from '../multigaap.ts';
@@ -195,6 +196,7 @@ export class App {
   readonly deposits: Deposits;
   readonly distributions: Distributions;
   readonly contributions: Contributions;
+  readonly propertyBudgets = new PropertyBudgets();
   readonly parties = new PartyDirectory();
   readonly spaces = new SpaceTree();
   readonly entities = new EntityCatalog();
@@ -466,6 +468,20 @@ export class App {
 
   private optString(body: Record<string, unknown>, key: string): string | undefined {
     return typeof body[key] === 'string' ? (body[key] as string) : undefined;
+  }
+
+  /** Parse a property-budget `lines` array from a request body. */
+  private parseBudgetLines(body: Record<string, unknown>): BudgetLine[] {
+    const raw = body['lines'];
+    if (!Array.isArray(raw)) throw new HttpError(400, "missing or invalid 'lines'");
+    return raw.map((r) => {
+      const o = (r ?? {}) as Record<string, unknown>;
+      const category = o['category'];
+      if (category !== 'revenue' && category !== 'expense') throw new HttpError(400, "budget line 'category' must be revenue|expense");
+      if (typeof o['label'] !== 'string' || !o['label']) throw new HttpError(400, "budget line requires a 'label'");
+      if (typeof o['amountCents'] !== 'number' || !Number.isInteger(o['amountCents']) || o['amountCents'] < 0) throw new HttpError(400, "budget line 'amountCents' must be a non-negative integer");
+      return { category, label: o['label'] as string, amountCents: o['amountCents'] as number, ...(typeof o['account'] === 'string' && o['account'] ? { account: o['account'] as string } : {}) };
+    });
   }
 
   /** Resolve an optional typeId in a unit payload — 404s on an unknown type so
@@ -1074,6 +1090,36 @@ export class App {
       if (l.account.startsWith('revenue') || l.account.startsWith('expense')) noi += l.creditCents - l.debitCents;
     }
     return noi;
+  }
+
+  /** Actual revenue and expense for a property over a window, from the ledger
+   *  (revenue = credit − debit on revenue accounts, expense = debit − credit on
+   *  expense accounts; both scoped by the journal line's propertyId). */
+  private propertyActuals(propertyId: string, from?: string, to?: string): BudgetTotals {
+    let revenueCents = 0;
+    let expenseCents = 0;
+    for (const l of this.ledger.allLines) {
+      if (l.propertyId !== propertyId) continue;
+      if (from && l.postedAt < from) continue;
+      if (to && l.postedAt >= to) continue;
+      if (l.account.startsWith('revenue')) revenueCents += l.creditCents - l.debitCents;
+      else if (l.account.startsWith('expense')) expenseCents += l.debitCents - l.creditCents;
+    }
+    return { revenueCents, expenseCents, noiCents: revenueCents - expenseCents };
+  }
+
+  /** Fold a budget with its property name and its budget-vs-actual NOI view. */
+  private propertyBudgetRow(tenantId: string, b: PropertyBudget) {
+    const property = this.masterData.properties.get(tenantId, b.propertyId);
+    const actual = this.propertyActuals(b.propertyId, b.periodStart, b.periodEnd);
+    return { ...b, propertyName: property?.name ?? b.propertyId, vsActual: budgetVsActual(b.lines, actual) };
+  }
+
+  private ownedPropertyBudget(ctx: AuthContext, id: string): PropertyBudget {
+    if (!this.propertyBudgets.has(id)) throw new HttpError(404, 'property budget not found');
+    const b = this.propertyBudgets.get(id);
+    if (b.tenantId !== ctx.tenantId) throw new HttpError(404, 'property budget not found');
+    return b;
   }
 
   private ownedContribution(ctx: AuthContext, id: string) {
@@ -3568,6 +3614,49 @@ export class App {
       return { status: 201, body: this.contributionRow(ctx.tenantId, c) };
     });
 
+    // --- property operating budgets → NOI monitoring ----------------------
+    // A manager plans a community's revenue + expense lines for a period; the
+    // App folds in the ACTUALS from the ledger (per-property revenue/expense),
+    // yielding budget-vs-actual NOI and variance. Config-like → RBAC-only.
+    this.add('GET', '/property-budgets', 'propbudget.read', (ctx, _p, body) => {
+      const propertyId = this.optString(body, 'propertyId');
+      let list = this.propertyBudgets.list(ctx.tenantId);
+      if (propertyId) list = list.filter((b) => b.propertyId === propertyId);
+      return { status: 200, body: { budgets: list.map((b) => this.propertyBudgetRow(ctx.tenantId, b)) } };
+    });
+
+    this.add('GET', '/property-budgets/:id', 'propbudget.read', (ctx, p) => ({
+      status: 200, body: this.propertyBudgetRow(ctx.tenantId, this.ownedPropertyBudget(ctx, p['id']!)),
+    }));
+
+    this.add('POST', '/property-budgets', 'propbudget.manage', (ctx, _p, body) => {
+      const propertyId = this.requireString(body, 'propertyId');
+      if (!this.masterData.properties.get(ctx.tenantId, propertyId)) throw new HttpError(404, 'property not found');
+      const b = this.propertyBudgets.create({
+        id: this.optString(body, 'id') || `pbud-${propertyId}-${this.requireString(body, 'periodStart')}`,
+        tenantId: ctx.tenantId,
+        propertyId,
+        periodStart: this.requireString(body, 'periodStart'),
+        periodEnd: this.requireString(body, 'periodEnd'),
+        currency: this.config.get(ctx.tenantId).currency,
+        lines: this.parseBudgetLines(body),
+        notes: this.optString(body, 'notes'),
+        createdAt: this.now(),
+      });
+      return { status: 201, body: this.propertyBudgetRow(ctx.tenantId, b) };
+    });
+
+    this.add('PUT', '/property-budgets/:id', 'propbudget.manage', (ctx, p, body) => {
+      this.ownedPropertyBudget(ctx, p['id']!);
+      const patch: Partial<Pick<PropertyBudget, 'lines' | 'notes' | 'periodStart' | 'periodEnd'>> = {};
+      if (Array.isArray(body['lines'])) patch.lines = this.parseBudgetLines(body);
+      if (this.optString(body, 'notes') !== undefined) patch.notes = this.optString(body, 'notes');
+      if (this.optString(body, 'periodStart') !== undefined) patch.periodStart = this.optString(body, 'periodStart');
+      if (this.optString(body, 'periodEnd') !== undefined) patch.periodEnd = this.optString(body, 'periodEnd');
+      const b = this.propertyBudgets.update(p['id']!, patch);
+      return { status: 200, body: this.propertyBudgetRow(ctx.tenantId, b) };
+    });
+
     // --- e-signature for lease execution (#17) ----------------------------
     // The CRM → lease → e-sign tail. The provider I/O lives in an edge adapter
     // (secretRef); a fully signed envelope advances the CRM lead but does NOT
@@ -4257,6 +4346,11 @@ export class App {
       const rec = this.distributions.record({ id: dm.id, tenantId, entityId: entId(dm.entityCode), propertyId: dm.propertyCode ? propId(dm.propertyCode) : undefined, amountCents: dm.amountCents, currency, memo: dm.memo, recordedAt: dm.recordedAt });
       this.distributionTenant.set(rec.id, tenantId); distributions++;
     }
+    let propertyBudgets = 0;
+    for (const pb of w.propertyBudgets ?? []) {
+      this.propertyBudgets.create({ id: pb.id, tenantId, propertyId: propId(pb.propertyCode), periodStart: pb.periodStart, periodEnd: pb.periodEnd, currency, lines: pb.lines, notes: pb.notes, createdAt: at });
+      propertyBudgets++;
+    }
 
     return {
       seeded: true,
@@ -4268,7 +4362,7 @@ export class App {
         bills: w.bills.length, billPayments, workOrders: w.workOrders.length,
         leads: w.leads.length,
         applications, tours, insurance, utilityBills, parcels, waitlist,
-        distributions, contributions, roommateProspects: prospects,
+        distributions, contributions, roommateProspects: prospects, propertyBudgets,
       },
     };
   }
@@ -4465,6 +4559,7 @@ export class App {
       waitlist: this.waitlist.list(tenantId),
       distributions: this.distributions.list(tenantId),
       contributions: this.contributions.list(tenantId),
+      propertyBudgets: this.propertyBudgets.list(tenantId),
       // --- full persistence: platform users, custom roles, e-sign, connectors --
       users: this.masterData.users.list(tenantId),
       customRoles: this.roles.customRolesFor(tenantId).map((r) => ({ tenantId, roleId: r.id, name: r.name, description: r.description, permissions: r.permissions === '*' ? [...this.roles.permissionsFor(tenantId, r.id)] : (r.permissions as readonly string[]) })),
@@ -4572,6 +4667,7 @@ export class App {
     this.distributions.hydrate((world.distributions ?? []) as never);
     for (const d of world.distributions ?? []) this.distributionTenant.set(d.id, d.tenantId);
     this.contributions.hydrate((world.contributions ?? []) as never);
+    this.propertyBudgets.hydrate((world.propertyBudgets ?? []) as never);
     for (const c of world.contributions ?? []) this.contributionTenant.set(c.id, c.tenantId);
     this.signatures.hydrate((world.signatureEnvelopes ?? []) as never);
     this.integrations.hydrate((world.integrations ?? []) as never);

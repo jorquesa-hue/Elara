@@ -250,6 +250,10 @@ export interface WorldData {
   contributions?: ReadonlyArray<{
     id: string; tenantId: string; entityId: string; propertyId?: string; amountCents: number; currency: string; memo?: string; recordedAt: string;
   }>;
+  propertyBudgets?: ReadonlyArray<{
+    id: string; tenantId: string; propertyId: string; periodStart: string; periodEnd: string; currency: string;
+    lines: ReadonlyArray<{ category: string; label: string; account?: string; amountCents: number }>; notes?: string; createdAt: string;
+  }>;
   users?: Array<{ id: string; tenantId: string; code: string; displayName: string; roleId: string; active: boolean }>;
   customRoles?: Array<{ tenantId: string; roleId: string; name: string; description?: string; permissions: readonly string[] }>;
   integrations?: Array<{
@@ -645,6 +649,14 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       stmt(
         'insert into contribution (id, tenant_id, entity_id, property_id, amount_cents, currency, memo, recorded_at) values ($1, $2, $3, $4, $5, $6, $7, $8) on conflict (id) do update set memo = excluded.memo',
         [c.id, c.tenantId, c.entityId, c.propertyId ?? null, c.amountCents, c.currency, c.memo ?? null, c.recordedAt],
+      ),
+    );
+  }
+  for (const b of w.propertyBudgets ?? []) {
+    out.push(
+      stmt(
+        'insert into property_budget (id, tenant_id, property_id, period_start, period_end, currency, lines, notes, created_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9) on conflict (id) do update set period_start = excluded.period_start, period_end = excluded.period_end, currency = excluded.currency, lines = excluded.lines, notes = excluded.notes',
+        [b.id, b.tenantId, b.propertyId, b.periodStart, b.periodEnd, b.currency, JSON.stringify(b.lines), b.notes ?? null, b.createdAt],
       ),
     );
   }

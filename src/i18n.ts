@@ -93,6 +93,7 @@ export const MESSAGES: Record<string, Catalog> = {
     'msg.denied': 'Not permitted for your role.',
   },
   'pt-BR': {
+    'wsi.propbudgets': 'Orçamentos e NOI',
     'report.open': 'Abrir relatório →',
     'report.opensml': 'Abrir →',
     'chart.nodata': 'Sem dados para o gráfico nesta seleção.',
@@ -359,6 +360,7 @@ export const MESSAGES: Record<string, Catalog> = {
     'msg.denied': 'Não permitido para seu perfil.',
   },
   es: {
+    'wsi.propbudgets': 'Presupuestos y NOI',
     'report.open': 'Abrir informe →',
     'report.opensml': 'Abrir →',
     'chart.nodata': 'Sin datos para graficar en esta selección.',
@@ -625,6 +627,7 @@ export const MESSAGES: Record<string, Catalog> = {
     'msg.denied': 'No permitido para tu perfil.',
   },
   fr: {
+    'wsi.propbudgets': 'Budgets et NOI',
     'report.open': 'Ouvrir le rapport →',
     'report.opensml': 'Ouvrir →',
     'chart.nodata': 'Aucune donnée à afficher pour cette sélection.',
@@ -775,6 +778,7 @@ export const MESSAGES: Record<string, Catalog> = {
     'msg.escalated': 'Envoyé pour approbation humaine.', 'msg.denied': 'Non autorisé pour votre rôle.',
   },
   it: {
+    'wsi.propbudgets': 'Budget e NOI',
     'report.open': 'Apri report →',
     'report.opensml': 'Apri →',
     'chart.nodata': 'Nessun dato da rappresentare per questa selezione.',
@@ -925,6 +929,7 @@ export const MESSAGES: Record<string, Catalog> = {
     'msg.escalated': 'Inviato per approvazione umana.', 'msg.denied': 'Non consentito per il tuo ruolo.',
   },
   de: {
+    'wsi.propbudgets': 'Budgets & NOI',
     'report.open': 'Bericht öffnen →',
     'report.opensml': 'Öffnen →',
     'chart.nodata': 'Keine Daten für diese Auswahl darstellbar.',

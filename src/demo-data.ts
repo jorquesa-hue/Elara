@@ -25,6 +25,8 @@ export interface DemoParcel { id: string; partyId: string; carrier: string; rece
 export interface DemoWaitlist { id: string; prospectName: string; propertyCode?: string; prospectEmail?: string; desiredMoveIn?: string; joinedAt: string }
 export interface DemoCapitalMove { id: string; entityCode: string; propertyCode?: string; amountCents: number; recordedAt: string; memo?: string }
 export interface DemoProspect { id: string; name: string; partyId?: string; preferences: Record<string, unknown> }
+export interface DemoBudgetLine { category: 'revenue' | 'expense'; label: string; amountCents: number }
+export interface DemoPropertyBudget { id: string; propertyCode: string; periodStart: string; periodEnd: string; lines: DemoBudgetLine[]; notes?: string }
 export interface DemoGuest { code: string; fullName: string; email: string }
 export interface DemoParty {
   id: string; kind: 'person' | 'organization'; displayName: string;
@@ -95,6 +97,7 @@ export interface DemoWorld {
   distributions?: DemoCapitalMove[];
   contributions?: DemoCapitalMove[];
   roommateProspects?: DemoProspect[];
+  propertyBudgets?: DemoPropertyBudget[];
 }
 
 const DAY = 86_400_000;
@@ -253,7 +256,19 @@ export function buildDemoWorld(tenantId: string, at: string): DemoWorld {
     { id: 'demo-lead-6', name: 'Reserva cancelada — grupo carnaval', source: 'booking', estValueCents: 900_000, createdAt: t(-18), advanceTo: ['toured', 'lost'] },
   ];
 
-  return { tenantId, properties, units, guests, parties, pricingRules, agreements, invoices, deposits, bills, workOrders, leads };
+  const byr = at.slice(0, 4);
+  const propertyBudgets: DemoPropertyBudget[] = [
+    { id: 'pbud-CURRAL', propertyCode: 'CURRAL', periodStart: `${byr}-01-01`, periodEnd: `${Number(byr) + 1}-01-01`, notes: 'FY operating plan', lines: [
+      { category: 'revenue', label: 'Room & rent revenue', amountCents: 264_000_00 },
+      { category: 'expense', label: 'Property management', amountCents: 26_400_00 },
+      { category: 'expense', label: 'Repairs & maintenance', amountCents: 18_000_00 },
+      { category: 'expense', label: 'Utilities', amountCents: 12_000_00 } ] },
+    { id: 'pbud-VILA', propertyCode: 'VILA', periodStart: `${byr}-01-01`, periodEnd: `${Number(byr) + 1}-01-01`, notes: 'FY operating plan', lines: [
+      { category: 'revenue', label: 'Room & rent revenue', amountCents: 123_000_00 },
+      { category: 'expense', label: 'Property management', amountCents: 12_300_00 },
+      { category: 'expense', label: 'Repairs & maintenance', amountCents: 9_000_00 } ] },
+  ];
+  return { tenantId, properties, units, guests, parties, pricingRules, agreements, invoices, deposits, bills, workOrders, leads, propertyBudgets };
 }
 
 /** Marker unit for the European portfolio (distinct from the Ilhabela one). */
@@ -442,9 +457,25 @@ export function buildEuropeWorld(tenantId: string, at: string): DemoWorld {
     { id: 'demo-rp-e2', name: 'Mia Hofer', partyId: 'demo-party-stu2', preferences: { cleanliness: 5, social: 2, chronotype: 'early', smoker: false, smokeFreeOnly: true } },
     { id: 'demo-rp-e3', name: 'Elif Yılmaz', preferences: { cleanliness: 3, social: 4, chronotype: 'late', smoker: false } },
   ];
+  const byr = at.slice(0, 4);
+  const py = (code: string, rev: number, mgmt: number, rep: number, util: number): DemoPropertyBudget => ({
+    id: `demo-pbud-${code}`, propertyCode: code, periodStart: `${byr}-01-01`, periodEnd: `${Number(byr) + 1}-01-01`, notes: 'FY operating plan',
+    lines: [
+      { category: 'revenue', label: 'Rental income', amountCents: rev },
+      { category: 'expense', label: 'Property management', amountCents: mgmt },
+      { category: 'expense', label: 'Repairs & maintenance', amountCents: rep },
+      { category: 'expense', label: 'Utilities & common area', amountCents: util },
+    ],
+  });
+  const propertyBudgets: DemoPropertyBudget[] = [
+    py('BER', 1_920_000_00, 192_000_00, 140_000_00, 96_000_00),
+    py('MUC', 1_440_000_00, 144_000_00, 108_000_00, 84_000_00),
+    py('AMS', 1_680_000_00, 168_000_00, 120_000_00, 90_000_00),
+    py('CAMP', 960_000_00, 96_000_00, 72_000_00, 120_000_00),
+  ];
 
   return {
     tenantId, properties, units, guests, parties, pricingRules, agreements, invoices, deposits, bills, workOrders, leads,
-    legalEntities, applications, tours, insurancePolicies, utilityBills, parcels, waitlist, distributions, contributions, roommateProspects,
+    legalEntities, applications, tours, insurancePolicies, utilityBills, parcels, waitlist, distributions, contributions, roommateProspects, propertyBudgets,
   };
 }

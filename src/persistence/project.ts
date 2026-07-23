@@ -32,6 +32,7 @@ import type { Parcel as ParcelRecord } from '../packages.ts';
 import type { WaitlistEntry as WaitlistRecord } from '../waitlist.ts';
 import type { OwnerDistribution as DistributionRecord } from '../distributions.ts';
 import type { OwnerContribution as ContributionRecord } from '../contributions.ts';
+import type { PropertyBudget as PropertyBudgetRecord } from '../property-budget.ts';
 
 export interface WorldData {
   tenants: Array<{
@@ -157,6 +158,7 @@ export interface WorldData {
   waitlist?: readonly WaitlistRecord[];
   distributions?: readonly DistributionRecord[];
   contributions?: readonly ContributionRecord[];
+  propertyBudgets?: readonly PropertyBudgetRecord[];
   // --- full persistence: platform users, custom roles, e-sign, connectors -----
   users?: Array<{ id: string; tenantId: string; code: string; displayName: string; roleId: string; active: boolean }>;
   customRoles?: Array<{ tenantId: string; roleId: string; name: string; description?: string; permissions: readonly string[] }>;
@@ -556,6 +558,14 @@ export function projectWorld(w: WorldData): SqlStatement[] {
       stmt(
         'insert into contribution (id, tenant_id, entity_id, property_id, amount_cents, currency, memo, recorded_at) values ($1, $2, $3, $4, $5, $6, $7, $8) on conflict (id) do update set memo = excluded.memo',
         [c.id, c.tenantId, c.entityId, c.propertyId ?? null, c.amountCents, c.currency, c.memo ?? null, c.recordedAt],
+      ),
+    );
+  }
+  for (const b of w.propertyBudgets ?? []) {
+    out.push(
+      stmt(
+        'insert into property_budget (id, tenant_id, property_id, period_start, period_end, currency, lines, notes, created_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9) on conflict (id) do update set period_start = excluded.period_start, period_end = excluded.period_end, currency = excluded.currency, lines = excluded.lines, notes = excluded.notes',
+        [b.id, b.tenantId, b.propertyId, b.periodStart, b.periodEnd, b.currency, JSON.stringify(b.lines), b.notes ?? null, b.createdAt],
       ),
     );
   }

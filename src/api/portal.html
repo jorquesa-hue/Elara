@@ -700,14 +700,14 @@
       { label: null, items: [["dashboard", "Finance overview", null, "dashboard", "ws.finance.home"]] },
       { label: "Receivables", labelKey: "wsg.receivables", items: [["agreements","Billing & AR","agreement.read","agreements","wsi.billingar"],["reconcile","Reconcile","reconciliation.read","reconcile","wsi.reconcile"]] },
       { label: "Payables", labelKey: "wsg.payables", items: [["bills","Bills","bill.read","bills","wsi.bills"],["purchasing","Purchasing","procurement.read","purchasing","wsi.purchasing"]] },
-      { label: "Books", labelKey: "wsg.books", items: [["ledger","Ledger","ledger.read","ledger","wsi.ledger"],["utilities","Utilities (RUBS)","utility.read","utilities","wsi.utilitiesrubs"]] },
+      { label: "Books", labelKey: "wsg.books", items: [["ledger","Ledger","ledger.read","ledger","wsi.ledger"],["propbudgets","Budgets & NOI","propbudget.read","distributions","wsi.propbudgets"],["utilities","Utilities (RUBS)","utility.read","utilities","wsi.utilitiesrubs"]] },
       { label: "Capital", labelKey: "wsg.capital", items: [["distributions","Distributions","distribution.read","distributions","wsi.distributions"]] },
       { label: "Control", labelKey: "wsg.control", items: [["exceptions","Approvals","exception.read","approvals","wsi.approvals"]] },
       { label: "Insights", labelKey: "wsg.insights", items: [["reports","Reports","reports.read","reports","wsi.reports"]] }
     ] },
     { id: "portfolio", label: "Portfolio & assets", labelKey: "ws.portfolio.label", hint: "ownership lens", hintKey: "ws.portfolio.hint", icon: "distributions", home: viewPortfolioHome, sections: [
       { label: null, items: [["dashboard", "Portfolio & assets", null, "dashboard", "ws.portfolio.home"]] },
-      { label: "Assets", labelKey: "wsg.assets", items: [["properties","Communities","masterdata.read","properties","wsi.communities"],["reports","Owner statements","reports.read","reports","wsi.ownerstatements"]] },
+      { label: "Assets", labelKey: "wsg.assets", items: [["properties","Communities","masterdata.read","properties","wsi.communities"],["propbudgets","Budgets & NOI","propbudget.read","distributions","wsi.propbudgets"],["reports","Owner statements","reports.read","reports","wsi.ownerstatements"]] },
       { label: "Capital", labelKey: "wsg.capital", items: [["distributions","Distributions","distribution.read","distributions","wsi.distributions"],["ledger","Capital account","ledger.read","ledger","wsi.capitalaccount"]] },
       { label: "Control", labelKey: "wsg.control", items: [["exceptions","Approvals","exception.read","approvals","wsi.approvals"]] }
     ] }
@@ -817,7 +817,7 @@
     var main = document.getElementById("main");
     main.appendChild(topBar());
     var hb = healthBanner(); if (hb) main.appendChild(hb);
-    var views = { dashboard: viewDashboard, agreements: viewAgreements, properties: viewProperties, website: viewWebsite, pricing: viewPricing, crm: viewCrm, applications: viewApplications, tours: viewTours, turns: viewTurns, insurance: viewInsurance, utilities: viewUtilities, packages: viewPackages, waitlist: viewWaitlist, distributions: viewDistributions, renewals: viewRenewals, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, exceptions: viewExceptions, people: viewPeople, settings: viewSettings };
+    var views = { dashboard: viewDashboard, agreements: viewAgreements, properties: viewProperties, website: viewWebsite, pricing: viewPricing, crm: viewCrm, applications: viewApplications, tours: viewTours, turns: viewTurns, insurance: viewInsurance, utilities: viewUtilities, packages: viewPackages, waitlist: viewWaitlist, distributions: viewDistributions, propbudgets: viewPropertyBudgets, renewals: viewRenewals, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, exceptions: viewExceptions, people: viewPeople, settings: viewSettings };
     var fn = (state.view === "dashboard") ? (ws.home || viewDashboard) : (views[state.view] || ws.home || viewDashboard);
     fn(main);
   }
@@ -2378,6 +2378,81 @@
   }
 
   // ---- Owner distributions (Phase 7A) --------------------------------------
+  // Property operating budgets → NOI monitoring. Plan revenue + expense lines per
+  // community for a period; the server folds in the ledger actuals so each budget
+  // shows Budget vs Actual for revenue, expenses and NOI, with variance.
+  function viewPropertyBudgets(main){
+    main.appendChild(h("h1",{},[tt("wsi.propbudgets","Budgets & NOI")]));
+    main.appendChild(h("p",{class:"sub"},[tt("propbudget.sub","Set a community's revenue and expense plan for a period, then track actual NOI (net operating income) against it from the ledger.")]));
+    var formSlot=h("div",{},[]); main.appendChild(formSlot);
+    var wrap=h("div",{},[]); main.appendChild(wrap);
+    if(can("propbudget.manage")) formSlot.appendChild(propBudgetForm(wrap));
+    refreshPropBudgets(wrap);
+  }
+  function propBudgetForm(wrap){
+    var prop=h("select",{},[h("option",{value:""},["— community —"])]);
+    if(can("masterdata.read")) api("/properties").then(function(r){ ((r.body||{}).properties||[]).forEach(function(p){ prop.appendChild(h("option",{value:p.id},[p.name||p.code||p.id])); }); });
+    var y=new Date().getFullYear();
+    var start=h("input",{type:"date",value:y+"-01-01"});
+    var end=h("input",{type:"date",value:(y+1)+"-01-01"});
+    var lineWrap=h("div",{style:"display:flex;flex-direction:column;gap:7px;margin:6px 0"},[]);
+    function lineRow(cat,label,amt){
+      var c=h("select",{style:"max-width:120px"},[ h("option",{value:"revenue"},["Revenue"]), h("option",{value:"expense"},["Expense"]) ]); c.value=cat||"expense";
+      var l=h("input",{type:"text",placeholder:cat==="revenue"?"Base rent":"Repairs",value:label||""});
+      var a=h("input",{type:"number",min:"0",step:"1",placeholder:"0.00",style:"max-width:130px",value:amt==null?"":amt});
+      var del=h("button",{class:"btn ghost sm",type:"button",title:"Remove",onclick:function(){ row.remove(); }},["✕"]);
+      var row=h("div",{style:"display:flex;gap:7px;align-items:center"},[c,l,a,del]);
+      row._get=function(){ var cents=Math.round((parseFloat(a.value)||0)*100); return l.value&&cents>0?{category:c.value,label:l.value,amountCents:cents}:null; };
+      return row;
+    }
+    // Seed with a couple of typical lines.
+    [["revenue","Base rent",null],["expense","Repairs & maintenance",null],["expense","Property management",null]].forEach(function(s){ lineWrap.appendChild(lineRow(s[0],s[1],s[2])); });
+    var addRev=h("button",{class:"btn ghost sm",type:"button",onclick:function(){ lineWrap.appendChild(lineRow("revenue","",null)); }},["+ revenue line"]);
+    var addExp=h("button",{class:"btn ghost sm",type:"button",onclick:function(){ lineWrap.appendChild(lineRow("expense","",null)); }},["+ expense line"]);
+    return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
+      if(!prop.value) return toast("Pick a community","err");
+      var lines=[].slice.call(lineWrap.children).map(function(r){return r._get();}).filter(Boolean);
+      if(!lines.length) return toast("Add at least one budget line","err");
+      api("/property-budgets",{method:"POST",body:{ propertyId:prop.value, periodStart:start.value, periodEnd:end.value, lines:lines }}).then(function(r){
+        if(r.status===201){ toast("Budget saved","ok"); refreshPropBudgets(wrap); }
+        else toast((r.body||{}).error||"err","err");
+      });
+    }},[ field("Community",prop), field("Period start",start), field("Period end",end),
+      h("div",{style:"grid-column:1/-1"},[ h("label",{class:"lbl"},["Budget lines"]), lineWrap, h("div",{style:"display:flex;gap:8px"},[addRev,addExp]) ]),
+      h("div",{style:"grid-column:1/-1"},[h("button",{class:"btn",type:"submit"},["Save budget"])]) ]);
+  }
+  function refreshPropBudgets(wrap){
+    api("/property-budgets").then(function(r){
+      wrap.innerHTML="";
+      var bs=((r.body||{}).budgets||[]);
+      if(!bs.length){ wrap.appendChild(h("div",{class:"panel muted"},["No property budgets yet — set one above to start monitoring NOI vs plan."])); return; }
+      bs.forEach(function(b){ wrap.appendChild(propBudgetCard(b)); });
+    });
+  }
+  function propBudgetCard(b){
+    var v=b.vsActual||{budgeted:{},actual:{},variance:{}};
+    function sign(cents){ var s=cents>0?"+":""; return s+fmt(cents); }
+    function line(label,budCents,actCents,varCents,goodWhenPos){
+      var over=goodWhenPos ? varCents>=0 : varCents<=0;
+      return h("tr",{},[ h("td",{},[label]),
+        h("td",{class:"mono",style:"text-align:right"},[fmt(budCents||0)]),
+        h("td",{class:"mono",style:"text-align:right"},[fmt(actCents||0)]),
+        h("td",{class:"mono",style:"text-align:right;color:"+(over?"#3aa76d":"#e0894a")},[sign(varCents||0)]) ]);
+    }
+    var bd=v.budgeted, ac=v.actual, va=v.variance;
+    var tbl=tableEl(
+      [th(""),th("Budget"),th("Actual"),th("Variance")],
+      [ line("Revenue", bd.revenueCents, ac.revenueCents, va.revenueCents, true),
+        line("Expenses", bd.expenseCents, ac.expenseCents, va.expenseCents, false),
+        line("NOI", bd.noiCents, ac.noiCents, va.noiCents, true) ], 4, "");
+    var margin=h("div",{class:"muted",style:"font-size:12.5px;margin-top:6px"},[
+      "NOI margin — plan "+(v.budgetNoiMarginPct||0)+"% · actual "+(v.actualNoiMarginPct||0)+"%" ]);
+    return h("div",{class:"panel",style:"margin-bottom:14px"},[
+      h("div",{style:"display:flex;align-items:baseline;gap:10px;margin-bottom:8px"},[
+        h("strong",{style:"font-size:15px"},[b.propertyName||b.propertyId]),
+        h("span",{class:"muted",style:"font-size:12.5px"},[(b.periodStart||"").slice(0,10)+" → "+(b.periodEnd||"").slice(0,10)]) ]),
+      tbl, margin ]);
+  }
   function viewDistributions(main){
     main.appendChild(h("h1",{},["Distributions"]));
     main.appendChild(h("p",{class:"sub"},["Return operating cash (net operating income) to a property's owning legal entity — an equity draw. It posts a balanced entry (debit owner equity, credit cash) and moves money out, so a distribution over R$5,000 is parked for approval."]));
