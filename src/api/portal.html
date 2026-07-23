@@ -868,10 +868,10 @@
       api("/revenue/summary").then(function (r) {
         if (r.status !== 200) return;
         var k = r.body;
-        card(kpis, "Occupancy", k.occupancyPct + "%");
+        card(kpis, tt("kpi.occupancy","Occupancy"), k.occupancyPct + "%");
         card(kpis, "ADR", fmt(k.adrCents));
         card(kpis, "RevPAR", fmt(k.revparCents));
-        card(kpis, "Revenue", fmt(k.revenueCents));
+        card(kpis, tt("kpi.revenue","Revenue"), fmt(k.revenueCents));
       });
     }
     if (can("crm.read")) {
@@ -880,10 +880,10 @@
       api("/crm/summary").then(function (r) {
         if (r.status !== 200) return;
         var k = r.body;
-        card(pk, "Open leads", String(k.openCount));
-        card(pk, "Pipeline value", fmt(k.pipelineValueCents));
-        card(pk, "Conversion", k.conversionPct + "%");
-        card(pk, "Won", fmt(k.wonValueCents));
+        card(pk, tt("kpi.openleads","Open leads"), String(k.openCount));
+        card(pk, tt("kpi.pipelinevalue","Pipeline value"), fmt(k.pipelineValueCents));
+        card(pk, tt("kpi.conversion","Conversion"), k.conversionPct + "%");
+        card(pk, tt("kpi.won","Won"), fmt(k.wonValueCents));
       });
     }
   }
@@ -958,7 +958,7 @@
         });
         wrap.appendChild(tableEl(heads, rows, (rep.columns || []).length || 1, "No data for this window."));
       }
-      if (moreView) wrap.appendChild(h("div", { class: "row", style: "justify-content:flex-end;margin-top:9px" }, [goBtn(moreView, "Open report →")]));
+      if (moreView) wrap.appendChild(h("div", { class: "row", style: "justify-content:flex-end;margin-top:9px" }, [goBtn(moreView, tt("report.open","Open report →"))]));
     });
   }
   // A live list panel from a list endpoint. opts: {title, endpoint, pick, filter, sort, map, heads, empty, view, moreLabel}.
@@ -976,7 +976,7 @@
       wrap.appendChild(tableEl(opts.heads.map(th), rows, opts.heads.length, opts.empty || "Nothing here right now."));
       var foot = [];
       if (items.length > shown.length) foot.push(h("span", { class: "muted", style: "font-size:12px;margin-right:auto" }, ["Showing " + shown.length + " of " + items.length]));
-      if (opts.view) foot.push(goBtn(opts.view, opts.moreLabel || "Open →"));
+      if (opts.view) foot.push(goBtn(opts.view, opts.moreLabel || tt("report.opensml","Open →")));
       if (foot.length) wrap.appendChild(h("div", { class: "row", style: "margin-top:9px;align-items:center" }, foot));
     });
   }
@@ -988,11 +988,11 @@
     api(summaryPath()).then(function (r) {
       if (r.status !== 200) return;
       var s = r.body;
-      card(cards, "Units", String(s.masterDataCounts.units));
-      card(cards, "Active leases", String((s.agreements.byStatus || {}).active || 0));
+      card(cards, tt("kpi.units","Units"), String(s.masterDataCounts.units));
+      card(cards, tt("kpi.activeleases","Active leases"), String((s.agreements.byStatus || {}).active || 0));
     });
-    if (can("revenue.read")) api("/revenue/summary").then(function (r) { if (r.status === 200) card(cards, "Occupancy", r.body.occupancyPct + "%"); });
-    if (can("package.read")) api("/parcels").then(function (r) { if (r.status === 200) card(cards, "Packages waiting", String((r.body.parcels || []).filter(function (p) { return p.status !== "picked_up"; }).length)); });
+    if (can("revenue.read")) api("/revenue/summary").then(function (r) { if (r.status === 200) card(cards, tt("kpi.occupancy","Occupancy"), r.body.occupancyPct + "%"); });
+    if (can("package.read")) api("/parcels").then(function (r) { if (r.status === 200) card(cards, tt("kpi.packageswaiting","Packages waiting"), String((r.body.parcels || []).filter(function (p) { return p.status !== "picked_up"; }).length)); });
     attentionFeed(main);
     if (can("maintenance.read")) listPanel(main, {
       title: tt("wsh.openwo", "Open work orders"), endpoint: "/work-orders", view: "maintenance", moreLabel: "Maintenance board →",
@@ -1028,12 +1028,12 @@
     api(summaryPath()).then(function (r) {
       if (r.status !== 200) return;
       var s = r.body;
-      card(cards, "Communities/units", String(s.masterDataCounts.units));
-      card(cards, "Active leases", String((s.agreements.byStatus || {}).active || 0));
-      card(cards, "Ledger", s.ledger.balanced ? "Balanced" : "Unbalanced", s.ledger.balanced ? "ok" : "bad");
+      card(cards, tt("kpi.communitiesunits","Communities/units"), String(s.masterDataCounts.units));
+      card(cards, tt("kpi.activeleases","Active leases"), String((s.agreements.byStatus || {}).active || 0));
+      card(cards, tt("kpi.ledger","Ledger"), s.ledger.balanced ? tt("kpi.balanced","Balanced") : tt("kpi.unbalanced","Unbalanced"), s.ledger.balanced ? "ok" : "bad");
     });
-    if (can("revenue.read")) api("/revenue/summary").then(function (r) { if (r.status === 200) card(cards, "Occupancy", r.body.occupancyPct + "%"); });
-    if (can("renewal.read")) api("/renewals").then(function (r) { if (r.status === 200) card(cards, "Renewals due", String((r.body.offers || []).length)); });
+    if (can("revenue.read")) api("/revenue/summary").then(function (r) { if (r.status === 200) card(cards, tt("kpi.occupancy","Occupancy"), r.body.occupancyPct + "%"); });
+    if (can("renewal.read")) api("/renewals").then(function (r) { if (r.status === 200) card(cards, tt("kpi.renewalsdue","Renewals due"), String((r.body.offers || []).length)); });
     if (can("exception.read")) listPanel(main, {
       title: tt("wsh.approvals", "Waiting on you — approvals"), endpoint: "/exceptions", view: "exceptions", moreLabel: "Open approvals →",
       pick: function (b) { return b.pending || []; },
@@ -1057,9 +1057,9 @@
     if (can("crm.read")) api("/crm/summary").then(function (r) {
       if (r.status !== 200) return;
       var k = r.body;
-      card(cards, "Open leads", String(k.openCount));
-      card(cards, "Pipeline value", fmt(k.pipelineValueCents));
-      card(cards, "Conversion", k.conversionPct + "%");
+      card(cards, tt("kpi.openleads","Open leads"), String(k.openCount));
+      card(cards, tt("kpi.pipelinevalue","Pipeline value"), fmt(k.pipelineValueCents));
+      card(cards, tt("kpi.conversion","Conversion"), k.conversionPct + "%");
     });
     if (can("revenue.read")) api("/revenue/summary").then(function (r) { if (r.status === 200) { card(cards, "ADR", fmt(r.body.adrCents)); card(cards, "RevPAR", fmt(r.body.revparCents)); } });
     if (can("crm.read")) {
@@ -1101,7 +1101,7 @@
       if (r.status !== 200) return;
       var due = (r.body.bills || []).filter(function (b) { return (b.totalCents - (b.paidCents || 0)) > 0; });
       var total = due.reduce(function (a, b) { return a + (b.totalCents - (b.paidCents || 0)); }, 0);
-      card(cards, "Payables outstanding", fmt(total));
+      card(cards, tt("kpi.payablesoutstanding","Payables outstanding"), fmt(total));
     });
     attentionFeed(main, function (i) { return i.severity === "critical" || i.severity === "warning" || /revenue|collect|overdue|receivable|payable|ledger|deposit|budget/i.test(i.title + " " + i.detail); });
     reportPanel(main, "ar_aging", tt("wsh.araging", "Receivables aging"), "reconcile");
@@ -1132,7 +1132,7 @@
     if (can("reports.read")) api("/reports/owner_distributions").then(function (r) {
       if (r.status === 200 && r.body.report) { var k = (r.body.report.kpis || [])[0]; if (k) card(cards, k.label, fmtKpi(k)); }
     });
-    if (can("revenue.read")) api("/revenue/summary").then(function (r) { if (r.status === 200) card(cards, "Occupancy", r.body.occupancyPct + "%"); });
+    if (can("revenue.read")) api("/revenue/summary").then(function (r) { if (r.status === 200) card(cards, tt("kpi.occupancy","Occupancy"), r.body.occupancyPct + "%"); });
     attentionFeed(main, function (i) { return /noi|occup|distribut|expir|renewal|vacan|revenue/i.test(i.title + " " + i.detail); });
     if (can("reports.read")) reportPanel(main, "owner_statement", tt("wsh.noibycommunity", "NOI by community"), "reports");
     if (can("reports.read")) reportPanel(main, "capital_account", tt("wsh.capitalaccounts", "Capital accounts"), "reports");
@@ -1804,7 +1804,7 @@
     var cards=h("div",{class:"cards"},[]); main.appendChild(cards);
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
     var wrap=h("div",{},[]); main.appendChild(wrap);
-    api("/reconciliation/summary").then(function(r){ if(r.status===200){ var s=r.body; card(cards,"Unmatched",String(s.unmatched)); card(cards,"Matched",String(s.matched),"ok"); card(cards,"Ignored",String(s.ignored)); } });
+    api("/reconciliation/summary").then(function(r){ if(r.status===200){ var s=r.body; card(cards, tt("kpi.unmatched","Unmatched"),String(s.unmatched)); card(cards, tt("kpi.matched","Matched"),String(s.matched),"ok"); card(cards, tt("kpi.ignored","Ignored"),String(s.ignored)); } });
     if(can("reconciliation.manage")) formSlot.appendChild(bankTxnForm());
     refreshBankTxns(wrap);
   }
@@ -1889,10 +1889,10 @@
       kpiWrap.innerHTML=""; recWrap.innerHTML="";
       if(r.status!==200){ recWrap.appendChild(h("p",{class:"muted"},[(r.body&&r.body.error)||t("msg.denied")])); return; }
       var k=r.body.kpis||{};
-      card(kpiWrap,"Occupancy",(k.occupancyPct==null?0:k.occupancyPct)+"%");
+      card(kpiWrap, tt("kpi.occupancy","Occupancy"),(k.occupancyPct==null?0:k.occupancyPct)+"%");
       card(kpiWrap,"ADR",fmt(k.adrCents||0));
       card(kpiWrap,"RevPAR",fmt(k.revparCents||0));
-      card(kpiWrap,"Revenue",fmt(k.revenueCents||0));
+      card(kpiWrap, tt("kpi.revenue","Revenue"),fmt(k.revenueCents||0));
       (r.body.insights||[]).forEach(function(i){ recWrap.appendChild(insightCard(i)); });
     });
     // Rule editor + list.
@@ -2015,7 +2015,7 @@
     if(kpiWrap) api("/crm/summary").then(function(r){
       kpiWrap.innerHTML="";
       if(r.status!==200) return; var k=r.body;
-      card(kpiWrap,"Open",String(k.openCount)); card(kpiWrap,"Pipeline",fmt(k.pipelineValueCents)); card(kpiWrap,"Conversion",k.conversionPct+"%"); card(kpiWrap,"Won",String(k.wonCount));
+      card(kpiWrap, tt("kpi.open","Open"),String(k.openCount)); card(kpiWrap, tt("kpi.pipeline","Pipeline"),fmt(k.pipelineValueCents)); card(kpiWrap, tt("kpi.conversion","Conversion"),k.conversionPct+"%"); card(kpiWrap, tt("kpi.won","Won"),String(k.wonCount));
     });
     api("/leads").then(function(r){
       wrap.innerHTML="";
@@ -3320,7 +3320,7 @@
       var props=((pr.body||{}).properties||[]);
       if(props.length){
         var sel=h("select",{onchange:function(){ state.reportProperty=sel.value; renderCatalogReport(repWrap, state.reportKey); }},
-          [h("option",{value:""},["All properties"])].concat(props.map(function(pp){ var o=h("option",{value:pp.id},[pp.name]); if(state.reportProperty===pp.id) o.selected=true; return o; })));
+          [h("option",{value:""},[tt("scope.allprops","All properties")])].concat(props.map(function(pp){ var o=h("option",{value:pp.id},[pp.name]); if(state.reportProperty===pp.id) o.selected=true; return o; })));
         body.appendChild(h("div",{class:"row",style:"gap:8px;align-items:center;margin-bottom:12px"},[ h("span",{class:"muted",style:"font-size:13px"},["Scope:"]), sel ]));
       }
     });
@@ -3332,17 +3332,28 @@
     });
     renderCatalogReport(repWrap, state.reportKey);
   }
+  // Interpolate {k} placeholders in a translated string with the insight's params.
+  function interp(tpl, params) { return tpl.replace(/\{(\w+)\}/g, function(m,k){ return (params && params[k]!=null) ? params[k] : m; }); }
+  // Translate an insight part (title/detail/action) by its stable code, falling
+  // back to the server's English text when the locale lacks the key.
+  function insightText(i, part, fallback) {
+    if (!fallback) return fallback;
+    var key = i.code ? ("insight."+i.code+"."+part) : null;
+    var tpl = key && state.cat && state.cat[key];
+    return tpl ? interp(tpl, i.params) : fallback;
+  }
   function insightCard(i) {
     var color = i.severity==="critical" ? "#e05a5a" : (i.severity==="warning" ? "#e0894a" : (i.severity==="positive" ? "#3aa76d" : (i.severity==="opportunity" ? "#c98a1e" : "var(--accent)")));
-    var label = i.severity.charAt(0).toUpperCase()+i.severity.slice(1);
+    var label = tt("sev."+i.severity, i.severity.charAt(0).toUpperCase()+i.severity.slice(1));
+    var action = insightText(i, "action", i.action);
     return h("div", { class:"panel", style:"border-left:3px solid "+color+";margin:0 0 10px" }, [
       h("div", { style:"display:flex;align-items:center;gap:9px" }, [
         h("span", { style:"font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:"+color }, [label]),
-        h("strong", {}, [i.title]),
+        h("strong", {}, [insightText(i, "title", i.title)]),
         i.metric ? h("span",{class:"muted",style:"margin-left:auto;font-variant-numeric:tabular-nums"},[fmtMetric(i.metric)]) : null
       ]),
-      h("div", { class:"muted", style:"font-size:13px;margin-top:5px" }, [i.detail]),
-      i.action ? h("div", { style:"font-size:12.5px;margin-top:7px;color:"+color }, ["→ "+i.action]) : null
+      h("div", { class:"muted", style:"font-size:13px;margin-top:5px" }, [insightText(i, "detail", i.detail)]),
+      action ? h("div", { style:"font-size:12.5px;margin-top:7px;color:"+color }, ["→ "+action]) : null
     ]);
   }
   function fmtMetric(m) { return m.kind==="money"?fmt(m.value):(m.kind==="percent"?m.value+"%":String(m.value)); }
@@ -3351,7 +3362,7 @@
 
   // ---- charts (inline, zero-dependency) -----------------------------------
   function chartEl(series, type){
-    if(!series || !series.values || !series.values.length) return h("div",{class:"panel muted",style:"padding:18px;text-align:center"},["No data to chart for this selection."]);
+    if(!series || !series.values || !series.values.length) return h("div",{class:"panel muted",style:"padding:18px;text-align:center"},[tt("chart.nodata","No data to chart for this selection.")]);
     if(type==="line") return lineChart(series);
     if(type==="donut") return donutChart(series);
     if(type==="table") return null; // table rendered separately

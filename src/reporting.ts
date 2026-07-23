@@ -66,6 +66,11 @@ export interface Insight {
   metric?: { value: number; kind: 'money' | 'number' | 'percent' };
   /** A concrete next step, when there is one. */
   action?: string;
+  /** Stable code so the UI can translate title/detail/action (with the English
+   *  strings above as the fallback). */
+  code?: string;
+  /** Interpolation values for the translated strings (e.g. {n}, {occ}). */
+  params?: Record<string, string | number>;
 }
 
 export interface ReportSpec { key: string; title: string; description: string }
@@ -972,7 +977,7 @@ export function computeInsights(inp: ReportingInput): Insight[] {
   const order: Record<InsightSeverity, number> = { critical: 0, warning: 1, info: 2, positive: 3 };
 
   if (!inp.ledgerBalanced) {
-    out.push({ severity: 'critical', title: 'Ledger is out of balance', detail: 'Debits and credits do not net to zero — investigate before trusting financial reports.', action: 'Open the ledger and review recent postings.' });
+    out.push({ severity: 'critical', code: 'ledger_unbalanced', title: 'Ledger is out of balance', detail: 'Debits and credits do not net to zero — investigate before trusting financial reports.', action: 'Open the ledger and review recent postings.' });
   }
 
   const openInv = inp.invoices.filter((i) => OPEN_INV.has(i.status) && outstanding(i) > 0);
@@ -980,12 +985,12 @@ export function computeInsights(inp: ReportingInput): Insight[] {
   const over90 = openInv.filter((i) => daysBetween(i.dueAt, inp.now) >= 90 && ms(i.dueAt) < ms(inp.now));
   const overdueAmt = sum(openInv.filter((i) => ms(i.dueAt) < ms(inp.now)).map(outstanding));
   if (over90.length > 0) {
-    out.push({ severity: 'critical', title: `${over90.length} invoice(s) are 90+ days overdue`, detail: `${sum(over90.map(outstanding))} in cents is severely past due — these rarely self-cure.`, metric: { value: sum(over90.map(outstanding)), kind: 'money' }, action: 'Escalate to suspension/eviction review or write-off.' });
+    out.push({ severity: 'critical', code: 'ar_over90', params: { n: over90.length }, title: `${over90.length} invoice(s) are 90+ days overdue`, detail: `${sum(over90.map(outstanding))} in cents is severely past due — these rarely self-cure.`, metric: { value: sum(over90.map(outstanding)), kind: 'money' }, action: 'Escalate to suspension/eviction review or write-off.' });
   }
   if (over30.length > 0) {
-    out.push({ severity: 'warning', title: `${over30.length} invoice(s) are 30+ days overdue`, detail: 'Overdue receivables tie up cash and rarely improve with age.', metric: { value: sum(over30.map(outstanding)), kind: 'money' }, action: 'Run a collections sweep (Collections → Run sweep).' });
+    out.push({ severity: 'warning', code: 'ar_over30', params: { n: over30.length }, title: `${over30.length} invoice(s) are 30+ days overdue`, detail: 'Overdue receivables tie up cash and rarely improve with age.', metric: { value: sum(over30.map(outstanding)), kind: 'money' }, action: 'Run a collections sweep (Collections → Run sweep).' });
   } else if (overdueAmt > 0) {
-    out.push({ severity: 'info', title: 'Some invoices are past due', detail: 'A few invoices are overdue but under 30 days — a reminder usually resolves these.', metric: { value: overdueAmt, kind: 'money' }, action: 'Send payment reminders.' });
+    out.push({ severity: 'info', code: 'ar_pastdue', title: 'Some invoices are past due', detail: 'A few invoices are overdue but under 30 days — a reminder usually resolves these.', metric: { value: overdueAmt, kind: 'money' }, action: 'Send payment reminders.' });
   }
 
   // Occupancy (last 30 days).
@@ -995,36 +1000,36 @@ export function computeInsights(inp: ReportingInput): Insight[] {
   const avail = nights * Math.max(1, inp.units.length);
   const occ = pct(sold, avail);
   if (inp.units.length > 0) {
-    if (occ < 40) out.push({ severity: 'warning', title: `Occupancy is ${occ}%`, detail: 'Below a healthy floor — consider lowering rates, promoting availability, or a length-of-stay discount.', metric: { value: occ, kind: 'percent' }, action: 'Review Pricing → weekend/lead-time factors.' });
-    else if (occ > 85) out.push({ severity: 'positive', title: `Occupancy is strong at ${occ}%`, detail: 'Demand is high — there may be room to raise rates without hurting fill.', metric: { value: occ, kind: 'percent' }, action: 'Consider an occupancy-tier uplift in Pricing.' });
+    if (occ < 40) out.push({ severity: 'warning', code: 'occ_low', params: { occ }, title: `Occupancy is ${occ}%`, detail: 'Below a healthy floor — consider lowering rates, promoting availability, or a length-of-stay discount.', metric: { value: occ, kind: 'percent' }, action: 'Review Pricing → weekend/lead-time factors.' });
+    else if (occ > 85) out.push({ severity: 'positive', code: 'occ_strong', params: { occ }, title: `Occupancy is strong at ${occ}%`, detail: 'Demand is high — there may be room to raise rates without hurting fill.', metric: { value: occ, kind: 'percent' }, action: 'Consider an occupancy-tier uplift in Pricing.' });
     // Idle units.
     const occupied = new Set(active.filter((h) => overlapNights(h.start, h.end, inp.from, inp.to) > 0).map((h) => h.unitId));
     const idle = inp.units.filter((u) => u.active && !occupied.has(u.id));
     if (idle.length > 0 && idle.length < inp.units.length) {
-      out.push({ severity: 'info', title: `${idle.length} unit(s) sat idle this window`, detail: `No booked nights for: ${idle.slice(0, 6).map((u) => u.label).join(', ')}${idle.length > 6 ? '…' : ''}.`, action: 'Check pricing/visibility for these units.' });
+      out.push({ severity: 'info', code: 'units_idle', params: { n: idle.length, list: `${idle.slice(0, 6).map((u) => u.label).join(', ')}${idle.length > 6 ? '…' : ''}` }, title: `${idle.length} unit(s) sat idle this window`, detail: `No booked nights for: ${idle.slice(0, 6).map((u) => u.label).join(', ')}${idle.length > 6 ? '…' : ''}.`, action: 'Check pricing/visibility for these units.' });
     }
   }
 
   // Deposit exposure.
   const heldExposure = sum(inp.deposits.filter((d) => d.status === 'held').map((d) => d.amountCents));
-  if (heldExposure > 0) out.push({ severity: 'info', title: 'Security-deposit exposure', detail: 'Deposits held against active stays — a liability to return at move-out.', metric: { value: heldExposure, kind: 'money' } });
+  if (heldExposure > 0) out.push({ severity: 'info', code: 'deposit_exposure', title: 'Security-deposit exposure', detail: 'Deposits held against active stays — a liability to return at move-out.', metric: { value: heldExposure, kind: 'money' } });
 
   // Payables due/overdue.
   const openBills = inp.bills.filter((b) => b.status !== 'void' && outstanding(b) > 0);
   const overdueBills = openBills.filter((b) => ms(b.dueAt) < ms(inp.now));
-  if (overdueBills.length > 0) out.push({ severity: 'warning', title: `${overdueBills.length} vendor bill(s) are overdue`, detail: 'Late vendor payments risk service and relationships.', metric: { value: sum(overdueBills.map(outstanding)), kind: 'money' }, action: 'Settle in Bills.' });
+  if (overdueBills.length > 0) out.push({ severity: 'warning', code: 'bills_overdue', params: { n: overdueBills.length }, title: `${overdueBills.length} vendor bill(s) are overdue`, detail: 'Late vendor payments risk service and relationships.', metric: { value: sum(overdueBills.map(outstanding)), kind: 'money' }, action: 'Settle in Bills.' });
 
   // Pipeline: stalled open leads.
   const stalled = inp.leads.filter((l) => !['signed', 'lost'].includes(l.stage) && daysBetween(l.updatedAt, inp.now) >= 14);
-  if (stalled.length > 0) out.push({ severity: 'warning', title: `${stalled.length} lead(s) have stalled`, detail: 'Open for 14+ days with no movement — follow up before they go cold.', metric: { value: sum(stalled.map((l) => l.estValueCents)), kind: 'money' }, action: 'Advance or lose them in Pipeline.' });
+  if (stalled.length > 0) out.push({ severity: 'warning', code: 'leads_stalled', params: { n: stalled.length }, title: `${stalled.length} lead(s) have stalled`, detail: 'Open for 14+ days with no movement — follow up before they go cold.', metric: { value: sum(stalled.map((l) => l.estValueCents)), kind: 'money' }, action: 'Advance or lose them in Pipeline.' });
 
   // High-priority open work orders.
   const urgentWo = inp.workOrders.filter((w) => !['completed', 'cancelled'].includes(w.status) && (w.priority === 'high' || w.priority === 'urgent'));
-  if (urgentWo.length > 0) out.push({ severity: 'warning', title: `${urgentWo.length} high-priority work order(s) open`, detail: 'Urgent maintenance is unresolved.', metric: { value: urgentWo.length, kind: 'number' }, action: 'Assign/complete in Maintenance.' });
+  if (urgentWo.length > 0) out.push({ severity: 'warning', code: 'wo_urgent', params: { n: urgentWo.length }, title: `${urgentWo.length} high-priority work order(s) open`, detail: 'Urgent maintenance is unresolved.', metric: { value: urgentWo.length, kind: 'number' }, action: 'Assign/complete in Maintenance.' });
 
   // Operations: units stuck in make-ready — every idle day past a week is lost rent.
   const stuckTurns = (inp.turns ?? []).filter((t) => (t.status === 'open' || t.status === 'in_progress') && t.days >= 7);
-  if (stuckTurns.length > 0) out.push({ severity: 'warning', title: `${stuckTurns.length} unit(s) stuck in make-ready 7+ days`, detail: 'A slow turn is lost rent — every idle day is vacancy loss.', metric: { value: Math.max(...stuckTurns.map((t) => t.days)), kind: 'number' }, action: 'Push the checklist in Make-ready.' });
+  if (stuckTurns.length > 0) out.push({ severity: 'warning', code: 'turns_stuck', params: { n: stuckTurns.length }, title: `${stuckTurns.length} unit(s) stuck in make-ready 7+ days`, detail: 'A slow turn is lost rent — every idle day is vacancy loss.', metric: { value: Math.max(...stuckTurns.map((t) => t.days)), kind: 'number' }, action: 'Push the checklist in Make-ready.' });
 
   // Compliance: active leases without in-force renters insurance — uninsured liability.
   if (inp.insurancePolicies) {
@@ -1033,17 +1038,17 @@ export function computeInsights(inp: ReportingInput): Insight[] {
     const activeLeases = inp.agreements.filter((a) => a.status === 'active' && (a.kind === 'lease' || a.kind === 'monthly'));
     const uninsured = activeLeases.filter((a) => { const s = insuranceCoverage(polByAg.get(a.id) ?? [], inp.now); return s === 'none' || s === 'lapsed'; });
     const expiringSoon = activeLeases.filter((a) => insuranceCoverage(polByAg.get(a.id) ?? [], inp.now) === 'expiring');
-    if (uninsured.length > 0) out.push({ severity: 'warning', title: `${uninsured.length} lease(s) have no active renters insurance`, detail: 'Uninsured residents are a liability exposure — coverage has lapsed or was never filed.', metric: { value: uninsured.length, kind: 'number' }, action: 'Chase certificates in Insurance.' });
-    else if (expiringSoon.length > 0) out.push({ severity: 'info', title: `${expiringSoon.length} insurance policy(ies) expire within 30 days`, detail: 'Coverage is about to lapse — request renewed certificates before it does.', metric: { value: expiringSoon.length, kind: 'number' }, action: 'Follow up in Insurance.' });
+    if (uninsured.length > 0) out.push({ severity: 'warning', code: 'ins_uninsured', params: { n: uninsured.length }, title: `${uninsured.length} lease(s) have no active renters insurance`, detail: 'Uninsured residents are a liability exposure — coverage has lapsed or was never filed.', metric: { value: uninsured.length, kind: 'number' }, action: 'Chase certificates in Insurance.' });
+    else if (expiringSoon.length > 0) out.push({ severity: 'info', code: 'ins_expiring', params: { n: expiringSoon.length }, title: `${expiringSoon.length} insurance policy(ies) expire within 30 days`, detail: 'Coverage is about to lapse — request renewed certificates before it does.', metric: { value: expiringSoon.length, kind: 'number' }, action: 'Follow up in Insurance.' });
   }
 
   // Front desk: parcels sitting unclaimed for a week or more clog the mail room.
   const stalePackages = (inp.parcels ?? []).filter((p) => p.status !== 'picked_up' && p.daysWaiting >= 7);
-  if (stalePackages.length > 0) out.push({ severity: 'info', title: `${stalePackages.length} parcel(s) unclaimed for 7+ days`, detail: 'Packages waiting a week or more take shelf space — remind residents to collect them.', metric: { value: Math.max(...stalePackages.map((p) => p.daysWaiting)), kind: 'number' }, action: 'Re-notify recipients in Packages.' });
+  if (stalePackages.length > 0) out.push({ severity: 'info', code: 'pkg_stale', params: { n: stalePackages.length }, title: `${stalePackages.length} parcel(s) unclaimed for 7+ days`, detail: 'Packages waiting a week or more take shelf space — remind residents to collect them.', metric: { value: Math.max(...stalePackages.map((p) => p.daysWaiting)), kind: 'number' }, action: 'Re-notify recipients in Packages.' });
 
   // Leasing: prospects waiting for a floorplan are unmet demand — a pricing signal.
   const waiting = (inp.waitlist ?? []).filter((e) => e.status === 'waiting' || e.status === 'offered');
-  if (waiting.length >= 3) out.push({ severity: 'positive', title: `${waiting.length} prospect(s) on the waitlist`, detail: 'Demand is outrunning available supply — a signal to raise asking rents or release held units.', metric: { value: waiting.length, kind: 'number' }, action: 'Review demand by floorplan in the Waitlist-demand report.' });
+  if (waiting.length >= 3) out.push({ severity: 'positive', code: 'waitlist_demand', params: { n: waiting.length }, title: `${waiting.length} prospect(s) on the waitlist`, detail: 'Demand is outrunning available supply — a signal to raise asking rents or release held units.', metric: { value: waiting.length, kind: 'number' }, action: 'Review demand by floorplan in the Waitlist-demand report.' });
 
   // Profitability: NOI for the window from the ledger (when lines are provided).
   if (inp.ledgerLines?.length) {
@@ -1054,7 +1059,7 @@ export function computeInsights(inp: ReportingInput): Insight[] {
       else if (l.account.startsWith('expense')) exp += l.debitCents - l.creditCents;
     }
     if (rev > 0 && exp > rev) {
-      out.push({ severity: 'warning', title: 'Operating at a loss this window', detail: 'Expenses exceeded revenue on the ledger — the portfolio lost money in this period.', metric: { value: rev - exp, kind: 'money' }, action: 'Open the Income statement report to see which accounts drove it.' });
+      out.push({ severity: 'warning', code: 'operating_loss', title: 'Operating at a loss this window', detail: 'Expenses exceeded revenue on the ledger — the portfolio lost money in this period.', metric: { value: rev - exp, kind: 'money' }, action: 'Open the Income statement report to see which accounts drove it.' });
     }
   }
 
@@ -1063,7 +1068,7 @@ export function computeInsights(inp: ReportingInput): Insight[] {
   const collectedWin = sum(inp.payments.filter((p) => p.status !== 'void' && inWindow(p.receivedAt, inp.from, inp.to)).map((p) => p.amountCents));
   if (billedWin > 0) {
     const rate = pct(collectedWin, billedWin);
-    if (rate < 85) out.push({ severity: 'warning', title: `Collection rate is ${rate}%`, detail: 'Less than 85% of what you billed this window has been collected.', metric: { value: rate, kind: 'percent' }, action: 'Review Billed vs collected, then run a collections sweep.' });
+    if (rate < 85) out.push({ severity: 'warning', code: 'collection_rate', params: { rate }, title: `Collection rate is ${rate}%`, detail: 'Less than 85% of what you billed this window has been collected.', metric: { value: rate, kind: 'percent' }, action: 'Review Billed vs collected, then run a collections sweep.' });
   }
 
   // Revenue trend vs the prior window.
@@ -1073,10 +1078,10 @@ export function computeInsights(inp: ReportingInput): Insight[] {
   const prevAmt = sum(settled.filter((p) => inWindow(p.receivedAt, prev.from, prev.to)).map((p) => p.amountCents));
   if (prevAmt > 0) {
     const delta = pct(cur - prevAmt, prevAmt);
-    if (delta <= -15) out.push({ severity: 'warning', title: `Revenue fell ${Math.abs(delta)}% vs the prior period`, detail: 'Collections are down window-over-window.', metric: { value: delta, kind: 'percent' } });
-    else if (delta >= 15) out.push({ severity: 'positive', title: `Revenue rose ${delta}% vs the prior period`, detail: 'Cash collected grew window-over-window.', metric: { value: delta, kind: 'percent' } });
+    if (delta <= -15) out.push({ severity: 'warning', code: 'revenue_down', params: { pct: Math.abs(delta) }, title: `Revenue fell ${Math.abs(delta)}% vs the prior period`, detail: 'Collections are down window-over-window.', metric: { value: delta, kind: 'percent' } });
+    else if (delta >= 15) out.push({ severity: 'positive', code: 'revenue_up', params: { pct: delta }, title: `Revenue rose ${delta}% vs the prior period`, detail: 'Cash collected grew window-over-window.', metric: { value: delta, kind: 'percent' } });
   }
 
-  if (out.length === 0) out.push({ severity: 'positive', title: 'Nothing needs attention', detail: 'No overdue receivables, healthy occupancy, and no stalled work — all clear for this window.' });
+  if (out.length === 0) out.push({ severity: 'positive', code: 'all_clear', title: 'Nothing needs attention', detail: 'No overdue receivables, healthy occupancy, and no stalled work — all clear for this window.' });
   return out.sort((a, b) => order[a.severity] - order[b.severity]);
 }
