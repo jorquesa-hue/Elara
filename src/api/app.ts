@@ -1122,6 +1122,26 @@ export class App {
     return b;
   }
 
+  /** Fold a bill with its payee + property names, outstanding balance, and the
+   *  AP-payment timeline — so the UI can show status and the money-out flow. */
+  private billRow(tenantId: string, bill: ReturnType<Payables['allBills']>[number]) {
+    const payee = this.parties.getParty(tenantId, bill.payeeId);
+    const property = bill.propertyId ? this.masterData.properties.get(tenantId, bill.propertyId) : undefined;
+    const entity = bill.entityId ? this.entities.getEntity(tenantId, bill.entityId) : undefined;
+    const payments = this.payables.allPayments()
+      .filter((p) => p.billId === bill.id)
+      .sort((a, b) => (a.paidAt < b.paidAt ? -1 : 1));
+    return {
+      ...bill,
+      payeeName: payee?.displayName ?? bill.payeeId,
+      propertyName: property?.name,
+      entityName: entity?.name,
+      outstandingCents: Math.max(0, bill.totalCents - bill.paidCents),
+      description: bill.lines.map((l) => l.description).filter(Boolean).join(', ') || bill.memo || '—',
+      payments,
+    };
+  }
+
   private ownedContribution(ctx: AuthContext, id: string) {
     if (this.contributionTenant.get(id) !== ctx.tenantId) throw new HttpError(404, 'contribution not found');
     return this.contributions.get(id);
@@ -1981,8 +2001,14 @@ export class App {
 
     this.add('GET', '/bills', 'bill.read', (ctx) => ({
       status: 200,
-      body: { bills: this.payables.allBills().filter((b) => b.tenantId === ctx.tenantId) },
+      body: { bills: this.payables.allBills().filter((b) => b.tenantId === ctx.tenantId).map((b) => this.billRow(ctx.tenantId, b)).sort((a, b) => (a.issuedAt < b.issuedAt ? 1 : -1)) },
     }));
+
+    this.add('GET', '/bills/:id', 'bill.read', (ctx, p) => {
+      const bill = this.payables.allBills().find((b) => b.id === p['id'] && b.tenantId === ctx.tenantId);
+      if (!bill) throw new HttpError(404, 'bill not found');
+      return { status: 200, body: this.billRow(ctx.tenantId, bill) };
+    });
 
     // --- maintenance / work orders (#3) -----------------------------------
     this.add('POST', '/work-orders', 'maintenance.manage', (ctx, _p, body) => {

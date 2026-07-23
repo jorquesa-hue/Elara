@@ -1593,12 +1593,61 @@
   }
 
   function viewBills(main) {
-    main.appendChild(h("h1", {}, ["Accounts payable"]));
-    main.appendChild(h("p",{class:"sub"},["Vendor bills and resident refunds — money out. Payouts over policy limit escalate for approval."]));
+    main.appendChild(h("h1", {}, [tt("bills.title","Accounts payable")]));
+    main.appendChild(h("p",{class:"sub"},[tt("bills.sub","Vendor bills and resident refunds — money out. Each bill follows a flow: issued → partially paid → paid. Payouts over the policy limit park for approval.")]));
+    var kpis=h("div",{class:"cards"},[]); main.appendChild(kpis);
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
     var wrap=h("div",{},[]); main.appendChild(wrap);
     if (can("bill.issue")) Promise.all([api("/parties"),api("/properties")]).then(function(rs){ formSlot.appendChild(billForm(((rs[0].body||{}).parties)||[], ((rs[1].body||{}).properties)||[])); });
-    refreshBills(wrap);
+    refreshBills(wrap, kpis);
+  }
+  // The status flow a bill moves through, with the current one highlighted.
+  function billFlow(b){
+    var steps=[["issued", tt("bills.issued","Issued")],["partially_paid", tt("bills.partial","Partially paid")],["paid", tt("bills.paid","Paid")]];
+    var reached=b.status==="paid"?3:(b.status==="partially_paid"?2:(b.paidCents>0?2:1));
+    var row=h("div",{style:"display:flex;align-items:center;gap:0;flex-wrap:wrap;margin:8px 0 2px"},[]);
+    steps.forEach(function(s,i){
+      var on=(i+1)<=reached;
+      row.appendChild(h("span",{style:"display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:"+(on?"var(--accent)":"var(--subtle)")},[
+        h("span",{style:"width:16px;height:16px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:#fff;background:"+(on?"var(--accent)":"var(--border-strong)")},[on?"✓":String(i+1)]),
+        s[1] ]));
+      if(i<steps.length-1) row.appendChild(h("span",{style:"width:26px;height:2px;margin:0 8px;background:"+((i+1)<reached?"var(--accent)":"var(--border)")},[]));
+    });
+    return row;
+  }
+  function billCard(b, wrap, kpis){
+    var pillCls = b.status==="paid"?"active":(b.status==="void"?"":"draft");
+    var head=h("div",{style:"display:flex;align-items:center;gap:10px;flex-wrap:wrap"},[
+      h("strong",{style:"font-size:14.5px"},[b.payeeName||b.payeeId]),
+      h("span",{class:"pill "+pillCls},[tt("billstatus."+b.status, b.status)]),
+      b.propertyName?h("span",{class:"muted",style:"font-size:12px"},["· "+b.propertyName]):null,
+      h("span",{class:"muted",style:"font-size:12px;margin-left:auto"},["#"+b.id]) ]);
+    var amts=h("div",{style:"display:flex;gap:22px;margin-top:8px;font-size:13px"},[
+      h("div",{},[ h("div",{class:"muted",style:"font-size:11px"},[tt("field.total","Total")]), h("div",{class:"mono",style:"font-weight:600"},[fmt(b.totalCents)]) ]),
+      h("div",{},[ h("div",{class:"muted",style:"font-size:11px"},[tt("field.paid","Paid")]), h("div",{class:"mono",style:"font-weight:600;color:#3aa76d"},[fmt(b.paidCents)]) ]),
+      h("div",{},[ h("div",{class:"muted",style:"font-size:11px"},[tt("bills.outstanding","Outstanding")]), h("div",{class:"mono",style:"font-weight:600;color:"+(b.outstandingCents>0?"#e0894a":"var(--subtle)")},[fmt(b.outstandingCents)]) ]),
+      h("div",{},[ h("div",{class:"muted",style:"font-size:11px"},[tt("field.dueAt","Due date")]), h("div",{class:"mono"},[(b.dueAt||"").slice(0,10)]) ]) ]);
+    var flow=billFlow(b);
+    // The money-out timeline: description + each AP payment.
+    var tl=h("div",{style:"margin-top:8px;font-size:12.5px"},[]);
+    tl.appendChild(h("div",{class:"muted"},[b.description||"—"]));
+    (b.payments||[]).forEach(function(p){
+      tl.appendChild(h("div",{style:"display:flex;gap:8px;margin-top:4px;align-items:center"},[
+        h("span",{style:"color:#3aa76d"},["●"]),
+        h("span",{class:"mono"},[fmt(p.amountCents)]),
+        h("span",{class:"muted"},["via "+p.method+" · "+(p.paidAt||"").slice(0,10)]) ]));
+    });
+    var actions=h("div",{class:"row",style:"margin-top:10px;gap:8px"},[]);
+    if((b.status==="open"||b.status==="partially_paid"||b.status==="issued") && b.outstandingCents>0 && can("bill.pay")){
+      actions.appendChild(h("button",{class:"btn sm",onclick:function(){
+        api("/bills/"+b.id+"/pay",{method:"POST",body:{id:"ap-"+Date.now(),amountCents:b.outstandingCents,method:"pix"}}).then(function(x){
+          if(x.status===200||x.status===201){ toast(tt("bills.paidtoast","Bill paid"),"ok"); refreshBills(wrap,kpis); }
+          else if(x.status===202){ toast(tt("bills.parked","Parked for approval (over the policy limit)"),"ok"); refreshBills(wrap,kpis); }
+          else toast((x.body||{}).error||"err","err");
+        });
+      }},[tt("bills.paynow","Pay outstanding")+" ("+fmt(b.outstandingCents)+")"]));
+    }
+    return h("div",{class:"panel",style:"margin-bottom:12px;border-left:3px solid "+(b.status==="paid"?"#3aa76d":(b.outstandingCents>0?"#e0894a":"var(--border)"))},[head, amts, flow, tl, actions]);
   }
   function billForm(parties, properties){
     if(!parties.length) return h("div",{class:"panel muted"},["Add a party first — open an agreement and use the People section to create one (it becomes an available payee)."]);
@@ -1613,19 +1662,23 @@
       api("/bills",{method:"POST",body:body}).then(function(r){ handleMut(r,"bills"); });
     }},[ field("Payee",payee), field("Description",desc), field("Account",acct), field("Amount (minor)",amt), field("Property",prop), field("Due",due), h("div",{},[h("button",{class:"btn",type:"submit"},["Record bill"])]) ]);
   }
-  function refreshBills(wrap){
+  function refreshBills(wrap, kpis){
     api("/bills").then(function(r){
       wrap.innerHTML="";
-      var rows=((r.body||{}).bills||[]).map(function(b){
-        var actions=h("div",{class:"row"},[]);
-        if((b.status==="open"||b.status==="partially_paid") && can("bill.pay")){
-          actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){
-            api("/bills/"+b.id+"/pay",{method:"POST",body:{id:"ap-"+Date.now(),amountCents:b.totalCents-b.paidCents,method:"pix"}}).then(function(x){ handleMut(x,"bills"); });
-          }},["Pay"]));
-        }
-        return h("tr",{},[ h("td",{class:"mono"},[b.id]), h("td",{},[h("span",{class:"pill "+(b.status==="paid"?"active":"draft")},[b.status])]), h("td",{class:"mono"},[fmt(b.totalCents)]), h("td",{class:"mono"},[fmt(b.paidCents)]), h("td",{},[actions]) ]);
-      });
-      wrap.appendChild(tableEl([th(t("field.id")),th(t("field.status")),th(t("field.total")),th(t("field.paid")),th("")], rows, 5, t("msg.none")));
+      var bills=((r.body||{}).bills||[]);
+      if(kpis){ kpis.innerHTML="";
+        var outstanding=bills.reduce(function(a,b){return a+(b.outstandingCents||0);},0);
+        var today=new Date().toISOString().slice(0,10);
+        var overdue=bills.filter(function(b){return (b.outstandingCents||0)>0 && (b.dueAt||"").slice(0,10)<today;});
+        var overdueAmt=overdue.reduce(function(a,b){return a+(b.outstandingCents||0);},0);
+        var paid=bills.filter(function(b){return b.status==="paid";}).length;
+        card(kpis, tt("bills.outstanding","Outstanding"), fmt(outstanding));
+        card(kpis, tt("bills.overdue","Overdue"), fmt(overdueAmt), overdue.length?"bad":undefined);
+        card(kpis, tt("bills.paidcount","Bills paid"), String(paid));
+        card(kpis, tt("bills.count","Bills"), String(bills.length));
+      }
+      if(!bills.length){ wrap.appendChild(h("div",{class:"panel muted"},[tt("bills.none","No vendor bills yet — record one above.")])); return; }
+      bills.forEach(function(b){ wrap.appendChild(billCard(b, wrap, kpis)); });
     });
   }
 
