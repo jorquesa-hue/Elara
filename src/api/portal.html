@@ -853,11 +853,12 @@
           } }, [label]);
           return btn;
         }
-        seedRow.appendChild(seeder("Load Brazil sample", "", "Ilhabela portfolio"));
-        seedRow.appendChild(seeder("Load Europe sample (Meridian Living)", "europe", "Meridian European portfolio"));
+        seedRow.appendChild(seeder("⚡ Load institutional portfolio (600+ units)", "portfolio", "Meridian Residential portfolio"));
+        seedRow.appendChild(seeder("Brazil sample", "", "Ilhabela portfolio"));
+        seedRow.appendChild(seeder("Europe sample", "europe", "Meridian European portfolio"));
         main.appendChild(h("div", { class: "panel", style: "border:1px dashed var(--border); margin-top:12px" }, [
           h("strong", {}, ["Start with sample data"]),
-          h("div", { class: "muted", style: "margin:6px 0 12px; font-size:13px" }, ["Load a realistic portfolio so you can explore every screen. Brazil = a mixed short-let/rental/lease island portfolio. Europe = Meridian Living across four communities (Berlin & Amsterdam multifamily with short-stay, Munich long-lease, plus a Berlin student campus) — guests, leases, invoices (paid/open/overdue), deposits, vendor bills, work orders and a sales pipeline. Clear it by starting a fresh tenant."]),
+          h("div", { class: "muted", style: "margin:6px 0 12px; font-size:13px" }, ["Load a realistic portfolio so you can explore every screen. Institutional = Meridian Residential, a US operator with 600+ homes across three communities: Aurora Heights (208-unit long-lease high-rise), Harborview (204-unit multifamily that also runs short stay), and Metro Student Commons (220 by-the-bed student beds) — hundreds of residents & leases, floorplans, applications, tours, waitlist, insurance, packages, work orders, unit turns, preventive maintenance, utility billing, budgets vs NOI, owner distributions/contributions, and every other module. Brazil = a small mixed island portfolio; Europe = Meridian Living across four communities. Clear it by starting a fresh tenant."]),
           seedRow
         ]));
       }
@@ -2875,11 +2876,12 @@
         }},[label]);
         return btn;
       }
-      sampleRow.appendChild(loadSample("Load Brazil sample","","Ilhabela portfolio"));
-      sampleRow.appendChild(loadSample("Load Europe sample (Meridian Living)","europe","Meridian European portfolio"));
+      sampleRow.appendChild(loadSample("⚡ Load institutional portfolio (600+ units)","portfolio","Meridian Residential portfolio"));
+      sampleRow.appendChild(loadSample("Brazil sample","","Ilhabela portfolio"));
+      sampleRow.appendChild(loadSample("Europe sample","europe","Meridian European portfolio"));
       main.appendChild(h("div",{class:"panel",style:"border:1px dashed var(--border)"},[
         h("strong",{},["Load a sample portfolio"]),
-        h("div",{class:"muted",style:"margin:6px 0 12px;font-size:13px"},["Populate every screen with realistic dummy data. Europe = Meridian Living across four communities (Berlin & Amsterdam multifamily with short-stay, Munich long-lease, a Berlin student campus) with guests, leases, invoices (paid/open/overdue), deposits, vendor bills, work orders and a sales pipeline. Best used on a fresh tenant."]),
+        h("div",{class:"muted",style:"margin:6px 0 12px;font-size:13px"},["Populate every screen with realistic dummy data. Institutional = Meridian Residential, a US operator with 600+ homes across three communities (a long-lease high-rise, a multifamily building that also runs short stay, and student housing) — hundreds of residents & leases plus every operations, leasing, finance and ownership module. Brazil = a small mixed island portfolio; Europe = Meridian Living across four communities. Best used on a fresh tenant."]),
         sampleRow
       ]));
     }

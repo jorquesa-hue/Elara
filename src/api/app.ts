@@ -84,7 +84,7 @@ import { buildCustomReport, dataSources, type CustomReportSpec } from '../report
 import { siteListing, checkAvailability, isValidDate, type BookingSiteInput } from '../booking-site.ts';
 import { SiteContentStore, SiteContentError, sanitizeSiteContent } from '../site-content.ts';
 import { templateGallery, isKnownTemplate, resolveTheme } from '../site-templates.ts';
-import { buildDemoWorld, DEMO_MARKER_UNIT_ID, buildEuropeWorld, EUROPE_MARKER_UNIT_ID } from '../demo-data.ts';
+import { buildDemoWorld, DEMO_MARKER_UNIT_ID, buildEuropeWorld, EUROPE_MARKER_UNIT_ID, buildPortfolioWorld, PORTFOLIO_MARKER_UNIT_ID } from '../demo-data.ts';
 
 export interface ApiRequest {
   method: string;
@@ -4351,10 +4351,9 @@ export class App {
     seeded: boolean;
     counts?: Record<string, number>;
   } {
-    const europe = variant === 'europe';
-    const marker = europe ? EUROPE_MARKER_UNIT_ID : DEMO_MARKER_UNIT_ID;
+    const marker = variant === 'europe' ? EUROPE_MARKER_UNIT_ID : variant === 'portfolio' ? PORTFOLIO_MARKER_UNIT_ID : DEMO_MARKER_UNIT_ID;
     if (this.masterData.units.get(tenantId, marker)) return { seeded: false };
-    const w = europe ? buildEuropeWorld(tenantId, at) : buildDemoWorld(tenantId, at);
+    const w = variant === 'europe' ? buildEuropeWorld(tenantId, at) : variant === 'portfolio' ? buildPortfolioWorld(tenantId, at) : buildDemoWorld(tenantId, at);
     const currency = this.config.get(tenantId).currency;
     const unitId = (code: string) => `demo-unit-${code}`;
     const guestId = (code: string) => `demo-guest-${code}`;
@@ -4365,7 +4364,9 @@ export class App {
     const entId = (code: string) => `demo-ent-${code}`;
     for (const e of w.legalEntities ?? []) this.entities.addEntity({ id: entId(e.code), tenantId, role: e.role as EntityRole, name: e.name, taxId: e.taxId });
     for (const pr of w.properties) this.masterData.properties.add({ id: propId(pr.code), tenantId, code: pr.code, name: pr.name, ...(pr.address ? { address: pr.address } : {}), ...(pr.entityCode ? { entityId: entId(pr.entityCode) } : {}) });
-    for (const u of w.units) this.masterData.units.add({ id: unitId(u.code), tenantId, code: u.code, label: u.label, active: u.active, ...(u.propertyCode ? { propertyId: propId(u.propertyCode) } : {}) });
+    const typeId = (code: string) => `demo-utype-${code}`;
+    for (const ut of w.unitTypes ?? []) this.masterData.unitTypes.add({ id: typeId(ut.code), tenantId, code: ut.code, name: ut.name, bedrooms: ut.bedrooms, bathrooms: ut.bathrooms, maxGuests: ut.maxGuests, areaSqm: ut.areaSqm, baseRentCents: ut.baseRentCents });
+    for (const u of w.units) this.masterData.units.add({ id: unitId(u.code), tenantId, code: u.code, label: u.label, active: u.active, ...(u.propertyCode ? { propertyId: propId(u.propertyCode) } : {}), ...(u.typeCode ? { typeId: typeId(u.typeCode) } : {}) });
     for (const g of w.guests) this.masterData.guests.add({ id: guestId(g.code), tenantId, code: g.code, fullName: g.fullName, email: g.email });
     for (const p of w.parties) this.parties.addParty({ id: p.id, tenantId, kind: p.kind, displayName: p.displayName, legalName: p.legalName, taxId: p.taxId, email: p.email, phone: p.phone, attributes: p.attributes });
     for (const pr of w.pricingRules) this.revenue.setRule({ id: pr.id, tenantId, name: pr.name, baseCents: pr.baseCents, minCents: pr.minCents, maxCents: pr.maxCents, weekendFactorBps: pr.weekendFactorBps, occupancyTiers: pr.occupancyTiers, losDiscounts: pr.losDiscounts });

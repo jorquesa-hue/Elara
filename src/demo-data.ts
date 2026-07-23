@@ -14,7 +14,8 @@
 // overdue), deposits, vendor bills, work orders, a sales pipeline and a dynamic
 // pricing rule. Given a fixed `at` it is fully reproducible.
 
-export interface DemoUnit { code: string; label: string; active: boolean; propertyCode?: string }
+export interface DemoUnit { code: string; label: string; active: boolean; propertyCode?: string; typeCode?: string }
+export interface DemoUnitType { code: string; name: string; bedrooms?: number; bathrooms?: number; maxGuests?: number; areaSqm?: number; baseRentCents?: number }
 export interface DemoProperty { code: string; name: string; address?: string; entityCode?: string }
 export interface DemoEntity { code: string; role: string; name: string; taxId?: string }
 export interface DemoApplication { id: string; applicantName: string; applicantEmail?: string; leadId?: string; unitCode?: string; incomeCents?: number; submittedAt: string }
@@ -109,6 +110,7 @@ export interface DemoWorld {
   contributions?: DemoCapitalMove[];
   roommateProspects?: DemoProspect[];
   propertyBudgets?: DemoPropertyBudget[];
+  unitTypes?: DemoUnitType[];
   spaces?: DemoSpace[];
   reservations?: DemoReservation[];
   threads?: DemoThread[];
@@ -628,5 +630,303 @@ export function buildEuropeWorld(tenantId: string, at: string): DemoWorld {
   return {
     tenantId, properties, units, guests, parties, pricingRules, agreements, invoices, deposits, bills, workOrders, leads,
     legalEntities, applications, tours, insurancePolicies, utilityBills, parcels, waitlist, distributions, contributions, roommateProspects, propertyBudgets,
+  };
+}
+
+/** Marker unit for the large institutional portfolio (distinct from the others). */
+export const PORTFOLIO_MARKER_UNIT_ID = 'demo-unit-AUR-101';
+
+/**
+ * A large, institutional multi-portfolio operator ("Meridian Residential") —
+ * the Greystar-scale demo. Three communities, ~200+ homes each:
+ *   • Aurora Heights   — 208-unit urban high-rise, LONG-LEASE ONLY (no short stay)
+ *   • Harborview       — 204-unit MF that ALSO runs short stay (nightly + monthly furnished + lease)
+ *   • Metro Student Commons — 220 by-the-bed student beds (academic-year leases + roommate matching)
+ * Deterministic: `at` anchors every date; names/rates are index-derived (no RNG),
+ * so the world is reproducible and applies through the same balanced kernel loop.
+ * Occupancy is realistic (~88–94%) so Vacancy / Make-ready / Waitlist have data too.
+ */
+export function buildPortfolioWorld(tenantId: string, at: string): DemoWorld {
+  const now = Date.parse(at);
+  const d = (o: number) => isoDate(now + o * DAY);
+  const t = (o: number) => isoStamp(now + o * DAY);
+  const byr = at.slice(0, 4);
+
+  const FIRST = ['James', 'Maria', 'David', 'Sofia', 'Michael', 'Emma', 'Daniel', 'Olivia', 'Lucas', 'Ava', 'Noah', 'Isabella', 'Ethan', 'Mia', 'Liam', 'Amelia', 'Mateo', 'Chloe', 'Aiden', 'Zoe', 'Omar', 'Nadia', 'Priya', 'Kenji', 'Ling', 'Hassan', 'Fatima', 'Diego', 'Yuki', 'Ade'];
+  const LAST = ['Anderson', 'Silva', 'Chen', 'Patel', 'Johnson', 'Garcia', 'Muller', 'Rossi', 'Kim', 'Nguyen', 'Okafor', 'Haddad', 'Novak', 'Costa', 'Yamamoto', 'Brown', 'Dubois', 'Ivanov', 'Santos', 'Cohen', 'Reyes', 'Fischer', 'Ali', 'Wang', 'Torres', 'Berg', 'Mbeki', 'Roy', 'Suzuki', 'Walsh'];
+  const pname = (i: number) => FIRST[i % FIRST.length] + ' ' + LAST[(i * 7 + 3) % LAST.length];
+
+  const legalEntities: DemoEntity[] = [
+    { code: 'OPCO', role: 'operator', name: 'Meridian Residential Management LLC', taxId: '84-1000001' },
+    { code: 'SPE-AUR', role: 'spe', name: 'Aurora Heights Owner LP', taxId: '84-1000002' },
+    { code: 'SPE-HAR', role: 'spe', name: 'Harborview Residential LP', taxId: '84-1000003' },
+    { code: 'SPE-STU', role: 'spe', name: 'Metro Student Housing LP', taxId: '84-1000004' },
+  ];
+  const properties: DemoProperty[] = [
+    { code: 'AUR', name: 'Aurora Heights', address: '1200 Summit Ave, Denver CO', entityCode: 'SPE-AUR' },
+    { code: 'HAR', name: 'Harborview Residences', address: '88 Marina Blvd, San Diego CA', entityCode: 'SPE-HAR' },
+    { code: 'STU', name: 'Metro Student Commons', address: '400 University Way, Austin TX', entityCode: 'SPE-STU' },
+  ];
+
+  // Floorplans per community. baseRentCents is monthly (nightly plans priced per night).
+  const unitTypes: DemoUnitType[] = [
+    { code: 'AUR-STU', name: 'Aurora Studio', bedrooms: 0, bathrooms: 1, maxGuests: 2, areaSqm: 42, baseRentCents: 165_000 },
+    { code: 'AUR-1BR', name: 'Aurora 1 Bed', bedrooms: 1, bathrooms: 1, maxGuests: 2, areaSqm: 58, baseRentCents: 210_000 },
+    { code: 'AUR-2BR', name: 'Aurora 2 Bed', bedrooms: 2, bathrooms: 2, maxGuests: 4, areaSqm: 84, baseRentCents: 295_000 },
+    { code: 'AUR-3BR', name: 'Aurora 3 Bed', bedrooms: 3, bathrooms: 2, maxGuests: 6, areaSqm: 110, baseRentCents: 385_000 },
+    { code: 'HAR-1BR', name: 'Harborview 1 Bed', bedrooms: 1, bathrooms: 1, maxGuests: 2, areaSqm: 60, baseRentCents: 230_000 },
+    { code: 'HAR-2BR', name: 'Harborview 2 Bed', bedrooms: 2, bathrooms: 2, maxGuests: 4, areaSqm: 88, baseRentCents: 320_000 },
+    { code: 'HAR-STAY', name: 'Harborview Furnished Suite', bedrooms: 1, bathrooms: 1, maxGuests: 3, areaSqm: 64, baseRentCents: 24_000 },
+    { code: 'STU-BED', name: 'Shared Suite Bed', bedrooms: 1, bathrooms: 1, maxGuests: 1, areaSqm: 16, baseRentCents: 115_000 },
+    { code: 'STU-STUDIO', name: 'Student Studio', bedrooms: 0, bathrooms: 1, maxGuests: 1, areaSqm: 24, baseRentCents: 155_000 },
+  ];
+  const typeRent: Record<string, number> = Object.fromEntries(unitTypes.map((u) => [u.code, u.baseRentCents!]));
+
+  const units: DemoUnit[] = [];
+  const agreements: DemoAgreement[] = [];
+  const parties: DemoParty[] = [];
+  const invoices: DemoInvoice[] = [];
+  const deposits: DemoDeposit[] = [];
+  const leased: Array<{ code: string; agId: string; propCode: string; resId: string; kind: string; rate: number }> = [];
+  const vacant: Array<{ code: string; propCode: string }> = [];
+  let seq = 0; // global resident index
+
+  function makeBuilding(prefix: string, planCodes: string[], count: number, occPct: number, mode: 'lease' | 'mixed' | 'student') {
+    for (let i = 0; i < count; i++) {
+      const floor = Math.floor(i / 12) + 1;
+      const num = floor * 100 + (i % 12) + 1;
+      const code = `${prefix}-${num}`;
+      const typeCode = planCodes[i % planCodes.length]!;
+      const label = `${prefix === 'STU' ? 'Metro Commons' : prefix === 'AUR' ? 'Aurora Heights' : 'Harborview'} — ${mode === 'student' ? 'Bed' : 'Apt'} ${num}`;
+      units.push({ code, label, active: true, propertyCode: prefix, typeCode });
+      const occupied = (i * 97 + 13) % 100 < occPct * 100;
+      if (!occupied) { vacant.push({ code, propCode: prefix }); continue; }
+      const rid = `demo-party-res-${seq}`;
+      parties.push({ id: rid, kind: 'person', displayName: pname(seq), email: `resident${seq}@meridian.example.com`, phone: `+1 415 555-${String(1000 + (seq % 8999)).padStart(4, '0')}` });
+      const baseRent = typeRent[typeCode]!;
+      const rate = baseRent + ((i % 6) * 3500);
+      // Tenure by building mode.
+      let kind: 'nightly' | 'monthly' | 'lease' = 'lease';
+      if (mode === 'mixed') { const m = i % 20; kind = m < 12 ? 'lease' : m < 17 ? 'monthly' : 'nightly'; }
+      let startOff: number, endOff: number, r = rate;
+      if (kind === 'nightly') { startOff = -((i % 5) + 2); endOff = (i % 4) + 3; r = Math.round(baseRent); }
+      else if (kind === 'monthly') { startOff = -(10 + (i * 7) % 80); endOff = startOff + 150; }
+      else { startOff = -(30 + (seq * 13) % 320); endOff = startOff + 365; }
+      const agId = `agr-${code}`;
+      agreements.push({ id: agId, guestCode: `RES-${seq}`, unitCode: code, kind, start: d(startOff), end: d(endOff), rateCents: r, activate: true, moveIn: true, residentPartyId: rid, payerPartyId: rid });
+      leased.push({ code, agId, propCode: prefix, resId: rid, kind, rate: r });
+      seq++;
+    }
+  }
+
+  makeBuilding('AUR', ['AUR-STU', 'AUR-1BR', 'AUR-2BR', 'AUR-3BR'], 208, 0.90, 'lease');
+  makeBuilding('HAR', ['HAR-1BR', 'HAR-2BR', 'HAR-STAY'], 204, 0.88, 'mixed');
+  makeBuilding('STU', ['STU-BED', 'STU-BED', 'STU-STUDIO'], 220, 0.94, 'student');
+
+  // Sparse but varied billing: ~1 in 7 leases carries a current invoice (paid /
+  // open / overdue), so AR / delinquency / collections have a real spread
+  // without exploding the ledger.
+  const acctFor = (kind: string) => (kind === 'nightly' ? 'revenue:nightly' : 'revenue:rent');
+  leased.forEach((l, idx) => {
+    if (idx % 7 !== 0) return;
+    const n = invoices.length + 1;
+    const mode3 = idx % 3;
+    const issued = mode3 === 2 ? t(-38) : t(-6);
+    const due = mode3 === 2 ? d(-24) : d(4);
+    const lines = [{ description: `Rent — ${l.code}`, account: acctFor(l.kind), amountCents: l.rate }];
+    const inv: DemoInvoice = { id: `inv-${l.code}-${n}`, agreementId: l.agId, issuedAt: issued, dueAt: due, lines };
+    if (mode3 === 0) { inv.payCents = l.rate; inv.payMethod = 'card'; inv.paidAt = t(-2); }
+    else if (mode3 === 1 && idx % 14 === 0) { inv.payCents = Math.round(l.rate / 2); inv.payMethod = 'transfer'; inv.paidAt = t(-1); }
+    invoices.push(inv);
+  });
+  // Security deposits on ~1 in 9 leases.
+  leased.forEach((l, idx) => { if (idx % 9 === 0) deposits.push({ id: `dep-${l.code}`, agreementId: l.agId, amountCents: Math.round(l.rate * 1.5), heldAt: t(-40) }); });
+
+  const vendor = 'demo-party-vendor';
+  parties.push({ id: vendor, kind: 'organization', displayName: 'Summit Facilities Services', legalName: 'Summit Facilities Services Inc', taxId: '84-2000001', email: 'ap@summitfs.example.com', phone: '+1 415 555-0900' });
+
+  // Pricing rule for the short-stay building.
+  const pricingRules: DemoPricingRule[] = [
+    { id: 'demo-price-har', name: 'Harborview — dynamic short-stay', baseCents: 24_000, minCents: 16_000, maxCents: 60_000, weekendFactorBps: 13_000, occupancyTiers: [{ minOccupancyPct: 70, factorBps: 11_500 }, { minOccupancyPct: 90, factorBps: 13_000 }], losDiscounts: [{ minNights: 7, discountBps: 1_000 }, { minNights: 28, discountBps: 2_200 }] },
+  ];
+
+  // --- CRM funnel (varied stages) -----------------------------------------
+  const leads: DemoLead[] = [
+    { id: 'demo-lead-1', name: 'Corporate housing — 12 furnished suites (Harborview)', source: 'referral', estValueCents: 3_400_000, createdAt: t(-3), advanceTo: ['toured'] },
+    { id: 'demo-lead-2', name: '2BR waitlist — Aurora Heights', source: 'website', estValueCents: 354_000, createdAt: t(-9), advanceTo: ['toured', 'applied'] },
+    { id: 'demo-lead-3', name: 'Fall semester block — 20 beds (Metro Commons)', source: 'ils', estValueCents: 2_760_000, createdAt: t(-14), advanceTo: ['toured', 'applied', 'approved'] },
+    { id: 'demo-lead-4', name: 'Relocation — 1BR Aurora', source: 'instagram', estValueCents: 252_000, createdAt: t(-20), advanceTo: ['toured', 'applied', 'approved', 'signed'] },
+    { id: 'demo-lead-5', name: 'Group booking — cancelled', source: 'booking', estValueCents: 480_000, createdAt: t(-18), advanceTo: ['toured', 'lost'] },
+    { id: 'demo-lead-6', name: 'Studio inquiry — Aurora', source: 'website', estValueCents: 165_000, createdAt: t(-1) },
+  ];
+
+  // --- leasing funnel referencing real vacant units -----------------------
+  const vac = (i: number) => vacant[i % vacant.length]?.code;
+  const applications: DemoApplication[] = [
+    { id: 'demo-app-1', applicantName: 'Rebecca Lin', applicantEmail: 'rebecca.lin@example.com', leadId: 'demo-lead-2', unitCode: vac(0), incomeCents: 9_600_000, submittedAt: t(-8) },
+    { id: 'demo-app-2', applicantName: 'Marcus Webb', applicantEmail: 'marcus.webb@example.com', leadId: 'demo-lead-3', unitCode: vac(3), incomeCents: 7_200_000, submittedAt: t(-11) },
+    { id: 'demo-app-3', applicantName: 'Priya Raman', applicantEmail: 'priya.raman@example.com', unitCode: vac(6), incomeCents: 8_400_000, submittedAt: t(-4) },
+    { id: 'demo-app-4', applicantName: 'Tomás Alvarez', applicantEmail: 'tomas.alvarez@example.com', unitCode: vac(9), incomeCents: 6_600_000, submittedAt: t(-2) },
+  ];
+  const tours: DemoTour[] = [
+    { id: 'demo-tour-1', prospectName: 'Corporate housing group', prospectEmail: 'reloc@corp.example.com', scheduledAt: t(2), leadId: 'demo-lead-1', unitCode: vac(1), createdAt: t(-1) },
+    { id: 'demo-tour-2', prospectName: 'Fall block coordinator', scheduledAt: t(4), leadId: 'demo-lead-3', unitCode: vac(4), createdAt: t(-2) },
+    { id: 'demo-tour-3', prospectName: 'Rebecca Lin', prospectEmail: 'rebecca.lin@example.com', scheduledAt: t(-1), leadId: 'demo-lead-2', unitCode: vac(0), createdAt: t(-5) },
+    { id: 'demo-tour-4', prospectName: 'Walk-in — studio', scheduledAt: t(1), unitCode: vac(7), createdAt: t(0) },
+  ];
+  const waitlist: DemoWaitlist[] = [
+    { id: 'demo-wl-1', prospectName: 'Grace Okoye', propertyCode: 'AUR', prospectEmail: 'grace.o@example.com', desiredMoveIn: d(30), joinedAt: t(-7) },
+    { id: 'demo-wl-2', prospectName: 'Ben Carter', propertyCode: 'AUR', joinedAt: t(-6) },
+    { id: 'demo-wl-3', prospectName: 'Sana Iqbal', propertyCode: 'AUR', desiredMoveIn: d(45), joinedAt: t(-4) },
+    { id: 'demo-wl-4', prospectName: 'Diego Ramos', propertyCode: 'HAR', joinedAt: t(-5) },
+    { id: 'demo-wl-5', prospectName: 'Emily Zhang', propertyCode: 'HAR', desiredMoveIn: d(20), joinedAt: t(-3) },
+    { id: 'demo-wl-6', prospectName: 'Kofi Mensah', propertyCode: 'STU', joinedAt: t(-2) },
+  ];
+
+  // --- insurance compliance (sample across leases; some expiring/lapsed) ---
+  const insurancePolicies: DemoInsurance[] = leased.filter((_, i) => i % 23 === 0).slice(0, 18).map((l, i) => ({
+    id: `demo-ins-${i + 1}`, agreementId: l.agId, partyId: l.resId, carrier: ['Lemonade', 'State Farm', 'Assurant', 'Allstate'][i % 4]!, policyNumber: `POL-${byr}-${1000 + i}`,
+    liabilityCents: 10_000_000, effectiveAt: d(-300 + (i % 3) * 40), expiresAt: i % 5 === 0 ? d(18) : d(120 + (i % 4) * 30), createdAt: t(-300),
+  }));
+
+  // --- front-desk parcels (some aging past a week) ------------------------
+  const parcels: DemoParcel[] = leased.filter((_, i) => i % 31 === 0).slice(0, 14).map((l, i) => ({
+    id: `demo-par-${i + 1}`, partyId: l.resId, carrier: ['UPS', 'FedEx', 'USPS', 'Amazon'][i % 4]!, receivedAt: t(-(i % 11)), description: ['Small box', 'Envelope', 'Large parcel', 'Two boxes'][i % 4], location: `Mailroom — Shelf ${String.fromCharCode(65 + (i % 6))}${(i % 4) + 1}`,
+  }));
+
+  // --- utility billing (RUBS) per community -------------------------------
+  const utilityBills: DemoUtilityBill[] = [
+    { id: 'demo-util-1', propertyCode: 'AUR', utility: 'water', method: 'occupancy', periodStart: d(-30), periodEnd: d(0), totalCents: 1_840_000, createdAt: t(-2) },
+    { id: 'demo-util-2', propertyCode: 'HAR', utility: 'electric', method: 'area', periodStart: d(-30), periodEnd: d(0), totalCents: 2_260_000, createdAt: t(-2) },
+    { id: 'demo-util-3', propertyCode: 'STU', utility: 'trash', method: 'equal', periodStart: d(-30), periodEnd: d(0), totalCents: 640_000, createdAt: t(-2) },
+  ];
+
+  // --- vendor bills (AP) --------------------------------------------------
+  const bills: DemoBill[] = [
+    { id: 'demo-bill-1', payeeId: vendor, propertyCode: 'AUR', issuedAt: t(-15), dueAt: d(-2), memo: 'HVAC quarterly service — Aurora', lines: [{ description: 'Labor + parts', account: 'expense:maintenance', amountCents: 1_240_000 }], payCents: 1_240_000, payMethod: 'transfer', paidAt: t(-5) },
+    { id: 'demo-bill-2', payeeId: vendor, propertyCode: 'HAR', issuedAt: t(-9), dueAt: d(6), memo: 'Landscaping — Harborview', lines: [{ description: 'Grounds maintenance', account: 'expense:maintenance', amountCents: 480_000 }] },
+    { id: 'demo-bill-3', payeeId: vendor, propertyCode: 'STU', issuedAt: t(-35), dueAt: d(-14), memo: 'Common-area cleaning — Metro Commons', lines: [{ description: 'Janitorial (monthly)', account: 'expense:management', amountCents: 720_000 }] },
+    { id: 'demo-bill-4', payeeId: vendor, propertyCode: 'AUR', issuedAt: t(-4), dueAt: d(11), memo: 'Elevator inspection — Aurora', lines: [{ description: 'Annual inspection', account: 'expense:maintenance', amountCents: 320_000 }] },
+  ];
+
+  // --- work orders (open/in-progress/completed across communities) --------
+  const workOrders: DemoWorkOrder[] = [
+    { id: 'demo-wo-1', title: 'AC not cooling — Aurora Apt 512', category: 'hvac', priority: 'high', openedAt: t(-1), requestedByPartyId: leased[10]?.resId, assignVendorPartyId: vendor, startedAt: t(-1) },
+    { id: 'demo-wo-2', title: 'Leak under sink — Harborview Apt 305', category: 'plumbing', priority: 'urgent', openedAt: t(-4), requestedByPartyId: leased[220]?.resId, assignVendorPartyId: vendor, startedAt: t(-3), completedAt: t(-2), resolution: 'Replaced P-trap.' },
+    { id: 'demo-wo-3', title: 'Garage gate sticking — Aurora', category: 'general', priority: 'normal', openedAt: t(-2), assignVendorPartyId: vendor },
+    { id: 'demo-wo-4', title: 'Common-area lighting — Metro Commons', category: 'electrical', priority: 'normal', openedAt: t(-6), requestedByPartyId: leased[420]?.resId },
+    { id: 'demo-wo-5', title: 'Pest control — Harborview 3rd floor', category: 'general', priority: 'low', openedAt: t(-8), assignVendorPartyId: vendor, startedAt: t(-7), completedAt: t(-6), resolution: 'Treated; follow-up in 30d.' },
+  ];
+
+  // --- unit turns on vacant units (one stuck past a week) -----------------
+  const unitTurns: DemoUnitTurn[] = vacant.slice(0, 6).map((v, i) => ({ id: `demo-turn-${i + 1}`, unitCode: v.code, vacatedAt: d(-(i === 0 ? 12 : (i * 2) + 1)), createdAt: t(-(i === 0 ? 12 : (i * 2) + 1)), notes: i % 2 ? 'Standard turn' : 'Full make-ready (paint + flooring)', tasksDone: i % 5 }));
+
+  // --- preventive maintenance ---------------------------------------------
+  const pmSchedules: DemoPmSchedule[] = [
+    { id: 'demo-pm-1', title: 'HVAC filter change — Aurora (all floors)', cadenceDays: 90, nextDueAt: d(12), createdAt: t(-80), priority: 'normal' },
+    { id: 'demo-pm-2', title: 'Fire-alarm test — Harborview', cadenceDays: 180, nextDueAt: d(5), createdAt: t(-120), priority: 'high' },
+    { id: 'demo-pm-3', title: 'Elevator service — Aurora', cadenceDays: 30, nextDueAt: d(-1), createdAt: t(-60), priority: 'high' },
+    { id: 'demo-pm-4', title: 'Pool chemical check — Harborview', cadenceDays: 7, nextDueAt: d(2), createdAt: t(-40), priority: 'normal' },
+  ];
+
+  // --- amenity spaces + reservations --------------------------------------
+  const spaces: DemoSpace[] = [
+    { code: 'AUR-LOUNGE', label: 'Aurora — Sky Lounge', type: 'amenity', capacity: 40 },
+    { code: 'AUR-GYM', label: 'Aurora — Fitness Center', type: 'amenity', capacity: 25 },
+    { code: 'HAR-BBQ', label: 'Harborview — Rooftop BBQ', type: 'amenity', capacity: 20 },
+    { code: 'STU-STUDY', label: 'Metro Commons — Study Rooms', type: 'amenity', capacity: 12 },
+  ];
+  const reservations: DemoReservation[] = [
+    { id: 'demo-resv-1', spaceCode: 'AUR-LOUNGE', holderPartyId: leased[5]?.resId ?? vendor, start: d(6), end: d(7), reservedAt: t(-1), priceCents: 15_000, note: 'Resident birthday — 25 guests' },
+    { id: 'demo-resv-2', spaceCode: 'HAR-BBQ', holderPartyId: leased[210]?.resId ?? vendor, start: d(3), end: d(4), reservedAt: t(-2), note: 'Floor social' },
+    { id: 'demo-resv-3', spaceCode: 'STU-STUDY', holderPartyId: leased[410]?.resId ?? vendor, start: d(1), end: d(2), reservedAt: t(0), note: 'Study group' },
+  ];
+
+  // --- inbox threads ------------------------------------------------------
+  const threads: DemoThread[] = [
+    { id: 'demo-thr-1', subject: 'Package not received — Aurora 512', kind: 'resident', createdAt: t(-3), partyId: leased[10]?.resId, messages: [
+      { id: 'demo-msg-1a', at: t(-3), authorType: 'party', authorId: leased[10]?.resId ?? 'x', body: 'Tracking says delivered but nothing in the mailroom.' },
+      { id: 'demo-msg-1b', at: t(-2), authorType: 'user', authorId: 'demo-user-desk', body: 'Found it behind the desk — logged under your name, ready for pickup.' },
+    ] },
+    { id: 'demo-thr-2', subject: 'Q3 owner distribution timing', kind: 'finance', createdAt: t(-5), messages: [
+      { id: 'demo-msg-2a', at: t(-5), authorType: 'user', authorId: 'demo-user-fin', body: 'Aurora Q3 distribution to the LP scheduled after the close.' },
+    ] },
+    { id: 'demo-thr-3', subject: 'Fire-alarm test scheduling — Harborview', kind: 'internal', createdAt: t(-6), messages: [
+      { id: 'demo-msg-3a', at: t(-6), authorType: 'user', authorId: 'demo-user-ops', body: 'Vendor confirmed for the 5th; notify residents 48h prior.' },
+    ] },
+  ];
+
+  // --- bank reconciliation feed -------------------------------------------
+  const bankTransactions: DemoBankTx[] = [
+    { id: 'demo-btx-1', postedAt: t(-2), amountCents: 210_000, description: 'ACH CREDIT — RESIDENT RENT', reference: 'ACH-0001' },
+    { id: 'demo-btx-2', postedAt: t(-2), amountCents: 295_000, description: 'ACH CREDIT — RESIDENT RENT', reference: 'ACH-0002' },
+    { id: 'demo-btx-3', postedAt: t(-5), amountCents: -1_240_000, description: 'WIRE — SUMMIT FACILITIES', reference: 'WIRE-0007' },
+    { id: 'demo-btx-4', postedAt: t(-1), amountCents: -18_500, description: 'BANK SERVICE FEE', reference: 'FEE-07' },
+    { id: 'demo-btx-5', postedAt: t(-3), amountCents: 165_000, description: 'CARD DEPOSIT — SHORT STAY', reference: 'CARD-0044' },
+  ];
+
+  // --- purchasing: POs (one approved) + budgets ---------------------------
+  const purchaseOrders: DemoPurchaseOrder[] = [
+    { id: 'demo-po-1', vendorId: vendor, entityCode: 'OPCO', createdAt: t(-12), expectedAt: d(5), memo: 'Unit-turn materials — Aurora', lines: [{ description: 'Paint + flooring (10 units)', account: 'expense:maintenance', amountCents: 2_400_000 }], approve: true },
+    { id: 'demo-po-2', vendorId: vendor, entityCode: 'OPCO', createdAt: t(-3), expectedAt: d(14), memo: 'Furnished-suite linens — Harborview', lines: [{ description: 'Linens & amenities', account: 'expense:supplies', amountCents: 680_000 }] },
+    { id: 'demo-po-3', vendorId: vendor, entityCode: 'OPCO', createdAt: t(-1), expectedAt: d(21), memo: 'Study-room furniture — Metro Commons', lines: [{ description: 'Desks & chairs', account: 'expense:supplies', amountCents: 940_000 }] },
+  ];
+  const procurementBudgets: DemoProcBudget[] = [
+    { id: 'demo-pbud-mnt', account: 'expense:maintenance', periodStart: `${byr}-01-01`, periodEnd: `${Number(byr) + 1}-01-01`, amountCents: 96_000_00, label: 'Annual R&M' },
+    { id: 'demo-pbud-sup', account: 'expense:supplies', periodStart: `${byr}-01-01`, periodEnd: `${Number(byr) + 1}-01-01`, amountCents: 24_000_00, label: 'Annual supplies' },
+  ];
+
+  // --- e-sign envelope out for signature ----------------------------------
+  const signatureEnvelopes: DemoEnvelope[] = leased[3] ? [
+    { id: 'demo-env-1', documentName: `Lease — ${leased[3].code}`, provider: 'docusign', agreementId: leased[3].agId, createdAt: t(-6), send: true, signers: [{ name: pname(3), email: 'resident3@meridian.example.com', role: 'resident', partyId: leased[3].resId }] },
+  ] : [];
+
+  // --- property budgets (per community) -----------------------------------
+  const propertyBudgets: DemoPropertyBudget[] = [
+    { id: 'pbud-AUR', propertyCode: 'AUR', periodStart: `${byr}-01-01`, periodEnd: `${Number(byr) + 1}-01-01`, notes: 'FY operating plan', lines: [
+      { category: 'revenue', label: 'Rental revenue', account: 'revenue:rent', amountCents: 5_400_000_00 },
+      { category: 'expense', label: 'Property management', account: 'expense:management', amountCents: 540_000_00 },
+      { category: 'expense', label: 'Repairs & maintenance', account: 'expense:maintenance', amountCents: 420_000_00 },
+      { category: 'expense', label: 'Utilities', account: 'expense:utilities', amountCents: 300_000_00 } ] },
+    { id: 'pbud-HAR', propertyCode: 'HAR', periodStart: `${byr}-01-01`, periodEnd: `${Number(byr) + 1}-01-01`, notes: 'FY operating plan', lines: [
+      { category: 'revenue', label: 'Rental + short-stay revenue', account: 'revenue:rent', amountCents: 5_900_000_00 },
+      { category: 'expense', label: 'Property management', account: 'expense:management', amountCents: 590_000_00 },
+      { category: 'expense', label: 'Repairs & maintenance', account: 'expense:maintenance', amountCents: 460_000_00 } ] },
+    { id: 'pbud-STU', propertyCode: 'STU', periodStart: `${byr}-01-01`, periodEnd: `${Number(byr) + 1}-01-01`, notes: 'FY operating plan', lines: [
+      { category: 'revenue', label: 'Bed revenue', account: 'revenue:rent', amountCents: 3_000_000_00 },
+      { category: 'expense', label: 'Property management', account: 'expense:management', amountCents: 360_000_00 } ] },
+  ];
+
+  // --- owner capital in/out per SPE ---------------------------------------
+  const contributions: DemoCapitalMove[] = [
+    { id: 'demo-contrib-1', entityCode: 'SPE-AUR', propertyCode: 'AUR', amountCents: 480_000_00, recordedAt: t(-320), memo: 'Acquisition equity — Aurora Heights' },
+    { id: 'demo-contrib-2', entityCode: 'SPE-HAR', propertyCode: 'HAR', amountCents: 520_000_00, recordedAt: t(-300), memo: 'Acquisition equity — Harborview' },
+    { id: 'demo-contrib-3', entityCode: 'SPE-STU', propertyCode: 'STU', amountCents: 260_000_00, recordedAt: t(-280), memo: 'Acquisition equity — Metro Commons' },
+  ];
+  const distributions: DemoCapitalMove[] = [
+    { id: 'demo-dist-1', entityCode: 'SPE-AUR', propertyCode: 'AUR', amountCents: 42_000_00, recordedAt: t(-30), memo: 'Q2 distribution to LP' },
+    { id: 'demo-dist-2', entityCode: 'SPE-HAR', propertyCode: 'HAR', amountCents: 38_000_00, recordedAt: t(-28), memo: 'Q2 distribution to LP' },
+  ];
+
+  // --- roommate prospects for the student community -----------------------
+  const roommateProspects: DemoProspect[] = [
+    { id: 'demo-rm-1', name: 'Alex Rivera', preferences: { cleanliness: 4, social: 3, chronotype: 'early', smoker: false } },
+    { id: 'demo-rm-2', name: 'Jordan Kim', preferences: { cleanliness: 4, social: 4, chronotype: 'early', smoker: false } },
+    { id: 'demo-rm-3', name: 'Sam Patel', preferences: { cleanliness: 2, social: 5, chronotype: 'late', smoker: true, smokeFreeOnly: false } },
+    { id: 'demo-rm-4', name: 'Riley Chen', preferences: { cleanliness: 5, social: 2, chronotype: 'early', smoker: false, smokeFreeOnly: true } },
+  ];
+
+  // --- notification outbox ------------------------------------------------
+  const notifications: DemoNotification[] = [
+    { id: 'demo-ntf-1', channel: 'email', to: 'resident0@meridian.example.com', kind: 'payment_receipt', createdAt: t(-2), data: { amountCents: 210_000 } },
+    { id: 'demo-ntf-2', channel: 'email', to: 'resident7@meridian.example.com', kind: 'collections_reminder', createdAt: t(-1), data: { daysOverdue: 24 } },
+    { id: 'demo-ntf-3', channel: 'email', to: 'resident14@meridian.example.com', kind: 'collections_reminder', createdAt: t(-1), data: { daysOverdue: 24 } },
+    { id: 'demo-ntf-4', channel: 'email', to: 'resident3@meridian.example.com', kind: 'esign_request', createdAt: t(-6), data: { document: 'Lease' } },
+  ];
+
+  return {
+    tenantId, properties, units, guests: [], parties, pricingRules, agreements, invoices, deposits, bills, workOrders, leads,
+    legalEntities, applications, tours, insurancePolicies, utilityBills, parcels, waitlist, distributions, contributions, roommateProspects, propertyBudgets,
+    unitTypes, spaces, reservations, threads, bankTransactions, purchaseOrders, procurementBudgets, unitTurns, pmSchedules, signatureEnvelopes, notifications,
   };
 }
