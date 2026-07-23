@@ -48,8 +48,8 @@ test('trailing-twelve returns 12 months + a total row and sums NOI', () => {
 test('pnl comparison folds this period vs a prior window of equal length', () => {
   // Pure-engine check: revenue only in the current window → prior is zero, variance = current.
   const inp: ReportingInput = {
-    tenantId: 'mer', from: '2026-07-01', to: '2026-08-01', now: NOW,
-    agreements: [], invoices: [], payments: [], bills: [], leads: [], workOrders: [], deposits: [], units: [], holds: [], ledgerBalanced: true,
+    tenantId: 'mer', from: '2026-07-01', to: '2026-08-01', now: NOW, currency: 'GBP',
+    agreements: [], invoices: [], payments: [], bills: [], apPayments: [], leads: [], workOrders: [], deposits: [], units: [], holds: [], ledgerBalanced: true,
     ledgerLines: [
       { account: 'revenue:rent', debitCents: 0, creditCents: 100000, postedAt: '2026-07-10T00:00:00Z' },
       { account: 'expense:repairs', debitCents: 30000, creditCents: 0, postedAt: '2026-07-12T00:00:00Z' },
