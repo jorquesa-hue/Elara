@@ -3889,9 +3889,10 @@ export class App {
 
     // A reporting-friendly rollup: agreements by kind/status, ledger, master-data
     // counts, subscription — a single call for dashboards and exports.
-    this.add('GET', '/reporting/summary', 'ledger.read', (ctx) => {
-      // A site operator's rollup counts only its own communities.
-      const scope = this.effectivePropertyScope(ctx).set;
+    this.add('GET', '/reporting/summary', 'ledger.read', (ctx, _p, body) => {
+      // A site operator's rollup counts only its own communities; a regional may
+      // pass ?propertyId to scope the overview to one chosen community.
+      const scope = this.effectivePropertyScope(ctx, this.optString(body, 'propertyId')).set;
       const inScopeUnit = (unitId?: string) => !scope || (unitId ? scope.includes(this.masterData.units.get(ctx.tenantId, unitId)?.propertyId ?? '') : false);
       const mine = [...this.agreements.values()]
         .filter((e) => e.tenantId === ctx.tenantId)

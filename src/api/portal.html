@@ -210,8 +210,13 @@
   .authorg .mlogo { color: var(--muted); display: block; flex: none; }
   .authorg b { color: var(--muted); font-weight: 600; }
 
-  /* Header language switcher (top of the main screen) */
-  .topbar { display: flex; justify-content: flex-end; align-items: center; margin: -2px 0 14px; }
+  /* Header bar (top of the main screen): community scope + language switcher */
+  .topbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: -2px 0 14px; }
+  .scopechip { display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 4px 8px 4px 10px; color: var(--muted); font-size: 13px; max-width: 60%; }
+  .scopechip.locked { color: var(--text); font-weight: 500; }
+  .scopechip.locked span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .scopechip svg { flex: none; }
   .langwrap { display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--border);
     border-radius: 10px; padding: 4px 8px 4px 10px; color: var(--muted); }
   .langwrap:hover { border-color: var(--border-strong); }
@@ -264,7 +269,7 @@
 "use strict";
 (function () {
   var TOKEN_KEY = "usos.token", THEME_KEY = "usos.theme", REFRESH_KEY = "usos.refresh";
-  var state = { token: localStorage.getItem(TOKEN_KEY) || "", refresh: localStorage.getItem(REFRESH_KEY) || "", auth: null, me: null, config: null, options: null, cat: {}, view: "dashboard", detailId: null, workspace: null, health: null, healthDismissed: false };
+  var state = { token: localStorage.getItem(TOKEN_KEY) || "", refresh: localStorage.getItem(REFRESH_KEY) || "", auth: null, me: null, config: null, options: null, cat: {}, view: "dashboard", detailId: null, workspace: null, health: null, healthDismissed: false, properties: [], scopeProperty: "" };
   function wsKey(){ return "usos.ws." + ((state.config && state.config.tenantId) || "_"); }
   function setSession(access, refresh){ state.token = access || ""; state.refresh = refresh || ""; if (access) localStorage.setItem(TOKEN_KEY, access); else localStorage.removeItem(TOKEN_KEY); if (refresh) localStorage.setItem(REFRESH_KEY, refresh); else localStorage.removeItem(REFRESH_KEY); }
   function logout(){ setSession("", ""); state.me = null; boot(); }
@@ -463,6 +468,8 @@
         return Promise.all([ api("/i18n/" + state.config.locale), api("/health").catch(function(){ return { body: null }; }) ]).then(function (res) {
           state.cat = res[0].body;
           state.health = (res[1] && res[1].body) || null;
+          // Communities for the property scope bar (operator chip / regional picker).
+          if (can("masterdata.read")) api("/properties").then(function (pr) { state.properties = ((pr.body || {}).properties) || []; render(); });
           if (state.config.displayName === state.config.tenantId) return renderSetup(true);
           try { state.workspace = localStorage.getItem(wsKey()) || state.workspace; } catch (e) {}
           render();
@@ -499,12 +506,40 @@
       '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">'
       + '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><ellipse cx="12" cy="12" rx="4" ry="9"/></svg>' });
   }
-  // The header language switcher — a dropdown at the top of the main screen.
-  function langBar() {
+  function propName(id) {
+    var p = (state.properties || []).filter(function (x) { return x.id === id; })[0];
+    return (p && p.name) || id;
+  }
+  function pinIcon() {
+    return h("span", { style: "display:flex", html:
+      '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.3 7-11a7 7 0 10-14 0c0 4.7 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>' });
+  }
+  // Community scope: a site operator sees a locked chip (enforced server-side);
+  // a regional operator gets a picker to focus the overview on one community.
+  function scopeControl() {
+    var scoped = state.me && state.me.propertyIds && state.me.propertyIds.length;
+    if (scoped) {
+      var names = state.me.propertyIds.map(propName).join(", ");
+      return h("div", { class: "scopechip locked", title: "Your login is scoped to this community" }, [ pinIcon(), h("span", {}, [names]) ]);
+    }
+    var props = state.properties || [];
+    if (!can("masterdata.read") || props.length < 2) return null; // nothing to pick
+    var sel = h("select", { class: "langsel", "aria-label": "Community", onchange: function () { state.scopeProperty = sel.value; render(); } },
+      [ h("option", { value: "", selected: state.scopeProperty ? null : "selected" }, [tt("scope.all", "All communities")]) ].concat(
+        props.map(function (p) { return h("option", { value: p.id, selected: p.id === state.scopeProperty ? "selected" : null }, [p.name || p.id]); })));
+    return h("div", { class: "scopechip" }, [ pinIcon(), sel ]);
+  }
+  // The scope URL for the dashboard rollup (a regional picker focuses one community).
+  function summaryPath() { return "/reporting/summary" + (state.scopeProperty ? "?propertyId=" + encodeURIComponent(state.scopeProperty) : ""); }
+  // The header bar at the top of the main screen: community scope (left) + language (right).
+  function topBar() {
     var langs = (state.options && state.options.locales) || [];
-    var sel = h("select", { class: "langsel", "aria-label": "Language", onchange: function () { setLocale(sel.value); } },
+    var lang = h("select", { class: "langsel", "aria-label": "Language", onchange: function () { setLocale(lang.value); } },
       langs.map(function (l) { return h("option", { value: l.code, selected: l.code === state.config.locale ? "selected" : null }, [l.name]); }));
-    return h("div", { class: "topbar" }, [ h("div", { class: "langwrap" }, [ globeIcon(), sel ]) ]);
+    return h("div", { class: "topbar" }, [
+      scopeControl() || h("span", {}, []),
+      h("div", { class: "langwrap" }, [ globeIcon(), lang ])
+    ]);
   }
 
   // Mode-aware sign-in: a real email/password login against Supabase Auth (GoTrue)
@@ -613,6 +648,16 @@
   // pt-BR/es translation on top (see i18n.ts). Section/workspace labels carry a
   // labelKey the same way.
   var WORKSPACES = [
+    // Student housing lens — shown (and defaulted) only when the tenant's business
+    // structure is student_housing. Leads with the shared-living workflow:
+    // roommate matching, the waitlist→application funnel, and beds/leases.
+    { id: "student", label: "Student housing", labelKey: "ws.student.label", hint: "beds · roommates", hintKey: "ws.student.hint", icon: "roommates", home: viewOperatorHome, businessTypes: ["student_housing"], sections: [
+      { label: null, items: [["dashboard", "Student housing today", null, "dashboard", "ws.student.home"]] },
+      { label: "Leasing", labelKey: "wsg.leasing", items: [["waitlist","Waitlist","waitlist.read","waitlist","wsi.waitlist"],["applications","Applications","application.read","applications","wsi.applications"],["tours","Tours","tour.read","tours","wsi.tours"],["crm","Pipeline","crm.read","crm","wsi.pipeline"],["roommates","Roommates","roommate.read","roommates","wsi.roommates"]] },
+      { label: "Residents", labelKey: "wsg.residents", items: [["agreements","Leases & beds","agreement.read","agreements","wsi.leasesbeds"],["maintenance","Maintenance","maintenance.read","maintenance","wsi.maintenance"],["packages","Packages","package.read","packages","wsi.packages"],["insurance","Insurance","insurance.read","insurance","wsi.insurance"]] },
+      { label: "Community", labelKey: "wsg.frontdesk", items: [["reservations","Amenities","reservation.read","reservations","wsi.amenities"],["inbox","Inbox","comms.read","inbox","wsi.inbox"]] },
+      { label: "Insights", labelKey: "wsg.insights", items: [["reports","Reports","reports.read","reports","wsi.reports"]] }
+    ] },
     { id: "operator", label: "Property operator", labelKey: "ws.operator.label", hint: "on-site desk", hintKey: "ws.operator.hint", icon: "properties", home: viewOperatorHome, sections: [
       { label: null, items: [["dashboard", "Operations today", null, "dashboard", "ws.operator.home"]] },
       { label: "Front desk", labelKey: "wsg.frontdesk", items: [["packages","Packages","package.read","packages","wsi.packages"],["inbox","Inbox","comms.read","inbox","wsi.inbox"],["reservations","Amenities","reservation.read","reservations","wsi.amenities"],["waitlist","Waitlist","waitlist.read","waitlist","wsi.waitlist"]] },
@@ -669,15 +714,27 @@
       return sec.items.some(function (it) { return it[0] !== "dashboard" && itemVisible(it); });
     });
   }
+  // A workspace with businessTypes shows only for a matching tenant business
+  // structure (e.g. the student lens only for student_housing); one without is
+  // universal.
+  function wsMatchesBusiness(ws) {
+    if (!ws.businessTypes) return true;
+    return ws.businessTypes.indexOf(state.config && state.config.businessStructure) >= 0;
+  }
   function availableWorkspaces() {
-    var avail = WORKSPACES.filter(wsHasContent);
-    return avail.length ? avail : WORKSPACES.slice(); // never leave the switcher empty
+    var avail = WORKSPACES.filter(function (w) { return wsMatchesBusiness(w) && wsHasContent(w); });
+    if (avail.length) return avail;
+    // never leave the switcher empty: fall back to the universal workspaces
+    return WORKSPACES.filter(function (w) { return !w.businessTypes; });
   }
   function currentWorkspace() {
     var avail = availableWorkspaces();
     var found = avail.filter(function (w) { return w.id === state.workspace; })[0];
     if (found) return found;
-    var want = WS_BY_ROLE[state.me && state.me.role] || "operator";
+    // Student-housing tenants default to the student lens; otherwise by role.
+    var want = (state.config && state.config.businessStructure === "student_housing"
+      && avail.some(function (w) { return w.id === "student"; }))
+      ? "student" : (WS_BY_ROLE[state.me && state.me.role] || "operator");
     return avail.filter(function (w) { return w.id === want; })[0] || avail[0];
   }
   function setWorkspace(id) {
@@ -741,7 +798,7 @@
       h("main", { id: "main" }, [])
     ]));
     var main = document.getElementById("main");
-    main.appendChild(langBar());
+    main.appendChild(topBar());
     var hb = healthBanner(); if (hb) main.appendChild(hb);
     var views = { dashboard: viewDashboard, agreements: viewAgreements, properties: viewProperties, website: viewWebsite, pricing: viewPricing, crm: viewCrm, applications: viewApplications, tours: viewTours, turns: viewTurns, insurance: viewInsurance, utilities: viewUtilities, packages: viewPackages, waitlist: viewWaitlist, distributions: viewDistributions, renewals: viewRenewals, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, exceptions: viewExceptions, people: viewPeople, settings: viewSettings };
     var fn = (state.view === "dashboard") ? (ws.home || viewDashboard) : (views[state.view] || ws.home || viewDashboard);
@@ -754,7 +811,7 @@
     main.appendChild(h("p", { class: "sub" }, [state.config.displayName + " · " + prettyBiz(state.config.businessStructure) + (state.config.country ? " · " + state.config.country + " env (" + state.config.jurisdiction + ")" : "")]));
     var cards = h("div", { class: "cards" }, []);
     main.appendChild(cards);
-    api("/reporting/summary").then(function (r) {
+    api(summaryPath()).then(function (r) {
       if (r.status !== 200) return cards.appendChild(h("p", { class: "muted" }, [r.body.error || t("msg.denied")]));
       var s = r.body;
       card(cards, t("card.agreements"), String(s.agreements.total));
@@ -905,7 +962,7 @@
   function viewOperatorHome(main) {
     homeHead(main, tt("ws.operator.home", "Operations today"), tt("wsh.op.sub", "On-site desk") + " · " + state.config.displayName);
     var cards = h("div", { class: "cards" }, []); main.appendChild(cards);
-    api("/reporting/summary").then(function (r) {
+    api(summaryPath()).then(function (r) {
       if (r.status !== 200) return;
       var s = r.body;
       card(cards, "Units", String(s.masterDataCounts.units));
@@ -945,7 +1002,7 @@
   function viewRegionalHome(main) {
     homeHead(main, tt("ws.regional.home", "Regional overview"), tt("wsh.reg.sub", "Across all communities") + " · " + state.config.displayName);
     var cards = h("div", { class: "cards" }, []); main.appendChild(cards);
-    api("/reporting/summary").then(function (r) {
+    api(summaryPath()).then(function (r) {
       if (r.status !== 200) return;
       var s = r.body;
       card(cards, "Communities/units", String(s.masterDataCounts.units));
