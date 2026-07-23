@@ -853,7 +853,7 @@
         var isEmpty = s.agreements.total === 0 && s.masterDataCounts.units === 0;
         var seedRow = h("div", { class: "row", style: "gap:8px;flex-wrap:wrap" }, []);
         function seeder(label, variant, note) {
-          var btn = h("button", { class: "btn" + (variant ? " ghost" : ""), onclick: function () {
+          var btn = h("button", { class: "btn" + (variant === "portfolio" ? "" : " ghost"), onclick: function () {
             btn.disabled = true; btn.textContent = "Loading…";
             api("/demo/seed", { method: "POST", body: variant ? { variant: variant } : {} }).then(function (r) {
               if (r.status === 201 && r.body.seeded) { toast(note + " loaded", "ok"); render(); }
@@ -2875,7 +2875,7 @@
     if (can("masterdata.manage")) {
       var sampleRow = h("div",{class:"row",style:"gap:8px"},[]);
       function loadSample(label, variant, note){
-        var btn = h("button",{class:"btn"+(variant?" ghost":""),onclick:function(){
+        var btn = h("button",{class:"btn"+(variant === "portfolio" ? "" : " ghost"),onclick:function(){
           btn.disabled=true; btn.textContent="Loading…";
           api("/demo/seed",{method:"POST",body:variant?{variant:variant}:{}}).then(function(r){
             btn.disabled=false; btn.textContent=label;
