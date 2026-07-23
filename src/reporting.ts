@@ -80,6 +80,9 @@ export const REPORT_CATALOG: readonly ReportSpec[] = [
   { key: 'rent_roll', title: 'Rent roll', description: 'Every unit with its resident, lease dates, scheduled rent, deposit held and outstanding balance — plus occupancy and scheduled-rent totals.' },
   { key: 'delinquency', title: 'Delinquency (aged)', description: 'Aged receivables by resident: current, 1–30, 31–60, 61–90 and 90+ day buckets per account.' },
   { key: 'income_statement', title: 'Income statement', description: 'Revenue and expenses from the ledger for the window — the P&L, with net operating income.' },
+  { key: 'balance_sheet', title: 'Balance sheet', description: 'Financial position as of the window end — assets, liabilities and equity (with current earnings).' },
+  { key: 'trailing_twelve', title: 'Trailing 12 months (T-12)', description: 'Month-by-month revenue, expenses and NOI over the trailing twelve months — the standard underwriting statement.' },
+  { key: 'pnl_comparison', title: 'P&L — period comparison', description: 'Revenue, expenses and NOI this period vs the prior period, with variance.' },
   { key: 'owner_statement', title: 'Owner statement', description: 'Net operating income by property/community with the owning legal entity — the fund/owner report.' },
   { key: 'property_budget', title: 'Budget vs actual (NOI)', description: 'Planned vs actual net operating income per community, from the operating budgets and the ledger.' },
   { key: 'billing_collections', title: 'Billed vs collected', description: 'Invoiced vs cash collected by month, with the collection rate.' },
@@ -853,6 +856,129 @@ function propertyBudgetReport(inp: ReportingInput): Report {
   };
 }
 
+/** Balance sheet as of the window end: Assets = Liabilities + Equity, where
+ *  current-period earnings (revenue − expenses, all-time) roll into equity. From
+ *  the ledger; a healthy book balances to zero. */
+function balanceSheet(inp: ReportingInput): Report {
+  const asOf = inp.to;
+  const lines = (inp.ledgerLines ?? []).filter((l) => ms(l.postedAt) < ms(asOf));
+  const bal = new Map<string, number>(); // debit-positive natural balance per account
+  let netIncome = 0;
+  for (const l of lines) {
+    if (l.account.startsWith('revenue')) netIncome += l.creditCents - l.debitCents;
+    else if (l.account.startsWith('expense')) netIncome -= l.debitCents - l.creditCents;
+    else bal.set(l.account, (bal.get(l.account) ?? 0) + (l.debitCents - l.creditCents));
+  }
+  const section = (prefix: string, sign: 1 | -1) =>
+    [...bal.entries()].filter(([a]) => a.startsWith(prefix)).map(([account, v]) => ({ account, amount: v * sign })).filter((r) => r.amount !== 0).sort((x, y) => y.amount - x.amount);
+  const assets = section('assets', 1);
+  const liabilities = section('liabilities', -1); // credit-normal
+  const equity = section('equity', -1);
+  const assetsTotal = sum(assets.map((r) => r.amount));
+  const liabilitiesTotal = sum(liabilities.map((r) => r.amount));
+  const equityPosted = sum(equity.map((r) => r.amount));
+  const equityTotal = equityPosted + netIncome;
+  const rows = [
+    { group: 'Assets', account: '', amount: null as number | null },
+    ...assets.map((r) => ({ group: '', account: r.account, amount: r.amount })),
+    { group: 'Total assets', account: '', amount: assetsTotal },
+    { group: 'Liabilities', account: '', amount: null },
+    ...liabilities.map((r) => ({ group: '', account: r.account, amount: r.amount })),
+    { group: 'Total liabilities', account: '', amount: liabilitiesTotal },
+    { group: 'Equity', account: '', amount: null },
+    ...equity.map((r) => ({ group: '', account: r.account, amount: r.amount })),
+    { group: '', account: 'equity:current_earnings', amount: netIncome },
+    { group: 'Total equity', account: '', amount: equityTotal },
+    { group: 'Liabilities + equity', account: '', amount: liabilitiesTotal + equityTotal },
+  ];
+  return {
+    key: 'balance_sheet', title: 'Balance sheet', window: { from: inp.from, to: inp.to },
+    subtitle: `Financial position as of ${asOf.slice(0, 10)}. Assets = Liabilities + Equity (current earnings roll into equity).`,
+    columns: [
+      { key: 'group', label: 'Section', kind: 'text' }, { key: 'account', label: 'Account', kind: 'text' }, { key: 'amount', label: 'Balance', kind: 'money' },
+    ],
+    rows,
+    kpis: [
+      { label: 'Total assets', value: assetsTotal, kind: 'money' },
+      { label: 'Total liabilities', value: liabilitiesTotal, kind: 'money' },
+      { label: 'Total equity', value: equityTotal, kind: 'money' },
+      { label: 'Balances (A − L − E)', value: assetsTotal - liabilitiesTotal - equityTotal, kind: 'money' },
+    ],
+  };
+}
+
+/** Trailing-twelve-months P&L: revenue, expense and NOI for each of the 12
+ *  months ending at the window end — the flagship multifamily operating trend. */
+function trailingTwelve(inp: ReportingInput): Report {
+  const end = new Date(inp.to);
+  const endY = end.getUTCFullYear(); const endM = end.getUTCMonth(); // 0-based; window-end month is exclusive-ish
+  const months: string[] = [];
+  for (let i = 12; i >= 1; i--) {
+    const d = new Date(Date.UTC(endY, endM - i, 1));
+    months.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
+  }
+  const idx = new Map(months.map((m, i) => [m, i]));
+  const rev = new Array(12).fill(0); const exp = new Array(12).fill(0);
+  for (const l of inp.ledgerLines ?? []) {
+    const m = l.postedAt.slice(0, 7);
+    const i = idx.get(m); if (i === undefined) continue;
+    if (l.account.startsWith('revenue')) rev[i] += l.creditCents - l.debitCents;
+    else if (l.account.startsWith('expense')) exp[i] += l.debitCents - l.creditCents;
+  }
+  const rows = months.map((m, i) => ({ month: m, revenue: rev[i], expenses: exp[i], noi: rev[i] - exp[i], margin: rev[i] > 0 ? pct(rev[i] - exp[i], rev[i]) : 0 }));
+  const revT = sum(rev); const expT = sum(exp);
+  rows.push({ month: 'T-12 total', revenue: revT, expenses: expT, noi: revT - expT, margin: revT > 0 ? pct(revT - expT, revT) : 0 });
+  return {
+    key: 'trailing_twelve', title: 'Trailing 12 months (T-12)', window: { from: months[0] + '-01', to: inp.to },
+    subtitle: 'Month-by-month revenue, expenses and NOI over the trailing twelve months — the standard operating statement for underwriting.',
+    columns: [
+      { key: 'month', label: 'Month', kind: 'text' }, { key: 'revenue', label: 'Revenue', kind: 'money' },
+      { key: 'expenses', label: 'Expenses', kind: 'money' }, { key: 'noi', label: 'NOI', kind: 'money' }, { key: 'margin', label: 'Margin', kind: 'percent' },
+    ],
+    rows,
+    kpis: [
+      { label: 'T-12 revenue', value: revT, kind: 'money' },
+      { label: 'T-12 expenses', value: expT, kind: 'money' },
+      { label: 'T-12 NOI', value: revT - expT, kind: 'money' },
+      { label: 'T-12 margin', value: revT > 0 ? pct(revT - expT, revT) : 0, kind: 'percent' },
+    ],
+  };
+}
+
+/** Comparative P&L: revenue/expense/NOI this window vs the prior window of equal
+ *  length, with variance $ and %. The "how are we trending" finance view. */
+function pnlComparison(inp: ReportingInput): Report {
+  const prev = priorWindow(inp.from, inp.to);
+  const fold = (from: string, to: string) => {
+    let rev = 0, exp = 0;
+    for (const l of inp.ledgerLines ?? []) {
+      if (!inWindow(l.postedAt, from, to)) continue;
+      if (l.account.startsWith('revenue')) rev += l.creditCents - l.debitCents;
+      else if (l.account.startsWith('expense')) exp += l.debitCents - l.creditCents;
+    }
+    return { rev, exp, noi: rev - exp };
+  };
+  const cur = fold(inp.from, inp.to);
+  const pri = fold(prev.from, prev.to);
+  const line = (label: string, c: number, p: number) => ({ line: label, current: c, prior: p, variance: c - p, variance_pct: p !== 0 ? pct(c - p, Math.abs(p)) : 0 });
+  const rows = [line('Revenue', cur.rev, pri.rev), line('Expenses', cur.exp, pri.exp), line('Net operating income', cur.noi, pri.noi)];
+  return {
+    key: 'pnl_comparison', title: 'P&L — period comparison', window: { from: inp.from, to: inp.to },
+    subtitle: 'This period vs the prior period of equal length, with variance — the trend view finance leads on.',
+    columns: [
+      { key: 'line', label: '', kind: 'text' }, { key: 'current', label: 'This period', kind: 'money' },
+      { key: 'prior', label: 'Prior period', kind: 'money' }, { key: 'variance', label: 'Variance', kind: 'money' }, { key: 'variance_pct', label: 'Variance %', kind: 'percent' },
+    ],
+    rows,
+    kpis: [
+      { label: 'NOI this period', value: cur.noi, kind: 'money' },
+      { label: 'NOI prior period', value: pri.noi, kind: 'money' },
+      { label: 'NOI variance', value: cur.noi - pri.noi, kind: 'money' },
+      { label: 'NOI variance %', value: pri.noi !== 0 ? pct(cur.noi - pri.noi, Math.abs(pri.noi)) : 0, kind: 'percent' },
+    ],
+  };
+}
+
 /** All-time balances per account: the books, netting to zero when balanced. */
 function generalLedger(inp: ReportingInput): Report {
   const acc = new Map<string, { debits: number; credits: number }>();
@@ -1008,6 +1134,7 @@ const BUILDERS: Record<string, (inp: ReportingInput) => Report> = {
   income_statement: incomeStatement, general_ledger: generalLedger, billing_collections: billingCollections, occupancy_trend: occupancyTrend,
   owner_statement: ownerStatement, cash_flow_statement: cashFlowStatement, make_ready: makeReady, insurance_compliance: insuranceCompliance, package_room: packageRoom, waitlist_demand: waitlistDemand, owner_distributions: ownerDistributions, capital_account: capitalAccounts,
   property_budget: propertyBudgetReport,
+  balance_sheet: balanceSheet, trailing_twelve: trailingTwelve, pnl_comparison: pnlComparison,
 };
 
 export function buildReport(key: string, inp: ReportingInput): Report | null {

@@ -3423,7 +3423,7 @@
 
   // ---- reports & insights -------------------------------------------------
   var CHART_PALETTE = ["#6d8bff","#8b6cff","#3aa76d","#e0894a","#e05a5a","#22a5b8","#c98a1e","#b565d8","#4f9d69","#d98a8a"];
-  var CATALOG_CHART = { occupancy:"bar", revenue:"line", ar_aging:"bar", collections:"table", deposits:"bar", payables:"bar", pipeline:"bar", portfolio:"donut", cashflow:"bar", rent_roll:"table", delinquency:"bar", lease_expirations:"bar", box_score:"table", vacancy:"table", wo_aging:"bar", income_statement:"bar", owner_statement:"bar", general_ledger:"table", billing_collections:"bar", occupancy_trend:"line", cash_flow_statement:"bar", make_ready:"table", insurance_compliance:"table", package_room:"table", waitlist_demand:"bar", owner_distributions:"bar", property_budget:"bar" };
+  var CATALOG_CHART = { occupancy:"bar", revenue:"line", ar_aging:"bar", collections:"table", deposits:"bar", payables:"bar", pipeline:"bar", portfolio:"donut", cashflow:"bar", rent_roll:"table", delinquency:"bar", lease_expirations:"bar", box_score:"table", vacancy:"table", wo_aging:"bar", income_statement:"bar", owner_statement:"bar", general_ledger:"table", billing_collections:"bar", occupancy_trend:"line", cash_flow_statement:"bar", make_ready:"table", insurance_compliance:"table", package_room:"table", waitlist_demand:"bar", owner_distributions:"bar", property_budget:"bar", balance_sheet:"table", trailing_twelve:"line", pnl_comparison:"bar" };
 
   // Download any report as CSV — columns become the header, cells are quoted.
   function csvEscape(v){ var s=String(v==null?"":v); return /[",\\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
@@ -3462,26 +3462,76 @@
       (r.body.insights||[]).forEach(function(i){ insWrap.appendChild(insightCard(i)); });
     });
   }
+  // Report Center — reports grouped into categories (financial statements,
+  // operations, leasing, AR/collections, owner/investor), like a PMS/ERP report
+  // center, with period presets + community scope.
+  var REPORT_CATEGORIES = {
+    financials: { label:"Financial statements", keys:["income_statement","balance_sheet","trailing_twelve","pnl_comparison","cash_flow_statement","general_ledger","property_budget","billing_collections","cashflow"] },
+    operations: { label:"Operations", keys:["occupancy","occupancy_trend","vacancy","box_score","make_ready","wo_aging","package_room","insurance_compliance"] },
+    leasing: { label:"Leasing & marketing", keys:["pipeline","waitlist_demand","lease_expirations","portfolio","revenue"] },
+    collections: { label:"AR & collections", keys:["ar_aging","delinquency","collections","deposits","rent_roll"] },
+    owner: { label:"Owner & investor", keys:["owner_statement","owner_distributions","capital_account"] },
+  };
+  function reportCategoryOf(key){ for(var c in REPORT_CATEGORIES){ if(REPORT_CATEGORIES[c].keys.indexOf(key)>=0) return c; } return "other"; }
+  function ym(d){ return d.toISOString().slice(0,10); }
+  function applyPreset(p){
+    var now=new Date(); var y=now.getUTCFullYear(); var m=now.getUTCMonth();
+    var from, to=ym(new Date(Date.UTC(y,m,now.getUTCDate()+1)));
+    if(p==="mtd") from=ym(new Date(Date.UTC(y,m,1)));
+    else if(p==="qtd") from=ym(new Date(Date.UTC(y,Math.floor(m/3)*3,1)));
+    else if(p==="ytd") from=ym(new Date(Date.UTC(y,0,1)));
+    else if(p==="t12"){ from=ym(new Date(Date.UTC(y,m-12,1))); }
+    else { from=""; to=""; } // all time
+    state.reportFrom=from; state.reportTo=to; state.reportPreset=p;
+  }
   function renderCatalogTab(body){
-    var picker = h("div", { class:"row", style:"flex-wrap:wrap;gap:6px;margin-bottom:14px" }, []);
-    body.appendChild(picker);
+    if(!state.reportPreset){ applyPreset("ytd"); }
+    if(!state.reportKey){ state.reportKey="income_statement"; }
     var repWrap = h("div", {}, []);
-    // Per-property scope: pick a community to narrow operational reports.
+    // Period presets + community scope.
+    var presets=[["mtd","This month"],["qtd","This quarter"],["ytd","Year to date"],["t12","Trailing 12"],["all","All time"]];
+    var presetBar=h("div",{class:"row",style:"gap:6px;flex-wrap:wrap"},presets.map(function(p){
+      return h("button",{class:"btn ghost sm"+(state.reportPreset===p[0]?" active":""),onclick:function(){ applyPreset(p[0]); render(); }},[tt("period."+p[0],p[1])]);
+    }));
+    var bar=h("div",{class:"panel",style:"display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:14px"},[
+      h("span",{class:"muted",style:"font-size:12px;font-weight:600"},[tt("reports.period","Period")]), presetBar ]);
     api("/properties").then(function(pr){
       var props=((pr.body||{}).properties||[]);
       if(props.length){
-        var sel=h("select",{onchange:function(){ state.reportProperty=sel.value; renderCatalogReport(repWrap, state.reportKey); }},
+        var sel=h("select",{style:"max-width:220px",onchange:function(){ state.reportProperty=sel.value; renderCatalogReport(repWrap, state.reportKey); }},
           [h("option",{value:""},[tt("scope.allprops","All properties")])].concat(props.map(function(pp){ var o=h("option",{value:pp.id},[pp.name]); if(state.reportProperty===pp.id) o.selected=true; return o; })));
-        body.appendChild(h("div",{class:"row",style:"gap:8px;align-items:center;margin-bottom:12px"},[ h("span",{class:"muted",style:"font-size:13px"},["Scope:"]), sel ]));
+        bar.appendChild(h("span",{class:"muted",style:"font-size:12px;font-weight:600;margin-left:8px"},[tt("reports.scope","Scope")]));
+        bar.appendChild(sel);
       }
     });
+    body.appendChild(bar);
+    // Selected report renders here (top), then the categorized catalog.
     body.appendChild(repWrap);
+    var catWrap=h("div",{},[]); body.appendChild(catWrap);
     api("/reports/catalog").then(function(r){
-      (r.body.reports||[]).forEach(function(spec){
-        picker.appendChild(h("button", { class:"btn ghost sm"+(state.reportKey===spec.key?" active":""), title:spec.description, onclick:function(){ state.reportKey = spec.key; renderCatalogReport(repWrap, spec.key); Array.prototype.forEach.call(picker.children,function(b){b.classList.remove("active");}); } }, [spec.title]));
+      var specs=(r.body.reports||[]); var byKey={}; specs.forEach(function(s){byKey[s.key]=s;});
+      var cats=Object.keys(REPORT_CATEGORIES).concat(["other"]);
+      cats.forEach(function(cat){
+        var meta=REPORT_CATEGORIES[cat]||{label:"Other"};
+        var keys=(cat==="other")? specs.filter(function(s){return reportCategoryOf(s.key)==="other";}).map(function(s){return s.key;}) : meta.keys.filter(function(k){return byKey[k];});
+        if(!keys.length) return;
+        catWrap.appendChild(h("div",{class:"muted",style:"font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;margin:18px 0 8px"},[meta.label]));
+        var grid=h("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px"},[]);
+        keys.forEach(function(k){ var spec=byKey[k]; if(!spec) return;
+          var cardEl=h("div",{class:"panel",style:"cursor:pointer;padding:13px;border:1px solid "+(state.reportKey===k?"var(--accent)":"var(--border)"),onclick:function(){
+            state.reportKey=k; renderCatalogReport(repWrap, k);
+            Array.prototype.forEach.call(catWrap.querySelectorAll(".panel"),function(p){p.style.borderColor="var(--border)";});
+            cardEl.style.borderColor="var(--accent)";
+            repWrap.scrollIntoView({behavior:"smooth",block:"start"});
+          }},[
+            h("div",{style:"font-weight:600;font-size:13.5px;margin-bottom:3px"},[spec.title]),
+            h("div",{class:"muted",style:"font-size:11.5px;line-height:1.4"},[spec.description||""]) ]);
+          grid.appendChild(cardEl);
+        });
+        catWrap.appendChild(grid);
       });
     });
-    renderCatalogReport(repWrap, state.reportKey);
+    if(state.reportKey) renderCatalogReport(repWrap, state.reportKey);
   }
   // Interpolate {k} placeholders in a translated string with the insight's params.
   function interp(tpl, params) { return tpl.replace(/\{(\w+)\}/g, function(m,k){ return (params && params[k]!=null) ? params[k] : m; }); }
@@ -3567,9 +3617,12 @@
     return { labels: rows.map(function(r){return String(r[textCol.key]);}), values: rows.map(function(r){return Number(r[numCol.key])||0;}), valueKind: numCol.kind };
   }
   function renderCatalogReport(wrap, key) {
+    if(!key) return;
     wrap.innerHTML = "";
     wrap.appendChild(h("div",{class:"muted"},["Loading…"]));
-    var qs = state.reportProperty ? "?propertyId="+encodeURIComponent(state.reportProperty) : "";
+    var q=[]; if(state.reportProperty) q.push("propertyId="+encodeURIComponent(state.reportProperty));
+    if(state.reportFrom) q.push("from="+state.reportFrom); if(state.reportTo) q.push("to="+state.reportTo);
+    var qs = q.length?("?"+q.join("&")):"";
     api("/reports/"+key+qs).then(function(r){
       wrap.innerHTML = "";
       if (r.status !== 200) return wrap.appendChild(h("p",{class:"muted"},[(r.body&&r.body.error)||t("msg.denied")]));
