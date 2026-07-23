@@ -210,6 +210,16 @@
   .authorg .mlogo { color: var(--muted); display: block; flex: none; }
   .authorg b { color: var(--muted); font-weight: 600; }
 
+  /* Header language switcher (top of the main screen) */
+  .topbar { display: flex; justify-content: flex-end; align-items: center; margin: -2px 0 14px; }
+  .langwrap { display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 4px 8px 4px 10px; color: var(--muted); }
+  .langwrap:hover { border-color: var(--border-strong); }
+  .langwrap svg { width: 15px; height: 15px; flex: none; }
+  .langsel { width: auto; background: transparent; border: 0; color: var(--text); font-size: 13px; font-weight: 500;
+    padding: 2px 2px; cursor: pointer; }
+  .langsel:focus, .langsel:focus-visible { outline: 0; box-shadow: none; }
+
   /* Agreement detail */
   .backbar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
   .kv { display: flex; gap: 26px; flex-wrap: wrap; }
@@ -444,6 +454,9 @@
         state.me = r.body;
       return api("/config").then(function (c) {
         state.config = c.body.config; state.options = c.body.options;
+        // A per-browser language override (the header switcher) wins over the
+        // tenant default, so each operator can read Elara in their own language.
+        try { var _lo = localStorage.getItem("usos.locale." + state.config.tenantId); if (_lo) state.config.locale = _lo; } catch (e) {}
         // /health carries the deployment's durability status (durableWrites +
         // rehydration). Best-effort — a portal that can't read it just shows no
         // banner. Fetched in parallel with the i18n catalog.
@@ -471,6 +484,27 @@
       ]),
       h("div", { class: "authorg" }, [ meridianLogo(18), h("span", {}, [h("b", {}, [LOGIN_BRAND.org]), " · " + LOGIN_BRAND.region + " · powered by Elara"]) ])
     ]));
+  }
+
+  // Switch the whole portal's language live: fetch the chosen catalog, remember
+  // the choice per browser, and re-render every menu + screen.
+  function setLocale(code) {
+    if (!code || code === state.config.locale) return;
+    state.config.locale = code;
+    try { localStorage.setItem("usos.locale." + state.config.tenantId, code); } catch (e) {}
+    api("/i18n/" + code).then(function (i) { state.cat = i.body; render(); });
+  }
+  function globeIcon() {
+    return h("span", { class: "globe", style: "display:flex", html:
+      '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">'
+      + '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><ellipse cx="12" cy="12" rx="4" ry="9"/></svg>' });
+  }
+  // The header language switcher — a dropdown at the top of the main screen.
+  function langBar() {
+    var langs = (state.options && state.options.locales) || [];
+    var sel = h("select", { class: "langsel", "aria-label": "Language", onchange: function () { setLocale(sel.value); } },
+      langs.map(function (l) { return h("option", { value: l.code, selected: l.code === state.config.locale ? "selected" : null }, [l.name]); }));
+    return h("div", { class: "topbar" }, [ h("div", { class: "langwrap" }, [ globeIcon(), sel ]) ]);
   }
 
   // Mode-aware sign-in: a real email/password login against Supabase Auth (GoTrue)
@@ -707,6 +741,7 @@
       h("main", { id: "main" }, [])
     ]));
     var main = document.getElementById("main");
+    main.appendChild(langBar());
     var hb = healthBanner(); if (hb) main.appendChild(hb);
     var views = { dashboard: viewDashboard, agreements: viewAgreements, properties: viewProperties, website: viewWebsite, pricing: viewPricing, crm: viewCrm, applications: viewApplications, tours: viewTours, turns: viewTurns, insurance: viewInsurance, utilities: viewUtilities, packages: viewPackages, waitlist: viewWaitlist, distributions: viewDistributions, renewals: viewRenewals, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, exceptions: viewExceptions, people: viewPeople, settings: viewSettings };
     var fn = (state.view === "dashboard") ? (ws.home || viewDashboard) : (views[state.view] || ws.home || viewDashboard);

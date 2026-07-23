@@ -34,6 +34,9 @@ export const SUPPORTED_LOCALES: readonly LocaleDef[] = [
   { code: 'en', name: 'English' },
   { code: 'pt-BR', name: 'Português (Brasil)' },
   { code: 'es', name: 'Español' },
+  { code: 'fr', name: 'Français' },
+  { code: 'it', name: 'Italiano' },
+  { code: 'de', name: 'Deutsch' },
 ] as const;
 
 // Business-structure presets tune defaults and reporting emphasis. Not a hard

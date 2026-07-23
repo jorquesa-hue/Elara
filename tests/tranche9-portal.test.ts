@@ -33,7 +33,7 @@ test('portal SPA is served at the root', async () => {
     assert.equal(res.status, 200);
     assert.match(res.headers.get('content-type') ?? '', /text\/html/);
     const html = await res.text();
-    assert.match(html, /Unified Stay OS/);
+    assert.match(html, /<title>Elara<\/title>/); // rebranded to Elara
     assert.match(html, /setup\.title|renderSetup/); // the wizard code is present
   });
 });

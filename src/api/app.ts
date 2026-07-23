@@ -70,7 +70,7 @@ import { COUNTRY_PROFILES, countryProfile } from '../country.ts';
 import { buildEnvironment } from '../environment.ts';
 import { RoleRegistry, PERMISSIONS, type Permission } from '../rbac.ts';
 import { MasterData } from '../master-data.ts';
-import { catalog } from '../i18n.ts';
+import { mergedCatalog } from '../i18n.ts';
 import type { WorldData } from '../persistence/project.ts';
 import type { PersistenceBackend } from '../persistence/edge-client.ts';
 import { StaticTokenAuthenticator, type Authenticator, type AuthContext } from './context.ts';
@@ -1304,7 +1304,7 @@ export class App {
       return { status: 200, body: this.config.update(ctx.tenantId, patch) };
     });
 
-    this.add('GET', '/i18n/:locale', null, (_ctx, p) => ({ status: 200, body: catalog(p['locale']!) }));
+    this.add('GET', '/i18n/:locale', null, (_ctx, p) => ({ status: 200, body: mergedCatalog(p['locale']!) }));
 
     // --- roles & users (access profiling) ---------------------------------
     this.add('GET', '/permissions', 'role.read', () => ({ status: 200, body: { permissions: PERMISSIONS } }));
