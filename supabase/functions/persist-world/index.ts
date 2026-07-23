@@ -56,25 +56,28 @@ function coalesce(statements: SqlStatement[]): SqlStatement[] {
   let i = 0;
   while (i < statements.length) {
     const cur = statements[i];
-    const m = /^(insert into \w+ \([^)]*\) values )\([^)]*\)(.*)$/is.exec(cur.text);
+    // Capture the tuple TEMPLATE verbatim (e.g. "($1, $2, $3, $4::jsonb)") so
+    // per-placeholder ::type casts survive the merge — dropping ::jsonb feeds a
+    // text bind param to a jsonb column and rolls the whole batch back.
+    const m = /^(insert into \w+ \([^)]*\) values )(\([^)]*\))(.*)$/is.exec(cur.text);
     // gather the run of consecutive statements with identical text
     let j = i;
     while (j < statements.length && statements[j].text === cur.text) j++;
     const run = statements.slice(i, j);
     i = j;
     if (!m || run.length === 1 || cur.values.length === 0) { out.push(...run); continue; }
-    const prefix = m[1], suffix = m[2];
+    const prefix = m[1], tupleTemplate = m[2], suffix = m[3];
     const cols = cur.values.length;
     const maxRows = Math.max(1, Math.floor(60000 / cols));
     for (let k = 0; k < run.length; k += maxRows) {
       const chunk = run.slice(k, k + maxRows);
       const values: unknown[] = [];
       const tuples: string[] = [];
-      let p = 1;
-      for (const st of chunk) {
-        tuples.push('(' + st.values.map(() => '$' + p++).join(', ') + ')');
+      chunk.forEach((st, idx) => {
+        const base = idx * cols;
+        tuples.push(tupleTemplate.replace(/\$(\d+)/g, (_m2, n) => '$' + (base + Number(n))));
         for (const v of st.values) values.push(v);
-      }
+      });
       out.push({ text: prefix + tuples.join(', ') + suffix, values });
     }
   }

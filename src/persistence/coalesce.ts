@@ -25,7 +25,10 @@ export function coalesceStatements(statements: SqlStatement[]): SqlStatement[] {
   let i = 0;
   while (i < statements.length) {
     const cur = statements[i]!;
-    const m = /^(insert into \w+ \([^)]*\) values )\([^)]*\)(.*)$/is.exec(cur.text);
+    // Capture the tuple TEMPLATE verbatim, e.g. "($1, $2, $3, $4::jsonb)" — the
+    // per-placeholder casts (::jsonb etc.) MUST be preserved, or a jsonb column
+    // fed a text bind parameter errors and rolls the whole batch back.
+    const m = /^(insert into \w+ \([^)]*\) values )(\([^)]*\))(.*)$/is.exec(cur.text);
     // Gather the run of consecutive statements with identical text.
     let j = i;
     while (j < statements.length && statements[j]!.text === cur.text) j++;
@@ -36,18 +39,20 @@ export function coalesceStatements(statements: SqlStatement[]): SqlStatement[] {
       continue;
     }
     const prefix = m[1]!;
-    const suffix = m[2]!;
+    const tupleTemplate = m[2]!; // includes any ::type casts on placeholders
+    const suffix = m[3]!;
     const cols = cur.values.length;
     const maxRows = Math.max(1, Math.floor(60000 / cols));
     for (let k = 0; k < run.length; k += maxRows) {
       const chunk = run.slice(k, k + maxRows);
       const values: unknown[] = [];
       const tuples: string[] = [];
-      let p = 1;
-      for (const st of chunk) {
-        tuples.push('(' + st.values.map(() => '$' + p++).join(', ') + ')');
+      chunk.forEach((st, idx) => {
+        const base = idx * cols;
+        // Renumber the template's $N to $(base+N), keeping the casts intact.
+        tuples.push(tupleTemplate.replace(/\$(\d+)/g, (_m2, n) => '$' + (base + Number(n))));
         for (const v of st.values) values.push(v);
-      }
+      });
       out.push({ text: prefix + tuples.join(', ') + suffix, values });
     }
   }

@@ -53,6 +53,25 @@ test('coalescing preserves every row and value in order', () => {
   }
 });
 
+test('per-placeholder ::type casts survive the merge (jsonb columns)', () => {
+  // agreement_event.payload is fed as text with a ::jsonb cast; merging must
+  // keep the cast on EVERY row or the jsonb column rejects the text bind param.
+  const stmts: SqlStatement[] = [
+    { text: 'insert into agreement_event (agreement_id, type, at, payload) values ($1, $2, $3, $4::jsonb)', values: ['a1', 'created', 't', '{}'] },
+    { text: 'insert into agreement_event (agreement_id, type, at, payload) values ($1, $2, $3, $4::jsonb)', values: ['a1', 'activated', 't', '{}'] },
+    { text: 'insert into agreement_event (agreement_id, type, at, payload) values ($1, $2, $3, $4::jsonb)', values: ['a2', 'created', 't', '{}'] },
+  ];
+  const [merged] = coalesceStatements(stmts);
+  assert.equal(merged!.values.length, 12);
+  // Each of the three rows must carry ::jsonb on its 4th placeholder.
+  assert.match(merged!.text, /\$4::jsonb/);
+  assert.match(merged!.text, /\$8::jsonb/);
+  assert.match(merged!.text, /\$12::jsonb/);
+  // Placeholders still run 1..12 with no gaps.
+  const nums = [...merged!.text.matchAll(/\$(\d+)/g)].map((m) => Number(m[1]));
+  assert.deepEqual(nums, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+});
+
 test('small worlds and non-insert statements pass through untouched', () => {
   const stmts: SqlStatement[] = [
     { text: 'insert into unit (id, tenant_id) values ($1, $2) on conflict (id) do nothing', values: ['u1', 't'] },
