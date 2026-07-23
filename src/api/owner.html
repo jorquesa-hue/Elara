@@ -55,7 +55,7 @@
 <script>
 (function(){
   var TOKEN_KEY="usos.own.token", REFRESH_KEY="usos.own.refresh", THEME_KEY="usos.theme";
-  var state={ token:localStorage.getItem(TOKEN_KEY)||"", refresh:localStorage.getItem(REFRESH_KEY)||"", auth:null, me:null, home:null };
+  var state={ token:localStorage.getItem(TOKEN_KEY)||"", refresh:localStorage.getItem(REFRESH_KEY)||"", auth:null, me:null, home:null, cat:{} };
 
   function h(tag,attrs,kids){ var e=document.createElement(tag); attrs=attrs||{};
     for(var k in attrs){ if(k==="onclick"||k==="onsubmit") e[k]=attrs[k];
@@ -63,6 +63,8 @@
     (kids||[]).forEach(function(c){ if(c==null)return; e.appendChild(typeof c==="string"?document.createTextNode(c):c); });
     return e; }
   function fmtMoney(minor){ var c=(state.home&&state.home.currency)||"USD"; try{ return new Intl.NumberFormat(undefined,{style:"currency",currency:c}).format((minor||0)/100);}catch(e){ return (c+" "+((minor||0)/100).toFixed(2)); } }
+  function t(k,f){ return (state.cat&&state.cat[k])||f; }
+  function ti(k,f,vars){ return t(k,f).replace(/\{(\w+)\}/g,function(m,x){ return (vars&&vars[x]!=null)?vars[x]:m; }); }
   function toast(msg,kind){ var t=h("div",{class:"toast"+(kind==="err"?" err":"")},[h("span",{class:"dot"}),msg]); document.body.appendChild(t); setTimeout(function(){t.remove();},2600); }
   function setSession(a,r){ state.token=a||""; state.refresh=r||""; if(a)localStorage.setItem(TOKEN_KEY,a);else localStorage.removeItem(TOKEN_KEY); if(r)localStorage.setItem(REFRESH_KEY,r);else localStorage.removeItem(REFRESH_KEY); }
 
@@ -83,13 +85,14 @@
 
   function boot(){ theme();
     fetch("/auth/config").then(function(r){return r.json();}).then(function(cfg){ state.auth=cfg; if(!state.token) return renderGate();
-      api("/me").then(function(r){ if(r.status===200 && r.body.entityId){ state.me=r.body; load(); } else if(r.status===200){ renderNotOwner(); } else renderGate(); });
+      api("/me").then(function(r){ if(r.status===200 && r.body.entityId){ state.me=r.body; loadCat(r.body.locale).then(load); } else if(r.status===200){ renderNotOwner(); } else renderGate(); });
     }).catch(function(){ state.auth={mode:"dev"}; renderGate(); });
   }
 
+  function loadCat(locale){ if(!locale||locale==="en"){ state.cat={}; return Promise.resolve(); } return api("/i18n/"+encodeURIComponent(locale)).then(function(r){ state.cat=(r.status===200&&r.body)||{}; }).catch(function(){ state.cat={}; }); }
   function renderGate(){ var root=document.getElementById("root"); root.innerHTML="";
     var box=h("div",{class:"card gate"},[]);
-    box.appendChild(h("header",{},[ h("div",{class:"mark"},["E"]), h("h1",{},["Owner portal"]) ]));
+    box.appendChild(h("header",{},[ h("div",{class:"mark"},["E"]), h("h1",{},[t("own.title","Owner portal")]) ]));
     if(state.auth && state.auth.mode==="supabase"){
       var em=h("input",{type:"email",placeholder:"you@email.com"}); var pw=h("input",{type:"password",placeholder:"Password"});
       box.appendChild(h("form",{onsubmit:function(e){e.preventDefault();
@@ -104,53 +107,53 @@
     root.appendChild(h("div",{class:"wrap"},[box]));
   }
   function renderNotOwner(){ var root=document.getElementById("root"); root.innerHTML="";
-    root.appendChild(h("div",{class:"wrap"},[ h("div",{class:"card gate"},[ h("h2",{},["Not an owner account"]), h("p",{class:"sub"},["This portal is for owners/investors. Operators sign in at the main portal."]), h("button",{class:"btn ghost sm",onclick:function(){ setSession("",""); renderGate(); }},["Sign out"]) ]) ]));
+    root.appendChild(h("div",{class:"wrap"},[ h("div",{class:"card gate"},[ h("h2",{},[t("own.not.title","Not an owner account")]), h("p",{class:"sub"},[t("own.not.body","This portal is for owners/investors. Operators sign in at the main portal.")]), h("button",{class:"btn ghost sm",onclick:function(){ setSession("",""); renderGate(); }},[t("own.signout","Sign out")]) ]) ]));
   }
 
-  function load(){ api("/owner/home").then(function(r){ if(r.status!==200){ toast((r.body||{}).error||"Could not load","err"); return renderGate(); } state.home=r.body; render(); }); }
+  function load(){ api("/owner/home").then(function(r){ if(r.status!==200){ toast((r.body||{}).error||t("own.couldnotload","Could not load"),"err"); return renderGate(); } state.home=r.body; render(); }); }
 
   function render(){ var root=document.getElementById("root"); root.innerHTML="";
     var wrap=h("div",{class:"wrap"},[]);
-    var head=h("header",{},[ h("div",{class:"mark"},["E"]), h("div",{},[ h("h1",{},["Hi, "+(state.home.profile.name||"owner")]), h("div",{class:"sub"},["Your ownership portfolio"]) ]), h("div",{class:"spacer"}), h("button",{class:"btn ghost sm",onclick:toggleTheme},["Theme"]), h("button",{class:"btn ghost sm",onclick:function(){ setSession("",""); renderGate(); }},["Sign out"]) ]);
+    var head=h("header",{},[ h("div",{class:"mark"},["E"]), h("div",{},[ h("h1",{},[ti("own.hi","Hi, {name}",{name:(state.home.profile.name||t("own.owner","owner"))})]), h("div",{class:"sub"},[t("own.sub","Your ownership portfolio")]) ]), h("div",{class:"spacer"}), h("button",{class:"btn ghost sm",onclick:toggleTheme},[t("own.theme","Theme")]), h("button",{class:"btn ghost sm",onclick:function(){ setSession("",""); renderGate(); }},[t("own.signout","Sign out")]) ]);
     wrap.appendChild(head);
     // KPIs
     var cards=h("div",{class:"cards"},[]);
-    cards.appendChild(kpi("Net operating income", fmtMoney(state.home.totalNoiCents)));
-    cards.appendChild(kpi("Distributed to you", fmtMoney(state.home.totalDistributedCents)));
+    cards.appendChild(kpi(t("own.noi","Net operating income"), fmtMoney(state.home.totalNoiCents)));
+    cards.appendChild(kpi(t("own.distributed","Distributed to you"), fmtMoney(state.home.totalDistributedCents)));
     var ca=state.home.capitalAccount||{};
-    cards.appendChild(kpi("Net capital invested", fmtMoney(ca.netCapitalCents||0)));
-    cards.appendChild(kpi("Communities", String((state.home.properties||[]).length)));
+    cards.appendChild(kpi(t("own.netcapital","Net capital invested"), fmtMoney(ca.netCapitalCents||0)));
+    cards.appendChild(kpi(t("own.communities","Communities"), String((state.home.properties||[]).length)));
     wrap.appendChild(cards);
     if((ca.contributionsCents||0)>0){
       wrap.appendChild(h("div",{class:"card",style:"margin-top:12px"},[
-        h("strong",{},["Capital account"]),
+        h("strong",{},[t("own.capaccount","Capital account")]),
         h("div",{class:"row",style:"margin-top:8px"},[
-          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},["Contributed"]), h("div",{class:"mono"},[fmtMoney(ca.contributionsCents||0)]) ]),
-          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},["Distributed"]), h("div",{class:"mono"},[fmtMoney(ca.distributionsCents||0)]) ]),
-          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},["Net invested"]), h("div",{class:"mono"},[fmtMoney(ca.netCapitalCents||0)]) ])
+          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},[t("own.contributed","Contributed")]), h("div",{class:"mono"},[fmtMoney(ca.contributionsCents||0)]) ]),
+          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},[t("own.distlabel","Distributed")]), h("div",{class:"mono"},[fmtMoney(ca.distributionsCents||0)]) ]),
+          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},[t("own.netinvested","Net invested")]), h("div",{class:"mono"},[fmtMoney(ca.netCapitalCents||0)]) ])
         ])
       ]));
     }
     // Communities
-    wrap.appendChild(h("h2",{},["Communities"]));
-    if(!(state.home.properties||[]).length) wrap.appendChild(h("div",{class:"card muted"},["No communities are linked to your entity yet."]));
+    wrap.appendChild(h("h2",{},[t("own.communities","Communities")]));
+    if(!(state.home.properties||[]).length) wrap.appendChild(h("div",{class:"card muted"},[t("own.nocommunities","No communities are linked to your entity yet.")]));
     (state.home.properties||[]).forEach(function(p){
       var noiCls = p.noiCents>=0?"ok":"warn";
       wrap.appendChild(h("div",{class:"prop"},[
-        h("div",{class:"row"},[ h("strong",{},[p.name]), h("span",{class:"pill "+noiCls},["NOI "+fmtMoney(p.noiCents)]) ]),
+        h("div",{class:"row"},[ h("strong",{},[p.name]), h("span",{class:"pill "+noiCls},[ti("own.noipill","NOI {v}",{v:fmtMoney(p.noiCents)})]) ]),
         h("div",{class:"row",style:"margin-top:8px"},[
-          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},["Net operating income"]), h("div",{class:"mono"},[fmtMoney(p.noiCents)]) ]),
-          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},["Distributed to you"]), h("div",{class:"mono"},[fmtMoney(p.distributedCents)]) ])
+          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},[t("own.noi","Net operating income")]), h("div",{class:"mono"},[fmtMoney(p.noiCents)]) ]),
+          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},[t("own.distributed","Distributed to you")]), h("div",{class:"mono"},[fmtMoney(p.distributedCents)]) ])
         ])
       ]));
     });
     // Distributions
     var ds=(state.home.distributions||[]);
     if(ds.length){
-      wrap.appendChild(h("h2",{},["Distributions"]));
-      var rows=ds.map(function(d){ return h("tr",{},[ h("td",{},[(d.recordedAt||"").slice(0,10)]), h("td",{},[d.propertyName||"Portfolio"]), h("td",{class:"mono"},[fmtMoney(d.amountCents)]), h("td",{},[d.memo||"—"]) ]); });
-      wrap.appendChild(h("table",{},[ h("thead",{},[h("tr",{},[th("Date"),th("Community"),th("Amount"),th("Memo")])]), h("tbody",{},rows) ]));
-      wrap.appendChild(h("div",{class:"muted",style:"font-size:12px;margin-top:6px"},["Distributions are equity draws paid to your entity from operating cash."]));
+      wrap.appendChild(h("h2",{},[t("own.distributions","Distributions")]));
+      var rows=ds.map(function(d){ return h("tr",{},[ h("td",{},[(d.recordedAt||"").slice(0,10)]), h("td",{},[d.propertyName||t("own.portfolio","Portfolio")]), h("td",{class:"mono"},[fmtMoney(d.amountCents)]), h("td",{},[d.memo||"—"]) ]); });
+      wrap.appendChild(h("table",{},[ h("thead",{},[h("tr",{},[th(t("own.col.date","Date")),th(t("own.col.community","Community")),th(t("own.col.amount","Amount")),th(t("own.col.memo","Memo"))])]), h("tbody",{},rows) ]));
+      wrap.appendChild(h("div",{class:"muted",style:"font-size:12px;margin-top:6px"},[t("own.dist.note","Distributions are equity draws paid to your entity from operating cash.")]));
     }
     document.getElementById("root").appendChild(wrap);
   }

@@ -1311,6 +1311,7 @@ export class App {
         actor: ctx.actor,
         tenantId: ctx.tenantId,
         role: ctx.role,
+        locale: this.config.get(ctx.tenantId).locale,
         ...(ctx.partyId ? { partyId: ctx.partyId } : {}),
         ...(ctx.entityId ? { entityId: ctx.entityId } : {}),
         ...(ctx.propertyIds && ctx.propertyIds.length ? { propertyIds: ctx.propertyIds } : {}),

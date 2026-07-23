@@ -583,7 +583,7 @@
     }
     pass.addEventListener("keydown", function(e){ if (e.key === "Enter") go(); });
     gateShell([
-      h("h2", {}, ["Welcome back"]),
+      h("h2", {}, [tt("login.welcome","Welcome back")]),
       h("p", { class: "lead" }, ["Sign in to the " + LOGIN_BRAND.org + " operator console."]),
       msg,
       field("Email", email),
@@ -597,7 +597,7 @@
     input.addEventListener("keydown", function(e){ if (e.key === "Enter") go(); });
     function go(){ setSession(input.value.trim(), ""); boot(); }
     gateShell([
-      h("h2", {}, ["Developer sign-in"]),
+      h("h2", {}, [tt("login.dev","Developer sign-in")]),
       h("p", { class: "lead" }, ["Paste an access token to continue."]),
       err ? h("p", { class: "pill bad", style: "padding:6px 10px; margin-bottom:12px" }, [err]) : null,
       field("Token", input),
@@ -863,7 +863,7 @@
       }
     });
     if (can("revenue.read")) {
-      main.appendChild(h("h2", {}, ["Revenue"]));
+      main.appendChild(h("h2", {}, [tt("dash.revenue","Revenue")]));
       var kpis = h("div", { class: "cards" }, []); main.appendChild(kpis);
       api("/revenue/summary").then(function (r) {
         if (r.status !== 200) return;
@@ -875,7 +875,7 @@
       });
     }
     if (can("crm.read")) {
-      main.appendChild(h("h2", {}, ["Pipeline"]));
+      main.appendChild(h("h2", {}, [tt("wsi.pipeline","Pipeline")]));
       var pk = h("div", { class: "cards" }, []); main.appendChild(pk);
       api("/crm/summary").then(function (r) {
         if (r.status !== 200) return;
@@ -1267,7 +1267,7 @@
         cell(t("field.rate"), fmt(a.rateCents))
       ]) ]));
       slot.appendChild(lifecycleStepper(a));
-      slot.appendChild(h("h2",{},["People"])); slot.appendChild(partiesSection(id));
+      slot.appendChild(h("h2",{},[tt("sec.people","People")])); slot.appendChild(partiesSection(id));
       slot.appendChild(h("h2",{},[t("section.actions")])); slot.appendChild(stageAwareActions(id, a, bill));
       slot.appendChild(h("h2",{},[t("section.invoices")])); slot.appendChild(invoicesTable(bill.invoices));
       slot.appendChild(h("h2",{},[t("section.payments")])); slot.appendChild(paymentsTable(bill.payments));
@@ -1683,7 +1683,7 @@
   }
 
   function viewMaintenance(main) {
-    main.appendChild(h("h1", {}, ["Maintenance"]));
+    main.appendChild(h("h1", {}, [tt("wsi.maintenance","Maintenance")]));
     main.appendChild(h("p",{class:"sub"},["Work orders on your spaces — assign a vendor, track to completion, link the repair bill."]));
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
     var wrap=h("div",{},[]); main.appendChild(wrap);
@@ -1692,7 +1692,7 @@
       if (can("maintenance.manage")) formSlot.appendChild(workOrderForm(spaces));
       refreshWorkOrders(wrap, parties);
       // Preventive maintenance schedules (Phase 5C).
-      main.appendChild(h("h2",{style:"margin-top:26px"},["Preventive maintenance"]));
+      main.appendChild(h("h2",{style:"margin-top:26px"},[tt("sec.preventive","Preventive maintenance")]));
       main.appendChild(h("p",{class:"sub"},["Recurring upkeep (HVAC service, filter changes, alarm tests) that auto-raises a work order on its cadence. Run the sweep to raise everything due now."]));
       var pmSlot=h("div",{},[]); main.appendChild(pmSlot);
       var pmWrap=h("div",{},[]); main.appendChild(pmWrap);
@@ -1771,7 +1771,7 @@
   }
 
   function viewReservations(main) {
-    main.appendChild(h("h1", {}, ["Reservations"]));
+    main.appendChild(h("h1", {}, [tt("nav.reservations","Reservations")]));
     main.appendChild(h("p",{class:"sub"},["Book common areas and amenities — overlapping bookings on a space are impossible."]));
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
     var wrap=h("div",{},[]); main.appendChild(wrap);
@@ -1810,7 +1810,7 @@
 
   function viewInbox(main){
     if(state.threadId) return viewThread(main, state.threadId);
-    main.appendChild(h("h1",{},["Inbox"]));
+    main.appendChild(h("h1",{},[tt("wsi.inbox","Inbox")]));
     main.appendChild(h("p",{class:"sub"},["Resident, finance, and internal conversations."]));
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
     var wrap=h("div",{},[]); main.appendChild(wrap);
@@ -1835,7 +1835,7 @@
     });
   }
   function viewThread(main, id){
-    main.appendChild(h("div",{class:"backbar"},[ h("button",{class:"btn ghost sm",onclick:function(){ state.threadId=null; render(); }},["← "+t("action.back")]), h("h1",{style:"margin:0;font-size:19px"},["Conversation"]) ]));
+    main.appendChild(h("div",{class:"backbar"},[ h("button",{class:"btn ghost sm",onclick:function(){ state.threadId=null; render(); }},["← "+t("action.back")]), h("h1",{style:"margin:0;font-size:19px"},[tt("sec.conversation","Conversation")]) ]));
     var slot=h("div",{},[]); main.appendChild(slot);
     api("/threads/"+id).then(function(r){
       if(r.status!==200){ toast(r.body.error||t("msg.denied"),"err"); state.threadId=null; return render(); }
@@ -1852,7 +1852,7 @@
   }
 
   function viewReconcile(main){
-    main.appendChild(h("h1",{},["Reconciliation"]));
+    main.appendChild(h("h1",{},[tt("wsi.reconcile","Reconciliation")]));
     main.appendChild(h("p",{class:"sub"},["Import bank lines and match them to payments — the ranker suggests the best match."]));
     var cards=h("div",{class:"cards"},[]); main.appendChild(cards);
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
@@ -1885,11 +1885,11 @@
   }
 
   function viewIntegrations(main){
-    main.appendChild(h("h1",{},["Integrations"]));
+    main.appendChild(h("h1",{},[tt("wsi.integrations","Integrations")]));
     main.appendChild(h("p",{class:"sub"},["Door locks, access control, banks, website, CRM. Credentials live in the secret store — only a reference is kept here."]));
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
     var wrap=h("div",{},[]); main.appendChild(wrap);
-    main.appendChild(h("h2",{},["Command outbox"]));
+    main.appendChild(h("h2",{},[tt("sec.outbox","Command outbox")]));
     var cmdWrap=h("div",{},[]); main.appendChild(cmdWrap);
     if(can("integration.manage")) formSlot.appendChild(integrationForm());
     refreshIntegrations(wrap, cmdWrap);
@@ -1931,12 +1931,12 @@
   }
 
   function viewPricing(main){
-    main.appendChild(h("h1",{},["Revenue management"]));
+    main.appendChild(h("h1",{},[tt("revenue.title","Revenue management")]));
     main.appendChild(h("p",{class:"sub"},["Dynamic pricing turns a base rate into a nightly quote through explainable factors — occupancy, weekend, lead-time, length-of-stay and season — with recommendations that tell you which lever to pull."]));
     // KPI header — occupancy / ADR / RevPAR / revenue.
     var kpiWrap=h("div",{class:"cards"},[]); main.appendChild(kpiWrap);
     // Smart recommendations feed.
-    var recHead=h("h2",{},["Recommendations"]); main.appendChild(recHead);
+    var recHead=h("h2",{},[tt("sec.recommendations","Recommendations")]); main.appendChild(recHead);
     var recWrap=h("div",{},[h("div",{class:"muted"},["Analyzing…"])]); main.appendChild(recWrap);
     api("/revenue/insights").then(function(r){
       kpiWrap.innerHTML=""; recWrap.innerHTML="";
@@ -1949,10 +1949,10 @@
       (r.body.insights||[]).forEach(function(i){ recWrap.appendChild(insightCard(i)); });
     });
     // Rule editor + list.
-    main.appendChild(h("h2",{},["Pricing rules"]));
+    main.appendChild(h("h2",{},[tt("sec.pricingrules","Pricing rules")]));
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
     var wrap=h("div",{},[]); main.appendChild(wrap);
-    main.appendChild(h("h2",{},["Quote simulator"]));
+    main.appendChild(h("h2",{},[tt("sec.quotesim","Quote simulator")]));
     var quoteSlot=h("div",{},[]); main.appendChild(quoteSlot);
     if(can("revenue.manage")) formSlot.appendChild(pricingForm(main));
     refreshPricing(wrap, quoteSlot);
@@ -2047,7 +2047,7 @@
 
   var STAGES = ["new","toured","applied","approved","signed"];
   function viewCrm(main){
-    main.appendChild(h("h1",{},["Pipeline"]));
+    main.appendChild(h("h1",{},[tt("wsi.pipeline","Pipeline")]));
     main.appendChild(h("p",{class:"sub"},["The leasing sales funnel — new → toured → applied → approved → signed, or lost. Signing here records the sales outcome; the lease itself is executed on the agreement."]));
     var kpiWrap=h("div",{class:"cards"},[]); main.appendChild(kpiWrap);
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
@@ -2089,7 +2089,7 @@
 
   // ---- Applications (Phase 2A) --------------------------------------------
   function viewApplications(main){
-    main.appendChild(h("h1",{},["Applications"]));
+    main.appendChild(h("h1",{},[tt("wsi.applications","Applications")]));
     main.appendChild(h("p",{class:"sub"},["The leasing step between a toured lead and an approved resident — capture the applicant, order a screening report (credit/background/income through the connector framework), then approve or deny. The decision is FCRA / Fair-Housing sensitive: it is policy-gated + audited, and a denial requires an adverse-action reason (an adverse-action notice goes to the applicant)."]));
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
     var wrap=h("div",{},[]); main.appendChild(wrap);
@@ -2137,7 +2137,7 @@
 
   // ---- Tours (Phase 2E) ----------------------------------------------------
   function viewTours(main){
-    main.appendChild(h("h1",{},["Tours"]));
+    main.appendChild(h("h1",{},[tt("wsi.tours","Tours")]));
     main.appendChild(h("p",{class:"sub"},["The top of the leasing funnel — schedule a unit tour for a prospect, confirm it, then complete it (which advances a linked pipeline lead to toured), mark a no-show, or cancel."]));
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
     var wrap=h("div",{},[]); main.appendChild(wrap);
@@ -2186,7 +2186,7 @@
 
   // ---- Make-ready / unit turns (Phase 5A) ----------------------------------
   function viewTurns(main){
-    main.appendChild(h("h1",{},["Make-ready"]));
+    main.appendChild(h("h1",{},[tt("wsi.makeready","Make-ready")]));
     main.appendChild(h("p",{class:"sub"},["The turn board — every vacant unit's make-ready checklist to rent-ready. Turn time (days from vacate to ready) is your operations KPI: the faster a unit turns, the less rent you lose."]));
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
     var wrap=h("div",{},[]); main.appendChild(wrap);
@@ -2236,7 +2236,7 @@
 
   // ---- Insurance compliance (Phase 6A) -------------------------------------
   function viewInsurance(main){
-    main.appendChild(h("h1",{},["Insurance"]));
+    main.appendChild(h("h1",{},[tt("wsi.insurance","Insurance")]));
     main.appendChild(h("p",{class:"sub"},["Renters-insurance compliance — every active lease should carry liability coverage. Track each policy and see at a glance who is compliant, whose is about to expire, and who has none (uninsured liability)."]));
     var kpis=h("div",{class:"row",style:"gap:12px;flex-wrap:wrap;margin-bottom:12px"},[]); main.appendChild(kpis);
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
@@ -2291,7 +2291,7 @@
 
   // ---- Utility billing / RUBS (Phase 6B) -----------------------------------
   function viewUtilities(main){
-    main.appendChild(h("h1",{},["Utilities"]));
+    main.appendChild(h("h1",{},[tt("wsi.utilities","Utilities")]));
     main.appendChild(h("p",{class:"sub"},["Recover a master utility bill (water, sewer, trash, gas, electric) from residents by an allocation ratio — equal share, by occupancy, by unit area, or by bedroom count. Billing raises a resident invoice per share; the shares always sum to the exact master total."]));
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
     var wrap=h("div",{},[]); main.appendChild(wrap);
@@ -2337,7 +2337,7 @@
 
   // ---- Package / parcel room (Phase 6C) ------------------------------------
   function viewPackages(main){
-    main.appendChild(h("h1",{},["Packages"]));
+    main.appendChild(h("h1",{},[tt("wsi.packages","Packages")]));
     main.appendChild(h("p",{class:"sub"},["Log a resident's delivery at the front desk, notify them it arrived, and record pickup. Parcels waiting the longest sort to the top."]));
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
     var wrap=h("div",{},[]); main.appendChild(wrap);
@@ -2384,7 +2384,7 @@
 
   // ---- Prospect waitlist (Phase 6D) ----------------------------------------
   function viewWaitlist(main){
-    main.appendChild(h("h1",{},["Waitlist"]));
+    main.appendChild(h("h1",{},[tt("wsi.waitlist","Waitlist")]));
     main.appendChild(h("p",{class:"sub"},["When a floorplan is full, prospects queue for it here (first-come, first-served). As a unit opens, offer it to the top of the queue and convert that prospect into a pipeline lead."]));
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
     var wrap=h("div",{},[]); main.appendChild(wrap);
@@ -2530,7 +2530,7 @@
       tbl, margin ].concat(extra));
   }
   function viewDistributions(main){
-    main.appendChild(h("h1",{},["Distributions"]));
+    main.appendChild(h("h1",{},[tt("wsi.distributions","Distributions")]));
     main.appendChild(h("p",{class:"sub"},["Return operating cash (net operating income) to a property's owning legal entity — an equity draw. It posts a balanced entry (debit owner equity, credit cash) and moves money out, so a distribution over R$5,000 is parked for approval."]));
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
     var wrap=h("div",{},[]); main.appendChild(wrap);
@@ -2538,7 +2538,7 @@
     refreshDistributions(wrap);
     // Capital contributions (money IN) + the capital account.
     if(can("capital.read")){
-      main.appendChild(h("h2",{style:"margin-top:28px"},["Capital contributions"]));
+      main.appendChild(h("h2",{style:"margin-top:28px"},[tt("sec.contributions","Capital contributions")]));
       main.appendChild(h("p",{class:"sub"},["The money-in counterpart: an owner puts capital into the entity (debit cash, credit owner equity). Net invested = contributions − distributions."]));
       var cslot=h("div",{},[]); main.appendChild(cslot);
       var cwrap=h("div",{},[]); main.appendChild(cwrap);
@@ -2618,7 +2618,7 @@
 
   // ---- Renewals (Phase 2D) -------------------------------------------------
   function viewRenewals(main){
-    main.appendChild(h("h1",{},["Renewals"]));
+    main.appendChild(h("h1",{},[tt("wsi.renewals","Renewals")]));
     main.appendChild(h("p",{class:"sub"},["Leases approaching expiry — each with a proposed renewal (an escalated rent + an extended term). Run the sweep to notify residents, or renew one directly. Accepting bumps the rent and extends the term on the same agreement."]));
     var bar=h("div",{class:"row",style:"gap:8px;flex-wrap:wrap;margin-bottom:12px"},[]); main.appendChild(bar);
     var wrap=h("div",{},[]); main.appendChild(wrap);
@@ -2657,7 +2657,7 @@
   }
 
   function viewEsign(main){
-    main.appendChild(h("h1",{},["E-signature"]));
+    main.appendChild(h("h1",{},[tt("wsi.esign","E-signature")]));
     main.appendChild(h("p",{class:"sub"},["Send a lease out for signature (the provider's credentials live in the secret store). A fully signed envelope marks the pipeline lead won — the binding lease execution stays a separate, human-confirmed step."]));
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
     var wrap=h("div",{},[]); main.appendChild(wrap);
@@ -2701,11 +2701,11 @@
   function handleEnv(x, wrap){ if(x.status===200){ toast(t("msg.saved"),"ok"); refreshEnvelopes(wrap);} else toast(x.body.error||"err","err"); }
 
   function viewPurchasing(main){
-    main.appendChild(h("h1",{},["Purchasing"]));
+    main.appendChild(h("h1",{},[tt("wsi.purchasing","Purchasing")]));
     main.appendChild(h("p",{class:"sub"},["Purchase orders encumber budget but post nothing to the ledger — the AP bill is what hits the books. Budgets track plan vs commitment vs actual per account."]));
     var poFormSlot=h("div",{},[]); main.appendChild(poFormSlot);
     var poWrap=h("div",{},[]); main.appendChild(poWrap);
-    main.appendChild(h("h2",{},["Budgets"]));
+    main.appendChild(h("h2",{},[tt("sec.budgets","Budgets")]));
     var bgFormSlot=h("div",{},[]); main.appendChild(bgFormSlot);
     var bgWrap=h("div",{},[]); main.appendChild(bgWrap);
     if(can("procurement.manage")){
@@ -2791,12 +2791,12 @@
   }
 
   function viewRoommates(main){
-    main.appendChild(h("h1",{},["Roommates"]));
+    main.appendChild(h("h1",{},[tt("wsi.roommates","Roommates")]));
     main.appendChild(h("p",{class:"sub"},["Match student/shared-housing prospects by lifestyle fit — a deterministic, explainable score (hard deal-breakers like smoke-free are always honoured). Placement uses the normal booking + transfer flow."]));
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
     var wrap=h("div",{},[]); main.appendChild(wrap);
     var matchSlot=h("div",{},[]); main.appendChild(matchSlot);
-    main.appendChild(h("h2",{},["Suggest room groups"]));
+    main.appendChild(h("h2",{},[tt("sec.roomgroups","Suggest room groups")]));
     var groupSlot=h("div",{},[]); main.appendChild(groupSlot);
     if(can("roommate.manage")) formSlot.appendChild(prospectForm(wrap, matchSlot, groupSlot));
     groupSlot.appendChild(groupingForm(groupSlot));
@@ -2858,7 +2858,7 @@
   }
 
   function viewImport(main){
-    main.appendChild(h("h1",{},["Import"]));
+    main.appendChild(h("h1",{},[tt("wsi.import","Import")]));
     main.appendChild(h("p",{class:"sub"},["Migrate an existing portfolio from CSV. Paste your file, preview the mapping and per-row validation (a dry-run), then commit — only clean rows are created, and re-importing skips codes already loaded."]));
     // Sample portfolios — always reachable so a fresh tenant can be populated.
     if (can("masterdata.manage")) {
@@ -2996,7 +2996,7 @@
   }
   function renderBrandingForm(main){
     var cfg=state.config;
-    main.appendChild(h("h2",{style:"margin-top:26px"},["Branding"]));
+    main.appendChild(h("h2",{style:"margin-top:26px"},[tt("sec.branding","Branding")]));
     main.appendChild(h("p",{class:"sub"},["Your logo, brand color and tagline appear across this portal and on your public booking website."]));
     var color=h("input",{type:"color",value:cfg.brandColor||"#6572ff",style:"width:56px;height:40px;padding:2px"});
     var tagline=h("input",{value:cfg.tagline||"",placeholder:"Your beachfront home away from home"});
@@ -3099,7 +3099,7 @@
 
   // ---- properties (units / inventory) -------------------------------------
   function viewProperties(main){
-    main.appendChild(h("h1",{},["Properties"]));
+    main.appendChild(h("h1",{},[tt("wsi.properties","Properties")]));
     main.appendChild(h("p",{class:"sub"},["Your bookable inventory. Define floorplans (unit types) once, then add units one by one, generate a whole building in bulk, or import a spreadsheet in Import. Deactivating a unit keeps its history but hides it from bookings and the website."]));
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
     var wrap=h("div",{},[]); main.appendChild(wrap);
@@ -3233,7 +3233,7 @@
 
   // ---- integrated booking website (builder) --------------------------------
   function viewWebsite(main){
-    main.appendChild(h("h1",{},["Website builder"]));
+    main.appendChild(h("h1",{},[tt("wsi.website","Website builder")]));
     main.appendChild(h("p",{class:"sub"},["Your guest-facing site is generated live from this portfolio — every unit, its dynamic price and real-time availability. Edit the page content and each unit's presentation below; booking requests land in your Pipeline as leads."]));
     var tenant=(state.me&&state.me.tenantId)||(state.config&&state.config.tenantId)||"";
     var url=location.origin+"/site/"+tenant;
@@ -3438,12 +3438,12 @@
   }
 
   function viewReports(main) {
-    main.appendChild(h("h1", {}, ["Reports & analytics"]));
-    main.appendChild(h("p", { class:"sub" }, ["Automated insights, a report catalog with charts, and a build-your-own report studio — save any chart to your dashboard."]));
+    main.appendChild(h("h1", {}, [tt("reports.title","Reports & analytics")]));
+    main.appendChild(h("p", { class:"sub" }, [tt("reports.sub","Automated insights, a report catalog with charts, and a build-your-own report studio — save any chart to your dashboard.")]));
     if (!state.reportsTab) state.reportsTab = "insights";
     if (!state.reportKey) state.reportKey = "occupancy";
     if (state.reportProperty == null) state.reportProperty = "";
-    var tabs = [["insights","What needs attention"],["catalog","Report catalog"],["build","Build a report"],["dashboard","My dashboard"]];
+    var tabs = [["insights",tt("reptab.insights","What needs attention")],["catalog",tt("reptab.catalog","Report catalog")],["build",tt("reptab.build","Build a report")],["dashboard",tt("reptab.dashboard","My dashboard")]];
     var tabBar = h("div", { class:"row", style:"flex-wrap:wrap;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:12px" },
       tabs.map(function(tb){ return h("button",{ class:"btn "+(state.reportsTab===tb[0]?"":"ghost")+" sm", onclick:function(){ state.reportsTab=tb[0]; viewReports(clear(main)); } },[tb[1]]); }));
     main.appendChild(tabBar);
@@ -3515,7 +3515,7 @@
         var meta=REPORT_CATEGORIES[cat]||{label:"Other"};
         var keys=(cat==="other")? specs.filter(function(s){return reportCategoryOf(s.key)==="other";}).map(function(s){return s.key;}) : meta.keys.filter(function(k){return byKey[k];});
         if(!keys.length) return;
-        catWrap.appendChild(h("div",{class:"muted",style:"font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;margin:18px 0 8px"},[meta.label]));
+        catWrap.appendChild(h("div",{class:"muted",style:"font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;margin:18px 0 8px"},[tt("repcat."+cat,meta.label)]));
         var grid=h("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px"},[]);
         keys.forEach(function(k){ var spec=byKey[k]; if(!spec) return;
           var cardEl=h("div",{class:"panel",style:"cursor:pointer;padding:13px;border:1px solid "+(state.reportKey===k?"var(--accent)":"var(--border)"),onclick:function(){
@@ -3630,7 +3630,7 @@
       var kpiWrap = h("div", { class:"cards" }, []);
       (rep.kpis||[]).forEach(function(k){ card(kpiWrap, k.label, fmtKpi(k) + (typeof k.delta === "number" ? (" ("+(k.delta>=0?"+":"")+k.delta+"%)") : "")); });
       wrap.appendChild(kpiWrap);
-      wrap.appendChild(h("div",{class:"row",style:"justify-content:flex-end;margin:4px 0"},[ h("button",{class:"btn ghost sm",onclick:function(){ downloadCsv(rep, rep.key); }},["⬇ Download CSV"]) ]));
+      wrap.appendChild(h("div",{class:"row",style:"justify-content:flex-end;margin:4px 0"},[ h("button",{class:"btn ghost sm",onclick:function(){ downloadCsv(rep, rep.key); }},[tt("reports.csv","⬇ Download CSV")]) ]));
       if (rep.subtitle) wrap.appendChild(h("p",{class:"muted",style:"font-size:13px;margin:2px 0 10px"},[rep.subtitle]));
       var ctype = CATALOG_CHART[key] || "bar";
       var series = seriesFromReport(rep);

@@ -56,7 +56,7 @@
 <script>
 (function(){
   var TOKEN_KEY="usos.res.token", REFRESH_KEY="usos.res.refresh", THEME_KEY="usos.theme";
-  var state={ token:localStorage.getItem(TOKEN_KEY)||"", refresh:localStorage.getItem(REFRESH_KEY)||"", auth:null, me:null, home:null };
+  var state={ token:localStorage.getItem(TOKEN_KEY)||"", refresh:localStorage.getItem(REFRESH_KEY)||"", auth:null, me:null, home:null, cat:{} };
 
   function h(tag,attrs,kids){ var e=document.createElement(tag); attrs=attrs||{};
     for(var k in attrs){ if(k==="onclick"||k==="onsubmit"||k==="onchange") e[k]=attrs[k];
@@ -64,6 +64,8 @@
     (kids||[]).forEach(function(c){ if(c==null)return; e.appendChild(typeof c==="string"?document.createTextNode(c):c); });
     return e; }
   function fmtMoney(minor){ var c=(state.home&&state.home.currency)||"USD"; try{ return new Intl.NumberFormat(undefined,{style:"currency",currency:c}).format((minor||0)/100);}catch(e){ return (c+" "+((minor||0)/100).toFixed(2)); } }
+  function t(k,f){ return (state.cat&&state.cat[k])||f; }
+  function ti(k,f,vars){ return t(k,f).replace(/\{(\w+)\}/g,function(m,x){ return (vars&&vars[x]!=null)?vars[x]:m; }); }
   function toast(msg,kind){ var t=h("div",{class:"toast"+(kind==="err"?" err":"")},[h("span",{class:"dot"}),msg]); document.body.appendChild(t); setTimeout(function(){t.remove();},2600); }
   function setSession(a,r){ state.token=a||""; state.refresh=r||""; if(a)localStorage.setItem(TOKEN_KEY,a);else localStorage.removeItem(TOKEN_KEY); if(r)localStorage.setItem(REFRESH_KEY,r);else localStorage.removeItem(REFRESH_KEY); }
 
@@ -84,13 +86,14 @@
 
   function boot(){ theme();
     fetch("/auth/config").then(function(r){return r.json();}).then(function(cfg){ state.auth=cfg; if(!state.token) return renderGate();
-      api("/me").then(function(r){ if(r.status===200 && r.body.partyId){ state.me=r.body; load(); } else if(r.status===200){ renderNotResident(); } else renderGate(); });
+      api("/me").then(function(r){ if(r.status===200 && r.body.partyId){ state.me=r.body; loadCat(r.body.locale).then(load); } else if(r.status===200){ renderNotResident(); } else renderGate(); });
     }).catch(function(){ state.auth={mode:"dev"}; renderGate(); });
   }
 
+  function loadCat(locale){ if(!locale||locale==="en"){ state.cat={}; return Promise.resolve(); } return api("/i18n/"+encodeURIComponent(locale)).then(function(r){ state.cat=(r.status===200&&r.body)||{}; }).catch(function(){ state.cat={}; }); }
   function renderGate(){ var root=document.getElementById("root"); root.innerHTML="";
     var box=h("div",{class:"card gate"},[]);
-    box.appendChild(h("header",{},[ h("div",{class:"mark"},["E"]), h("h1",{},["Resident portal"]) ]));
+    box.appendChild(h("header",{},[ h("div",{class:"mark"},["E"]), h("h1",{},[t("res.title","Resident portal")]) ]));
     if(state.auth && state.auth.mode==="supabase"){
       var em=h("input",{type:"email",placeholder:"you@email.com"}); var pw=h("input",{type:"password",placeholder:"Password"});
       box.appendChild(h("form",{onsubmit:function(e){e.preventDefault();
@@ -105,48 +108,48 @@
     root.appendChild(h("div",{class:"wrap"},[box]));
   }
   function renderNotResident(){ var root=document.getElementById("root"); root.innerHTML="";
-    root.appendChild(h("div",{class:"wrap"},[ h("div",{class:"card gate"},[ h("h2",{},["Not a resident account"]), h("p",{class:"sub"},["This portal is for residents. Operators sign in at the main portal."]), h("button",{class:"btn ghost sm",onclick:function(){ setSession("",""); renderGate(); }},["Sign out"]) ]) ]));
+    root.appendChild(h("div",{class:"wrap"},[ h("div",{class:"card gate"},[ h("h2",{},[t("res.notres.title","Not a resident account")]), h("p",{class:"sub"},[t("res.notres.body","This portal is for residents. Operators sign in at the main portal.")]), h("button",{class:"btn ghost sm",onclick:function(){ setSession("",""); renderGate(); }},[t("res.signout","Sign out")]) ]) ]));
   }
 
-  function load(){ api("/resident/home").then(function(r){ if(r.status!==200){ toast((r.body||{}).error||"Could not load","err"); return renderGate(); } state.home=r.body; render(); }); }
+  function load(){ api("/resident/home").then(function(r){ if(r.status!==200){ toast((r.body||{}).error||t("res.couldnotload","Could not load"),"err"); return renderGate(); } state.home=r.body; render(); }); }
 
   function render(){ var root=document.getElementById("root"); root.innerHTML="";
     var wrap=h("div",{class:"wrap"},[]);
-    var head=h("header",{},[ h("div",{class:"mark"},["E"]), h("div",{},[ h("h1",{},["Hi, "+(state.home.profile.name||"resident")]), h("div",{class:"sub"},["Your home with us"]) ]), h("div",{class:"spacer"}), h("button",{class:"btn ghost sm",onclick:toggleTheme},["Theme"]), h("button",{class:"btn ghost sm",onclick:function(){ setSession("",""); renderGate(); }},["Sign out"]) ]);
+    var head=h("header",{},[ h("div",{class:"mark"},["E"]), h("div",{},[ h("h1",{},[ti("res.hi","Hi, {name}",{name:(state.home.profile.name||t("res.resident","resident"))})]), h("div",{class:"sub"},[t("res.home.sub","Your home with us")]) ]), h("div",{class:"spacer"}), h("button",{class:"btn ghost sm",onclick:toggleTheme},[t("res.theme","Theme")]), h("button",{class:"btn ghost sm",onclick:function(){ setSession("",""); renderGate(); }},[t("res.signout","Sign out")]) ]);
     wrap.appendChild(head);
     // KPIs
     var cards=h("div",{class:"cards"},[]);
-    cards.appendChild(kpi("Balance due", fmtMoney(state.home.totalBalanceCents), state.home.totalBalanceCents>0?"warn":"ok"));
-    cards.appendChild(kpi("Deposit held", fmtMoney(state.home.totalDepositCents)));
-    cards.appendChild(kpi("Leases", String((state.home.agreements||[]).length)));
+    cards.appendChild(kpi(t("res.kpi.balance","Balance due"), fmtMoney(state.home.totalBalanceCents), state.home.totalBalanceCents>0?"warn":"ok"));
+    cards.appendChild(kpi(t("res.kpi.deposit","Deposit held"), fmtMoney(state.home.totalDepositCents)));
+    cards.appendChild(kpi(t("res.kpi.leases","Leases"), String((state.home.agreements||[]).length)));
     wrap.appendChild(cards);
     // Payments — open invoices + a non-charging "I've paid" signal for the office.
     if(state.home.totalBalanceCents>0){
-      wrap.appendChild(h("h2",{},["Payments"]));
+      wrap.appendChild(h("h2",{},[t("res.payments","Payments")]));
       var payWrap=h("div",{},[]); wrap.appendChild(payWrap); refreshInvoices(payWrap);
     }
     // Renewal banner
     (state.home.renewalOffers||[]).forEach(function(o){
-      wrap.appendChild(h("div",{class:"banner"},[ h("strong",{},["Renewal available"]), h("div",{class:"sub"},["Your lease can renew at "+fmtMoney(o.proposedRateCents)+"/mo through "+o.proposedEnd+". Contact the office to accept."]) ]));
+      wrap.appendChild(h("div",{class:"banner"},[ h("strong",{},[t("res.renewal.title","Renewal available")]), h("div",{class:"sub"},[ti("res.renewal.body","Your lease can renew at {rate}/mo through {end}. Contact the office to accept.",{rate:fmtMoney(o.proposedRateCents),end:o.proposedEnd})]) ]));
     });
     // Leases
-    wrap.appendChild(h("h2",{},["My lease"+((state.home.agreements||[]).length===1?"":"s")]));
-    if(!(state.home.agreements||[]).length) wrap.appendChild(h("div",{class:"card muted"},["No active lease on file."]));
+    wrap.appendChild(h("h2",{},[(state.home.agreements||[]).length===1?t("res.mylease","My lease"):t("res.myleases","My leases")]));
+    if(!(state.home.agreements||[]).length) wrap.appendChild(h("div",{class:"card muted"},[t("res.nolease","No active lease on file.")]));
     (state.home.agreements||[]).forEach(function(a){
       var cls = a.status==="active"?"ok":"";
       var docBox=h("div",{},[]);
       var actions=h("div",{class:"row",style:"margin-top:12px;gap:8px"},[
-        h("button",{class:"btn ghost sm",onclick:function(){ api("/resident/agreements/"+a.id+"/lease-document").then(function(r){ docBox.innerHTML=""; if(r.status!==200) return toast((r.body||{}).error||"Error","err"); docBox.appendChild(h("pre",{style:"white-space:pre-wrap;font-size:12px;max-height:260px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px"},[r.body.text])); }); }},["View lease"])
+        h("button",{class:"btn ghost sm",onclick:function(){ api("/resident/agreements/"+a.id+"/lease-document").then(function(r){ docBox.innerHTML=""; if(r.status!==200) return toast((r.body||{}).error||"Error","err"); docBox.appendChild(h("pre",{style:"white-space:pre-wrap;font-size:12px;max-height:260px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px"},[r.body.text])); }); }},[t("res.viewlease","View lease")])
       ]);
       if((state.home.renewalOffers||[]).some(function(o){return o.agreementId===a.id;}))
-        actions.appendChild(h("button",{class:"btn sm",onclick:function(){ api("/resident/renewal-interest",{method:"POST",body:{agreementId:a.id}}).then(function(r){ if(r.status===201) toast("The office has been notified you'd like to renew","ok"); else toast((r.body||{}).error||"Error","err"); }); }},["I'd like to renew"]));
+        actions.appendChild(h("button",{class:"btn sm",onclick:function(){ api("/resident/renewal-interest",{method:"POST",body:{agreementId:a.id}}).then(function(r){ if(r.status===201) toast(t("res.renewal.sent","The office has been notified you'd like to renew"),"ok"); else toast((r.body||{}).error||"Error","err"); }); }},[t("res.renewwant","I'd like to renew")]));
       wrap.appendChild(h("div",{class:"lease"},[
         h("div",{class:"row"},[ h("strong",{},[a.unitLabel]), h("span",{class:"pill "+cls},[a.status]) ]),
         h("div",{class:"row",style:"margin-top:8px"},[
-          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},["Rent"]), h("div",{},[fmtMoney(a.rateCents)+"/mo"]) ]),
-          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},["Term"]), h("div",{},[a.start+" → "+a.end]) ]),
-          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},["Balance"]), h("div",{},[fmtMoney(a.balanceCents)]) ]),
-          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},["Expires in"]), h("div",{},[(a.daysToExpiry>=0?a.daysToExpiry+" days":"—")]) ])
+          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},[t("res.rent","Rent")]), h("div",{},[fmtMoney(a.rateCents)+"/mo"]) ]),
+          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},[t("res.term","Term")]), h("div",{},[a.start+" → "+a.end]) ]),
+          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},[t("res.balance","Balance")]), h("div",{},[fmtMoney(a.balanceCents)]) ]),
+          h("div",{},[ h("div",{class:"muted",style:"font-size:12px"},[t("res.expiresin","Expires in")]), h("div",{},[(a.daysToExpiry>=0?ti("res.ndays","{n} days",{n:a.daysToExpiry}):"—")]) ])
         ]),
         actions, docBox
       ]));
@@ -158,7 +161,7 @@
     // Packages awaiting pickup
     var pkgWrap=h("div",{},[]); wrap.appendChild(pkgWrap); refreshParcels(pkgWrap);
     // Maintenance
-    wrap.appendChild(h("h2",{},["Maintenance"]));
+    wrap.appendChild(h("h2",{},[t("res.maintenance","Maintenance")]));
     wrap.appendChild(maintenanceForm());
     var moWrap=h("div",{style:"margin-top:12px"},[]); wrap.appendChild(moWrap); refreshWorkOrders(moWrap);
     document.getElementById("root").appendChild(wrap);
@@ -167,85 +170,85 @@
 
   function maintenanceForm(){
     var leases=(state.home.agreements||[]);
-    if(!leases.length) return h("div",{class:"card muted"},["Add a lease to submit maintenance requests."]);
+    if(!leases.length) return h("div",{class:"card muted"},[t("res.mnt.needlease","Add a lease to submit maintenance requests.")]);
     var ag=h("select",{}, leases.map(function(a){ return h("option",{value:a.id},[a.unitLabel]); }));
-    var title=h("input",{placeholder:"What needs fixing? e.g. Leaky faucet"});
-    var pri=h("select",{},[["low","Low"],["medium","Medium"],["high","High"],["urgent","Urgent"]].map(function(p){return h("option",{value:p[0]},[p[1]]);}));
-    var desc=h("textarea",{rows:"3",placeholder:"Any details (optional)"});
+    var title=h("input",{placeholder:t("res.mnt.ph","What needs fixing? e.g. Leaky faucet")});
+    var pri=h("select",{},[["low",t("res.pri.low","Low")],["medium",t("res.pri.medium","Medium")],["high",t("res.pri.high","High")],["urgent",t("res.pri.urgent","Urgent")]].map(function(p){return h("option",{value:p[0]},[p[1]]);}));
+    var desc=h("textarea",{rows:"3",placeholder:t("res.mnt.details","Any details (optional)")});
     return h("form",{class:"card",onsubmit:function(e){e.preventDefault();
-      if(!title.value) return toast("Describe the issue","err");
+      if(!title.value) return toast(t("res.mnt.describe","Describe the issue"),"err");
       api("/resident/work-orders",{method:"POST",body:{ agreementId:ag.value, title:title.value, priority:pri.value, description:desc.value||undefined }}).then(function(r){
-        if(r.status===201){ toast("Request submitted","ok"); title.value=desc.value=""; load(); } else toast((r.body||{}).error||"Error","err");
+        if(r.status===201){ toast(t("res.mnt.submitted","Request submitted"),"ok"); title.value=desc.value=""; load(); } else toast((r.body||{}).error||"Error","err");
       });
     }},[
-      leases.length>1?h("div",{class:"field"},[h("label",{},["Unit"]),ag]):ag,
-      h("div",{class:"field"},[h("label",{},["Issue"]),title]),
-      h("div",{class:"field"},[h("label",{},["Priority"]),pri]),
-      h("div",{class:"field"},[h("label",{},["Details"]),desc]),
-      h("button",{class:"btn",type:"submit"},["Submit request"])
+      leases.length>1?h("div",{class:"field"},[h("label",{},[t("res.unit","Unit")]),ag]):ag,
+      h("div",{class:"field"},[h("label",{},[t("res.issue","Issue")]),title]),
+      h("div",{class:"field"},[h("label",{},[t("res.priority","Priority")]),pri]),
+      h("div",{class:"field"},[h("label",{},[t("res.details","Details")]),desc]),
+      h("button",{class:"btn",type:"submit"},[t("res.submit","Submit request")])
     ]);
   }
   function refreshEnvelopes(wrap){ api("/resident/envelopes").then(function(r){ wrap.innerHTML="";
     var list=((r.body||{}).envelopes)||[];
     if(!list.length) return;
-    wrap.appendChild(h("h2",{},["Documents"]));
+    wrap.appendChild(h("h2",{},[t("res.documents","Documents")]));
     var rows=list.map(function(e){
       var st=e.mySignerStatus, cls = st==="signed"?"ok":(st==="declined"?"warn":"");
-      var label = st==="awaiting"?"Awaiting your signature":(st==="signed"?"You signed":(st==="declined"?"Declined":"Being prepared"));
+      var label = st==="awaiting"?t("res.sig.awaiting","Awaiting your signature"):(st==="signed"?t("res.sig.signed","You signed"):(st==="declined"?t("res.sig.declined","Declined"):t("res.sig.prep","Being prepared")));
       return h("tr",{},[ h("td",{},[e.documentName]), h("td",{class:"muted"},[e.provider]), h("td",{},[h("span",{class:"pill "+cls},[label])]) ]);
     });
-    wrap.appendChild(h("table",{},[ h("thead",{},[h("tr",{},[th("Document"),th("Provider"),th("Status")])]), h("tbody",{},rows) ]));
-    wrap.appendChild(h("div",{class:"muted",style:"font-size:12px;margin-top:6px"},["When a document is awaiting your signature, sign it via the email the provider sends you."]));
+    wrap.appendChild(h("table",{},[ h("thead",{},[h("tr",{},[th(t("res.col.document","Document")),th(t("res.col.provider","Provider")),th(t("res.col.status","Status"))])]), h("tbody",{},rows) ]));
+    wrap.appendChild(h("div",{class:"muted",style:"font-size:12px;margin-top:6px"},[t("res.sig.note","When a document is awaiting your signature, sign it via the email the provider sends you.")]));
   }); }
   function refreshInsurance(wrap){ api("/resident/insurance").then(function(r){ wrap.innerHTML="";
     var leases=((r.body||{}).leases)||[];
     var withPolicies=leases.filter(function(l){ return (l.policies||[]).length || l.coverage!=="none"; });
     if(!leases.length) return;
-    wrap.appendChild(h("h2",{},["Renters insurance"]));
-    var COV={ compliant:["You're covered","ok"], expiring:["Coverage expiring soon","warn"], lapsed:["Coverage lapsed — please renew","warn"], none:["No policy on file","warn"] };
+    wrap.appendChild(h("h2",{},[t("res.insurance","Renters insurance")]));
+    var COV={ compliant:[t("res.cov.compliant","You're covered"),"ok"], expiring:[t("res.cov.expiring","Coverage expiring soon"),"warn"], lapsed:[t("res.cov.lapsed","Coverage lapsed — please renew"),"warn"], none:[t("res.cov.none","No policy on file"),"warn"] };
     leases.forEach(function(l){
       var c=COV[l.coverage]||COV.none;
       var rows=(l.policies||[]).map(function(p){ return h("div",{class:"muted",style:"font-size:12px;margin-top:4px"},[p.carrier+" · "+p.policyNumber+" · through "+p.expiresAt+" ("+p.status+")"]); });
-      wrap.appendChild(h("div",{class:"card"},[ h("div",{class:"row"},[ h("strong",{},["Lease "+l.agreementId]), h("span",{class:"pill "+c[1]},[c[0]]) ]) ].concat(rows.length?rows:[h("div",{class:"muted",style:"font-size:12px;margin-top:4px"},["Please file a renters-insurance certificate with the office."]) ]) ));
+      wrap.appendChild(h("div",{class:"card"},[ h("div",{class:"row"},[ h("strong",{},[ti("res.leaseid","Lease {id}",{id:l.agreementId})]), h("span",{class:"pill "+c[1]},[c[0]]) ]) ].concat(rows.length?rows:[h("div",{class:"muted",style:"font-size:12px;margin-top:4px"},[t("res.ins.note","Please file a renters-insurance certificate with the office.")]) ]) ));
     });
   }); }
   function refreshParcels(wrap){ api("/resident/parcels").then(function(r){ wrap.innerHTML="";
     var all=((r.body||{}).parcels)||[];
     var awaiting=all.filter(function(p){ return p.status!=="picked_up"; });
     if(!awaiting.length) return;
-    wrap.appendChild(h("h2",{},["Packages"]));
-    wrap.appendChild(h("div",{class:"muted",style:"font-size:13px;margin-bottom:8px"},[awaiting.length+" parcel"+(awaiting.length===1?"":"s")+" waiting for you at the front desk."]));
+    wrap.appendChild(h("h2",{},[t("res.packages","Packages")]));
+    wrap.appendChild(h("div",{class:"muted",style:"font-size:13px;margin-bottom:8px"},[ti(awaiting.length===1?"res.pkg.one":"res.pkg.many","{n} parcel(s) waiting for you at the front desk.",{n:awaiting.length})]));
     awaiting.forEach(function(p){
-      wrap.appendChild(h("div",{class:"card"},[ h("div",{class:"row"},[ h("strong",{},[p.carrier+(p.description?" · "+p.description:"")]), h("span",{class:"pill ok"},[p.daysWaiting+"d waiting"]) ]), (p.location?h("div",{class:"muted",style:"font-size:12px;margin-top:4px"},["Pick up at: "+p.location]):"") ]));
+      wrap.appendChild(h("div",{class:"card"},[ h("div",{class:"row"},[ h("strong",{},[p.carrier+(p.description?" · "+p.description:"")]), h("span",{class:"pill ok"},[ti("res.pkg.waiting","{d}d waiting",{d:p.daysWaiting})]) ]), (p.location?h("div",{class:"muted",style:"font-size:12px;margin-top:4px"},[ti("res.pkg.pickup","Pick up at: {loc}",{loc:p.location})]):"") ]));
     });
   }); }
   function refreshInvoices(wrap){ api("/resident/invoices").then(function(r){ wrap.innerHTML="";
     var open=(((r.body||{}).invoices)||[]).filter(function(i){return i.outstandingCents>0;});
-    if(!open.length){ wrap.appendChild(h("div",{class:"muted",style:"font-size:13px"},["You're all paid up."])); return; }
+    if(!open.length){ wrap.appendChild(h("div",{class:"muted",style:"font-size:13px"},[t("res.paidup","You're all paid up.")])); return; }
     var rows=open.map(function(i){
       return h("tr",{},[
         h("td",{},[i.id]),
         h("td",{class:"muted"},[(i.dueAt||"").slice(0,10)]),
         h("td",{},[fmtMoney(i.outstandingCents)]),
         h("td",{},[ h("button",{class:"btn ghost sm",onclick:function(){
-          if(!confirm("Only confirm after you've sent the payment. This notifies the office to reconcile it — it is not a live charge.")) return;
+          if(!confirm(t("res.pay.confirm","Only confirm after you've sent the payment. This notifies the office to reconcile it — it is not a live charge."))) return;
           api("/resident/payment-intent",{method:"POST",body:{invoiceId:i.id,amountCents:i.outstandingCents,method:"transfer"}}).then(function(x){
-            if(x.status===201) toast("Thanks — the office will reconcile your payment","ok"); else toast((x.body||{}).error||"Error","err");
+            if(x.status===201) toast(t("res.pay.thanks","Thanks — the office will reconcile your payment"),"ok"); else toast((x.body||{}).error||"Error","err");
           });
-        }},["I've paid this"]) ])
+        }},[t("res.paidbtn","I've paid this")]) ])
       ]);
     });
-    wrap.appendChild(h("table",{},[ h("thead",{},[h("tr",{},[th("Invoice"),th("Due"),th("Amount"),th("")])]), h("tbody",{},rows) ]));
-    wrap.appendChild(h("div",{class:"muted",style:"font-size:12px;margin-top:6px"},["Payments are made by bank transfer to the office; use “I've paid this” after you send it so they can reconcile."]));
+    wrap.appendChild(h("table",{},[ h("thead",{},[h("tr",{},[th(t("res.col.invoice","Invoice")),th(t("res.col.due","Due")),th(t("res.col.amount","Amount")),th("")])]), h("tbody",{},rows) ]));
+    wrap.appendChild(h("div",{class:"muted",style:"font-size:12px;margin-top:6px"},[t("res.pay.note","Payments are made by bank transfer to the office; use \u201CI've paid this\u201D after you send it so they can reconcile.")]));
   }); }
   function refreshWorkOrders(wrap){ api("/resident/work-orders").then(function(r){ wrap.innerHTML="";
     var list=((r.body||{}).workOrders)||[];
-    if(!list.length){ wrap.appendChild(h("div",{class:"muted",style:"font-size:13px"},["No maintenance requests yet."])); return; }
+    if(!list.length){ wrap.appendChild(h("div",{class:"muted",style:"font-size:13px"},[t("res.mnt.none","No maintenance requests yet.")])); return; }
     var rows=list.slice().sort(function(a,b){return (b.openedAt||"").localeCompare(a.openedAt||"");}).map(function(w){
       var cls = w.status==="completed"?"ok":(w.status==="cancelled"?"warn":"");
       return h("tr",{},[ h("td",{},[w.title]), h("td",{class:"muted"},[(w.priority||"—")]), h("td",{},[h("span",{class:"pill "+cls},[w.status.replace("_"," ")])]), h("td",{class:"muted"},[(w.openedAt||"").slice(0,10)]) ]);
     });
-    var tbl=h("table",{},[ h("thead",{},[h("tr",{},[th("Request"),th("Priority"),th("Status"),th("Opened")])]), h("tbody",{},rows) ]);
+    var tbl=h("table",{},[ h("thead",{},[h("tr",{},[th(t("res.col.request","Request")),th(t("res.priority","Priority")),th(t("res.col.status","Status")),th(t("res.col.opened","Opened"))])]), h("tbody",{},rows) ]);
     wrap.appendChild(tbl);
   }); }
   function th(x){ return h("th",{},[x]); }
