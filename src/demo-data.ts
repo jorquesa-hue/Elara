@@ -25,7 +25,7 @@ export interface DemoParcel { id: string; partyId: string; carrier: string; rece
 export interface DemoWaitlist { id: string; prospectName: string; propertyCode?: string; prospectEmail?: string; desiredMoveIn?: string; joinedAt: string }
 export interface DemoCapitalMove { id: string; entityCode: string; propertyCode?: string; amountCents: number; recordedAt: string; memo?: string }
 export interface DemoProspect { id: string; name: string; partyId?: string; preferences: Record<string, unknown> }
-export interface DemoBudgetLine { category: 'revenue' | 'expense'; label: string; amountCents: number }
+export interface DemoBudgetLine { category: 'revenue' | 'expense'; label: string; amountCents: number; account?: string }
 export interface DemoPropertyBudget { id: string; propertyCode: string; periodStart: string; periodEnd: string; lines: DemoBudgetLine[]; notes?: string }
 export interface DemoGuest { code: string; fullName: string; email: string }
 export interface DemoParty {
@@ -259,14 +259,14 @@ export function buildDemoWorld(tenantId: string, at: string): DemoWorld {
   const byr = at.slice(0, 4);
   const propertyBudgets: DemoPropertyBudget[] = [
     { id: 'pbud-CURRAL', propertyCode: 'CURRAL', periodStart: `${byr}-01-01`, periodEnd: `${Number(byr) + 1}-01-01`, notes: 'FY operating plan', lines: [
-      { category: 'revenue', label: 'Room & rent revenue', amountCents: 264_000_00 },
-      { category: 'expense', label: 'Property management', amountCents: 26_400_00 },
-      { category: 'expense', label: 'Repairs & maintenance', amountCents: 18_000_00 },
-      { category: 'expense', label: 'Utilities', amountCents: 12_000_00 } ] },
+      { category: 'revenue', label: 'Room & rent revenue', account: 'revenue:rent', amountCents: 264_000_00 },
+      { category: 'expense', label: 'Property management', account: 'expense:management', amountCents: 26_400_00 },
+      { category: 'expense', label: 'Repairs & maintenance', account: 'expense:maintenance', amountCents: 18_000_00 },
+      { category: 'expense', label: 'Utilities', account: 'expense:utilities', amountCents: 12_000_00 } ] },
     { id: 'pbud-VILA', propertyCode: 'VILA', periodStart: `${byr}-01-01`, periodEnd: `${Number(byr) + 1}-01-01`, notes: 'FY operating plan', lines: [
-      { category: 'revenue', label: 'Room & rent revenue', amountCents: 123_000_00 },
-      { category: 'expense', label: 'Property management', amountCents: 12_300_00 },
-      { category: 'expense', label: 'Repairs & maintenance', amountCents: 9_000_00 } ] },
+      { category: 'revenue', label: 'Room & rent revenue', account: 'revenue:rent', amountCents: 123_000_00 },
+      { category: 'expense', label: 'Property management', account: 'expense:management', amountCents: 12_300_00 },
+      { category: 'expense', label: 'Repairs & maintenance', account: 'expense:maintenance', amountCents: 9_000_00 } ] },
   ];
   return { tenantId, properties, units, guests, parties, pricingRules, agreements, invoices, deposits, bills, workOrders, leads, propertyBudgets };
 }
@@ -461,10 +461,10 @@ export function buildEuropeWorld(tenantId: string, at: string): DemoWorld {
   const py = (code: string, rev: number, mgmt: number, rep: number, util: number): DemoPropertyBudget => ({
     id: `demo-pbud-${code}`, propertyCode: code, periodStart: `${byr}-01-01`, periodEnd: `${Number(byr) + 1}-01-01`, notes: 'FY operating plan',
     lines: [
-      { category: 'revenue', label: 'Rental income', amountCents: rev },
-      { category: 'expense', label: 'Property management', amountCents: mgmt },
-      { category: 'expense', label: 'Repairs & maintenance', amountCents: rep },
-      { category: 'expense', label: 'Utilities & common area', amountCents: util },
+      { category: 'revenue', label: 'Rental income', account: 'revenue:rent', amountCents: rev },
+      { category: 'expense', label: 'Property management', account: 'expense:management', amountCents: mgmt },
+      { category: 'expense', label: 'Repairs & maintenance', account: 'expense:maintenance', amountCents: rep },
+      { category: 'expense', label: 'Utilities & common area', account: 'expense:utilities', amountCents: util },
     ],
   });
   const propertyBudgets: DemoPropertyBudget[] = [

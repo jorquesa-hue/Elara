@@ -2449,17 +2449,18 @@
     var start=h("input",{type:"date",value:y+"-01-01"});
     var end=h("input",{type:"date",value:(y+1)+"-01-01"});
     var lineWrap=h("div",{style:"display:flex;flex-direction:column;gap:7px;margin:6px 0"},[]);
-    function lineRow(cat,label,amt){
-      var c=h("select",{style:"max-width:120px"},[ h("option",{value:"revenue"},["Revenue"]), h("option",{value:"expense"},["Expense"]) ]); c.value=cat||"expense";
+    function lineRow(cat,label,amt,account){
+      var c=h("select",{style:"max-width:110px"},[ h("option",{value:"revenue"},["Revenue"]), h("option",{value:"expense"},["Expense"]) ]); c.value=cat||"expense";
       var l=h("input",{type:"text",placeholder:cat==="revenue"?"Base rent":"Repairs",value:label||""});
-      var a=h("input",{type:"number",min:"0",step:"1",placeholder:"0.00",style:"max-width:130px",value:amt==null?"":amt});
+      var acc=h("input",{type:"text",placeholder:"GL account (e.g. expenses:repairs)",style:"max-width:200px",value:account||""});
+      var a=h("input",{type:"number",min:"0",step:"1",placeholder:"0.00",style:"max-width:120px",value:amt==null?"":amt});
       var del=h("button",{class:"btn ghost sm",type:"button",title:"Remove",onclick:function(){ row.remove(); }},["✕"]);
-      var row=h("div",{style:"display:flex;gap:7px;align-items:center"},[c,l,a,del]);
-      row._get=function(){ var cents=Math.round((parseFloat(a.value)||0)*100); return l.value&&cents>0?{category:c.value,label:l.value,amountCents:cents}:null; };
+      var row=h("div",{style:"display:flex;gap:7px;align-items:center"},[c,l,acc,a,del]);
+      row._get=function(){ var cents=Math.round((parseFloat(a.value)||0)*100); return l.value&&cents>0?{category:c.value,label:l.value,amountCents:cents,account:acc.value||undefined}:null; };
       return row;
     }
-    // Seed with a couple of typical lines.
-    [["revenue","Base rent",null],["expense","Repairs & maintenance",null],["expense","Property management",null]].forEach(function(s){ lineWrap.appendChild(lineRow(s[0],s[1],s[2])); });
+    // Seed with a couple of typical lines, pre-mapped to GL accounts so POs consume them.
+    [["revenue","Base rent",null,"revenue:rent"],["expense","Repairs & maintenance",null,"expenses:repairs"],["expense","Property management",null,"expenses:management"]].forEach(function(s){ lineWrap.appendChild(lineRow(s[0],s[1],s[2],s[3])); });
     var addRev=h("button",{class:"btn ghost sm",type:"button",onclick:function(){ lineWrap.appendChild(lineRow("revenue","",null)); }},["+ revenue line"]);
     var addExp=h("button",{class:"btn ghost sm",type:"button",onclick:function(){ lineWrap.appendChild(lineRow("expense","",null)); }},["+ expense line"]);
     return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
@@ -2500,11 +2501,33 @@
         line("NOI", bd.noiCents, ac.noiCents, va.noiCents, true) ], 4, "");
     var margin=h("div",{class:"muted",style:"font-size:12.5px;margin-top:6px"},[
       "NOI margin — plan "+(v.budgetNoiMarginPct||0)+"% · actual "+(v.actualNoiMarginPct||0)+"%" ]);
+    // Per-line budget consumption: committed (open POs) + actual (posted bills)
+    // against each GL account debit the line's plan.
+    var extra=[];
+    var expLines=(b.lineStatus||[]).filter(function(l){return l.category==="expense";});
+    if(expLines.length){
+      extra.push(h("div",{class:"muted",style:"font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin:14px 0 6px"},[tt("propbudget.consumption","Expense budget consumption (PO commitments + actuals)")]));
+      expLines.forEach(function(l){
+        var used=(l.committedCents||0)+(l.actualCents||0);
+        var pct=l.amountCents>0?Math.min(100,Math.round(used/l.amountCents*100)):0;
+        var over=l.overBudget;
+        extra.push(h("div",{style:"margin:8px 0"},[
+          h("div",{style:"display:flex;justify-content:space-between;font-size:12.5px"},[
+            h("span",{},[l.label, l.account?h("span",{class:"muted"},[" · "+l.account]):null]),
+            h("span",{class:"mono"},[fmt(l.remainingCents)+" left"]) ]),
+          h("div",{style:"height:8px;border-radius:4px;background:var(--surface-3,#eee);overflow:hidden;margin-top:4px;display:flex"},[
+            h("div",{title:"Committed "+fmt(l.committedCents||0),style:"height:8px;width:"+(l.amountCents>0?Math.min(100,Math.round((l.committedCents||0)/l.amountCents*100)):0)+"%;background:#c98a1e"},[]),
+            h("div",{title:"Actual "+fmt(l.actualCents||0),style:"height:8px;width:"+(l.amountCents>0?Math.min(100,Math.round((l.actualCents||0)/l.amountCents*100)):0)+"%;background:"+(over?"#e5484d":"var(--accent)")},[]) ]),
+          h("div",{class:"muted",style:"font-size:11px;margin-top:2px"},["Budget "+fmt(l.amountCents)+" · committed "+fmt(l.committedCents||0)+" · actual "+fmt(l.actualCents||0)+" · "+pct+"% used"]) ]));
+      });
+      if(b.commitment) extra.push(h("div",{style:"font-size:12.5px;font-weight:600;margin-top:8px;color:"+((b.commitment.remainingCents||0)<0?"#e5484d":"#3aa76d")},[
+        "Total expense budget remaining: "+fmt(b.commitment.remainingCents||0)+" (of "+fmt(b.commitment.budgetedExpenseCents||0)+")" ]));
+    }
     return h("div",{class:"panel",style:"margin-bottom:14px"},[
       h("div",{style:"display:flex;align-items:baseline;gap:10px;margin-bottom:8px"},[
         h("strong",{style:"font-size:15px"},[b.propertyName||b.propertyId]),
         h("span",{class:"muted",style:"font-size:12.5px"},[(b.periodStart||"").slice(0,10)+" → "+(b.periodEnd||"").slice(0,10)]) ]),
-      tbl, margin ]);
+      tbl, margin ].concat(extra));
   }
   function viewDistributions(main){
     main.appendChild(h("h1",{},["Distributions"]));
@@ -3400,7 +3423,7 @@
 
   // ---- reports & insights -------------------------------------------------
   var CHART_PALETTE = ["#6d8bff","#8b6cff","#3aa76d","#e0894a","#e05a5a","#22a5b8","#c98a1e","#b565d8","#4f9d69","#d98a8a"];
-  var CATALOG_CHART = { occupancy:"bar", revenue:"line", ar_aging:"bar", collections:"table", deposits:"bar", payables:"bar", pipeline:"bar", portfolio:"donut", cashflow:"bar", rent_roll:"table", delinquency:"bar", lease_expirations:"bar", box_score:"table", vacancy:"table", wo_aging:"bar", income_statement:"bar", owner_statement:"bar", general_ledger:"table", billing_collections:"bar", occupancy_trend:"line", cash_flow_statement:"bar", make_ready:"table", insurance_compliance:"table", package_room:"table", waitlist_demand:"bar", owner_distributions:"bar" };
+  var CATALOG_CHART = { occupancy:"bar", revenue:"line", ar_aging:"bar", collections:"table", deposits:"bar", payables:"bar", pipeline:"bar", portfolio:"donut", cashflow:"bar", rent_roll:"table", delinquency:"bar", lease_expirations:"bar", box_score:"table", vacancy:"table", wo_aging:"bar", income_statement:"bar", owner_statement:"bar", general_ledger:"table", billing_collections:"bar", occupancy_trend:"line", cash_flow_statement:"bar", make_ready:"table", insurance_compliance:"table", package_room:"table", waitlist_demand:"bar", owner_distributions:"bar", property_budget:"bar" };
 
   // Download any report as CSV — columns become the header, cells are quoted.
   function csvEscape(v){ var s=String(v==null?"":v); return /[",\\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }

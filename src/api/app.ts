@@ -1108,11 +1108,19 @@ export class App {
     return { revenueCents, expenseCents, noiCents: revenueCents - expenseCents };
   }
 
-  /** Fold a budget with its property name and its budget-vs-actual NOI view. */
+  /** Fold a budget with its property name, its budget-vs-actual NOI view, and the
+   *  per-line commitment status (open POs + posted bills against each GL account
+   *  consume the line's plan) plus rolled-up committed/actual/remaining totals. */
   private propertyBudgetRow(tenantId: string, b: PropertyBudget) {
     const property = this.masterData.properties.get(tenantId, b.propertyId);
     const actual = this.propertyActuals(b.propertyId, b.periodStart, b.periodEnd);
-    return { ...b, propertyName: property?.name ?? b.propertyId, vsActual: budgetVsActual(b.lines, actual) };
+    const lineStatus = b.lines.map((l) => this.budgetLineStatus(tenantId, l, b.periodStart, b.periodEnd, b.propertyId));
+    const expenseLines = lineStatus.filter((l) => l.category === 'expense');
+    const budgetedExpenseCents = expenseLines.reduce((n, l) => n + l.amountCents, 0);
+    const committedCents = expenseLines.reduce((n, l) => n + l.committedCents, 0);
+    const actualCents = expenseLines.reduce((n, l) => n + l.actualCents, 0);
+    const commitment = { budgetedExpenseCents, committedCents, actualCents, remainingCents: budgetedExpenseCents - committedCents - actualCents };
+    return { ...b, propertyName: property?.name ?? b.propertyId, vsActual: budgetVsActual(b.lines, actual), lineStatus, commitment };
   }
 
   private ownedPropertyBudget(ctx: AuthContext, id: string): PropertyBudget {
@@ -1120,6 +1128,21 @@ export class App {
     const b = this.propertyBudgets.get(id);
     if (b.tenantId !== ctx.tenantId) throw new HttpError(404, 'property budget not found');
     return b;
+  }
+
+  /** Per-line budget consumption: for a line mapped to a GL account, how much of
+   *  its plan is COMMITTED (open POs) and ACTUAL (posted bills) within the budget
+   *  period, and what remains. A PO opened against the account debits the plan. */
+  private budgetLineStatus(tenantId: string, line: BudgetLine, periodStart: string, periodEnd: string, propertyId?: string) {
+    const committedCents = line.account ? this.procurement.committedForAccount(tenantId, line.account, periodStart, periodEnd) : 0;
+    const actualCents = line.account ? this.actualForAccount(tenantId, line.account, periodStart, periodEnd, propertyId) : 0;
+    return {
+      ...line,
+      committedCents,
+      actualCents,
+      remainingCents: line.amountCents - committedCents - actualCents,
+      overBudget: committedCents + actualCents > line.amountCents,
+    };
   }
 
   /** Fold a bill with its payee + property names, outstanding balance, and the
@@ -4092,6 +4115,10 @@ export class App {
       waitlist: this.waitlist.list(tenantId).map((e) => ({ floorplanName: e.typeId ? this.masterData.unitTypes.get(tenantId, e.typeId)?.name : undefined, status: e.status })),
       distributions: this.distributions.list(tenantId).map((d) => ({ entityName: this.entities.getEntity(tenantId, d.entityId)?.name ?? d.entityId, propertyName: d.propertyId ? this.masterData.properties.get(tenantId, d.propertyId)?.name : undefined, amountCents: d.amountCents, recordedAt: d.recordedAt })),
       contributions: this.contributions.list(tenantId).map((c) => ({ entityName: this.entities.getEntity(tenantId, c.entityId)?.name ?? c.entityId, amountCents: c.amountCents })),
+      propertyBudgets: this.propertyBudgets.list(tenantId).map((b) => {
+        const t = budgetTotals(b.lines);
+        return { propertyId: b.propertyId, propertyName: this.masterData.properties.get(tenantId, b.propertyId)?.name, periodStart: b.periodStart, periodEnd: b.periodEnd, budgetRevenueCents: t.revenueCents, budgetExpenseCents: t.expenseCents };
+      }),
       holds: this.calendar.allHolds().filter((h) => agIds.has(h.holderId)).map((h) => ({ unitId: h.unitId, start: h.start, end: h.end, status: h.status })),
       ledgerBalanced: this.trialBalance(tenantId).balanced,
       // Tenant-scoped GL lines (same predicate as the trial balance) — the raw
@@ -4485,12 +4512,14 @@ export class App {
   }
 
   /** Posted (non-void) bill spend on an account within [start, end) — the
-   *  "actual" leg of a budget. Bills are the GL-hitting side; POs are not. */
-  private actualForAccount(tenantId: string, account: string, start: string, end: string): number {
+   *  "actual" leg of a budget. Bills are the GL-hitting side; POs are not.
+   *  When propertyId is given, only bills stamped for that community count. */
+  private actualForAccount(tenantId: string, account: string, start: string, end: string, propertyId?: string): number {
     let sum = 0;
     for (const bill of this.payables.allBills()) {
       if (bill.tenantId !== tenantId || bill.status === 'void') continue;
       if (bill.issuedAt < start || bill.issuedAt >= end) continue;
+      if (propertyId && bill.propertyId !== propertyId) continue;
       for (const l of bill.lines) if (l.account === account) sum += l.amountCents;
     }
     return sum;

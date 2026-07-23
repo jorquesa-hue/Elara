@@ -87,6 +87,27 @@ test('RBAC: front desk reads but cannot manage; update replaces lines', () => {
   assert.equal((upd.body as { vsActual: { budgeted: { revenueCents: number } } }).vsActual.budgeted.revenueCents, 500_000);
 });
 
+test('a PO opened against a budget line GL account commits (debits) the line', () => {
+  const app = mkApp();
+  D(app, 'POST', '/parties', 'Bearer own', { id: 'v1', kind: 'organization', displayName: 'Acme Repairs' });
+  // Budget with a GL-account expense line.
+  D(app, 'POST', '/property-budgets', 'Bearer own', { id: 'pb-gl', propertyId: 'prop-ber', periodStart: '2026-01-01', periodEnd: '2026-12-31', lines: [
+    { category: 'revenue', label: 'Rent', account: 'revenue:rent', amountCents: 1_000_000 },
+    { category: 'expense', label: 'Repairs', account: 'expense:repairs', amountCents: 300_000 },
+  ] });
+  // Open + approve a PO against expense:repairs → it commits against the budget line.
+  D(app, 'POST', '/purchase-orders', 'Bearer own', { id: 'po1', vendorId: 'v1', expectedAt: '2026-03-01', lines: [{ description: 'Roof repair', account: 'expense:repairs', amountCents: 80_000 }] });
+  D(app, 'POST', '/purchase-orders/po1/approve', 'Bearer own', {});
+  // A posted bill on the same account for this property → actual.
+  D(app, 'POST', '/bills', 'Bearer own', { id: 'bl1', payeeId: 'v1', propertyId: 'prop-ber', dueAt: '2026-04-01', lines: [{ description: 'Fix leak', account: 'expense:repairs', amountCents: 50_000 }] });
+  const row = D(app, 'GET', '/property-budgets/pb-gl', 'Bearer own').body as { lineStatus: Array<{ label: string; committedCents: number; actualCents: number; remainingCents: number }>; commitment: { committedCents: number; actualCents: number; remainingCents: number } };
+  const repairs = row.lineStatus.find((l) => l.label === 'Repairs')!;
+  assert.equal(repairs.committedCents, 80_000, 'the open PO commits against the line');
+  assert.equal(repairs.actualCents, 50_000, 'the posted bill is the actual');
+  assert.equal(repairs.remainingCents, 300_000 - 80_000 - 50_000, 'remaining = budget − committed − actual');
+  assert.equal(row.commitment.remainingCents, 170_000);
+});
+
 test('property budgets survive a snapshot → rehydrate round trip', () => {
   const app = mkApp();
   D(app, 'POST', '/property-budgets', 'Bearer own', { id: 'pb-3', propertyId: 'prop-ber', periodStart: '2026-01-01', periodEnd: '2026-12-31', lines: LINES, notes: 'FY26 plan' });

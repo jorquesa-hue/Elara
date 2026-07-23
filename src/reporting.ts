@@ -43,6 +43,7 @@ export interface ReportingInput {
   /** Tenant-scoped journal lines — the raw material for the FINANCIAL reports
    *  (income statement, general ledger). Optional for backward compatibility. */
   ledgerLines?: ReadonlyArray<{ account: string; debitCents: number; creditCents: number; postedAt: string; entryId?: string; entityId?: string; propertyId?: string }>;
+  propertyBudgets?: ReadonlyArray<{ propertyId: string; propertyName?: string; periodStart: string; periodEnd: string; budgetRevenueCents: number; budgetExpenseCents: number }>;
 }
 
 export interface ReportColumn { key: string; label: string; kind?: 'money' | 'number' | 'percent' | 'text' | 'date' }
@@ -80,6 +81,7 @@ export const REPORT_CATALOG: readonly ReportSpec[] = [
   { key: 'delinquency', title: 'Delinquency (aged)', description: 'Aged receivables by resident: current, 1–30, 31–60, 61–90 and 90+ day buckets per account.' },
   { key: 'income_statement', title: 'Income statement', description: 'Revenue and expenses from the ledger for the window — the P&L, with net operating income.' },
   { key: 'owner_statement', title: 'Owner statement', description: 'Net operating income by property/community with the owning legal entity — the fund/owner report.' },
+  { key: 'property_budget', title: 'Budget vs actual (NOI)', description: 'Planned vs actual net operating income per community, from the operating budgets and the ledger.' },
   { key: 'billing_collections', title: 'Billed vs collected', description: 'Invoiced vs cash collected by month, with the collection rate.' },
   { key: 'lease_expirations', title: 'Lease expirations', description: 'Active leases bucketed by expiration month — the renewal-exposure schedule.' },
   { key: 'box_score', title: 'Box score', description: 'Leasing activity for the window: move-ins, move-outs, funnel counts and occupancy.' },
@@ -807,6 +809,50 @@ function ownerStatement(inp: ReportingInput): Report {
   };
 }
 
+/** Budget vs actual NOI per community: the plan against ledger actuals. */
+function propertyBudgetReport(inp: ReportingInput): Report {
+  const meta = new Map((inp.properties ?? []).map((p) => [p.id, p.name]));
+  // Actuals per property over each budget's own period.
+  const rows = (inp.propertyBudgets ?? []).map((b) => {
+    let actRev = 0, actExp = 0;
+    for (const l of inp.ledgerLines ?? []) {
+      if (l.propertyId !== b.propertyId) continue;
+      if (l.postedAt < b.periodStart || l.postedAt >= b.periodEnd) continue;
+      if (l.account.startsWith('revenue')) actRev += l.creditCents - l.debitCents;
+      else if (l.account.startsWith('expense')) actExp += l.debitCents - l.creditCents;
+    }
+    const budgetNoi = b.budgetRevenueCents - b.budgetExpenseCents;
+    const actualNoi = actRev - actExp;
+    return {
+      property: b.propertyName ?? meta.get(b.propertyId) ?? b.propertyId,
+      budget_noi: budgetNoi,
+      actual_noi: actualNoi,
+      variance: actualNoi - budgetNoi,
+      margin: actRev > 0 ? Math.round((actualNoi / actRev) * 1000) / 10 : 0,
+    };
+  }).sort((a, b) => a.variance - b.variance);
+  const budgetTotal = sum(rows.map((r) => r.budget_noi));
+  const actualTotal = sum(rows.map((r) => r.actual_noi));
+  return {
+    key: 'property_budget', title: 'Budget vs actual (NOI)', window: { from: inp.from, to: inp.to },
+    subtitle: 'Planned vs actual net operating income per community, from the operating budgets and the ledger.',
+    columns: [
+      { key: 'property', label: 'Community', kind: 'text' },
+      { key: 'budget_noi', label: 'Budget NOI', kind: 'money' },
+      { key: 'actual_noi', label: 'Actual NOI', kind: 'money' },
+      { key: 'variance', label: 'Variance', kind: 'money' },
+      { key: 'margin', label: 'Actual margin', kind: 'percent' },
+    ],
+    rows,
+    kpis: [
+      { label: 'Communities budgeted', value: rows.length, kind: 'number' },
+      { label: 'Budget NOI', value: budgetTotal, kind: 'money' },
+      { label: 'Actual NOI', value: actualTotal, kind: 'money' },
+      { label: 'NOI variance', value: actualTotal - budgetTotal, kind: 'money' },
+    ],
+  };
+}
+
 /** All-time balances per account: the books, netting to zero when balanced. */
 function generalLedger(inp: ReportingInput): Report {
   const acc = new Map<string, { debits: number; credits: number }>();
@@ -961,6 +1007,7 @@ const BUILDERS: Record<string, (inp: ReportingInput) => Report> = {
   rent_roll: rentRoll, delinquency, lease_expirations: leaseExpirations, box_score: boxScore, vacancy, wo_aging: woAging,
   income_statement: incomeStatement, general_ledger: generalLedger, billing_collections: billingCollections, occupancy_trend: occupancyTrend,
   owner_statement: ownerStatement, cash_flow_statement: cashFlowStatement, make_ready: makeReady, insurance_compliance: insuranceCompliance, package_room: packageRoom, waitlist_demand: waitlistDemand, owner_distributions: ownerDistributions, capital_account: capitalAccounts,
+  property_budget: propertyBudgetReport,
 };
 
 export function buildReport(key: string, inp: ReportingInput): Report | null {
