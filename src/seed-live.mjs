@@ -27,41 +27,42 @@ function mint() {
 
 const token = mint();
 
-// Fly runs on IPv6; Node's fetch to a bare 127.0.0.1 can miss a server bound on
-// :: / ::1. Probe a few hosts once to find the one the app actually answers on.
-const hosts = ['localhost', '127.0.0.1', '[::1]'];
-async function post(host, payload) {
-  return fetch(`http://${host}:${port}/demo/seed`, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+// `flyctl ssh console` may land in an ephemeral console machine that carries the
+// app's env/secrets (so the token mints) but does NOT run the server — hence
+// localhost:PORT is refused. The machine still has internet egress, so reach the
+// app through its public URL (routes back via the Fly proxy). Fall back to the
+// in-machine port in case ssh does land on the running app machine.
+const bases = [
+  process.env.APP_URL || 'https://elara-tvumsw.fly.dev',
+  `http://localhost:${port}`,
+  `http://127.0.0.1:${port}`,
+  `http://[::1]:${port}`,
+];
+async function reach(base) {
+  const r = await fetch(`${base}/health`, { headers: { authorization: `Bearer ${token}` } });
+  return r.status; // any HTTP response means reachable
 }
-async function findHost() {
-  for (let attempt = 0; attempt < 10; attempt++) {
-    for (const host of hosts) {
-      try {
-        const r = await fetch(`http://${host}:${port}/health`, { headers: { authorization: `Bearer ${token}` } });
-        console.log(`[probe] ${host} /health -> ${r.status}`);
-        return host; // any HTTP response means the socket is reachable
-      } catch (e) {
-        console.log(`[probe] ${host} -> ${e?.cause?.code || e?.message || e}`);
-      }
-    }
-    await new Promise((res) => setTimeout(res, 1500));
+let base = null;
+for (let attempt = 0; attempt < 8 && !base; attempt++) {
+  for (const b of bases) {
+    try { const s = await reach(b); console.log(`[probe] ${b} /health -> ${s}`); base = b; break; }
+    catch (e) { console.log(`[probe] ${b} -> ${e?.cause?.code || e?.message || e}`); }
   }
-  return null;
+  if (!base) await new Promise((res) => setTimeout(res, 1500));
 }
-
-const host = await findHost();
-if (!host) { console.error('no reachable host for the app on port ' + port); process.exit(3); }
+if (!base) { console.error('no reachable base url for the app'); process.exit(3); }
+console.log(`[seed] using ${base}`);
 
 const variants = [null, 'europe', 'portfolio'];
 let failed = false;
 for (const v of variants) {
   const payload = Object.assign({ force: true, at: '2026-07-24T00:00:00Z' }, v ? { variant: v } : {});
   try {
-    const r = await post(host, payload);
+    const r = await fetch(`${base}/demo/seed`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
     const text = await r.text();
     console.log(`[seed ${v || 'brazil'}] ${r.status} ${text.slice(0, 500)}`);
     if (r.status >= 300) failed = true;
