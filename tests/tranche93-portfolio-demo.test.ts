@@ -60,6 +60,46 @@ test('every specialty module is populated on the portfolio seed', () => {
   assert.ok(owner.rows.length >= 3, 'owner statement covers the communities');
 });
 
+test('force re-seed is idempotent — tops up missing rows without duplicating', () => {
+  const { app, counts } = seeded();
+  // A plain re-seed is a no-op (the marker unit exists).
+  const noop = D(app, 'POST', '/demo/seed', { variant: 'portfolio', at: NOW }).body as { seeded: boolean };
+  assert.equal(noop.seeded, false);
+  // A forced re-seed re-runs every create, but each duplicate is skipped, so the
+  // world is unchanged: same unit/agreement/party counts, still balanced.
+  const forced = D(app, 'POST', '/demo/seed', { variant: 'portfolio', at: NOW, force: true }).body as { seeded: boolean; counts: Record<string, number> };
+  assert.equal(forced.seeded, true);
+  const rr = (D(app, 'GET', '/reports/rent_roll', { from: '1970-01-01', to: '2026-07-25' }).body as { report: { rows: unknown[] } }).report;
+  assert.equal(rr.rows.length, counts.units, 'no duplicate units after a forced re-seed');
+  assert.equal((D(app, 'GET', '/agreements').body as { agreements: unknown[] }).agreements.length, counts.agreements, 'no duplicate leases');
+  assert.equal((D(app, 'GET', '/ledger/trial-balance').body as { balanced: boolean }).balanced, true, 'still balanced');
+});
+
+test('force re-seed fills leases dropped by a partial persist', () => {
+  // Simulate a half-persisted tenant: the master data (units/guests/parties/…)
+  // loaded, but everything that posts to the ledger (leases, invoices, bills)
+  // was dropped by a partial flush. Keep ONLY the master-data slice, empty every
+  // other array. A forced re-seed must fill the missing leases back in without
+  // duplicate-keying the units, and land balanced.
+  const { app } = seeded();
+  const full = app.snapshotWorld('t') as unknown as Record<string, unknown>;
+  const keep = new Set(['tenants', 'units', 'guests', 'parties', 'spaces', 'properties', 'legalEntities', 'unitTypes', 'pricingRules', 'bankAccounts', 'customRoles', 'users']);
+  const partial: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(full)) partial[k] = Array.isArray(v) && !keep.has(k) ? [] : v;
+  const b = new App({ authenticator: new StaticTokenAuthenticator({ own }), units: [], now: () => NOW });
+  D(b, 'PUT', '/config', { displayName: 'Meridian', country: 'US' });
+  b.rehydrate(partial as never);
+  assert.equal((D(b, 'GET', '/agreements').body as { agreements: unknown[] }).agreements.length, 0, 'leases start missing');
+  const unitsBefore = (D(b, 'GET', '/reports/rent_roll', { from: '1970-01-01', to: '2026-07-25' }).body as { report: { rows: unknown[] } }).report.rows.length;
+  assert.ok(unitsBefore >= 600, 'units survived the partial load');
+  const forced = D(b, 'POST', '/demo/seed', { variant: 'portfolio', at: NOW, force: true }).body as { seeded: boolean };
+  assert.equal(forced.seeded, true);
+  assert.ok((D(b, 'GET', '/agreements').body as { agreements: unknown[] }).agreements.length >= 500, 'leases were topped up');
+  const unitsAfter = (D(b, 'GET', '/reports/rent_roll', { from: '1970-01-01', to: '2026-07-25' }).body as { report: { rows: unknown[] } }).report.rows.length;
+  assert.equal(unitsAfter, unitsBefore, 'no duplicate units');
+  assert.equal((D(b, 'GET', '/ledger/trial-balance').body as { balanced: boolean }).balanced, true);
+});
+
 test('the institutional world survives snapshot -> rehydrate', () => {
   const { app } = seeded();
   const world = app.snapshotWorld('t');

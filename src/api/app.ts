@@ -4032,7 +4032,11 @@ export class App {
     this.add('POST', '/demo/seed', 'masterdata.manage', (ctx, _p, body) => {
       const at = this.optString(body, 'at') ?? this.now();
       // variant 'europe' loads the Meridian Living multi-country portfolio.
-      return { status: 201, body: this.seedDemoData(ctx.tenantId, at, this.optString(body, 'variant')) };
+      // force=true re-runs the seed idempotently — topping up any rows a prior
+      // partial flush dropped (e.g. units persisted but leases didn't) without
+      // duplicating what's already there.
+      const force = body['force'] === true;
+      return { status: 201, body: this.seedDemoData(ctx.tenantId, at, this.optString(body, 'variant'), force) };
     });
 
     // A reporting-friendly rollup: agreements by kind/status, ledger, master-data
@@ -4347,12 +4351,23 @@ export class App {
    * Payables, Deposits, …) so seeded data honors every invariant — this is the
    * same discipline as the onboarding importer, governed by masterdata.manage.
    */
-  private seedDemoData(tenantId: string, at: string, variant?: string): {
+  private seedDemoData(tenantId: string, at: string, variant?: string, force = false): {
     seeded: boolean;
     counts?: Record<string, number>;
   } {
     const marker = variant === 'europe' ? EUROPE_MARKER_UNIT_ID : variant === 'portfolio' ? PORTFOLIO_MARKER_UNIT_ID : DEMO_MARKER_UNIT_ID;
-    if (this.masterData.units.get(tenantId, marker)) return { seeded: false };
+    // Normally a re-seed is a no-op once the marker unit exists. `force` instead
+    // re-runs it idempotently — every create below is wrapped in idem() which
+    // skips a duplicate (already-present) row and lets the rest through, so a
+    // partially-persisted seed can be topped up to completeness (e.g. after a
+    // flush dropped the leases but kept the units).
+    if (!force && this.masterData.units.get(tenantId, marker)) return { seeded: false };
+    const idem = <T>(fn: () => T): T | undefined => {
+      try { return fn(); } catch (e) {
+        if (/duplicate|already/i.test((e as Error)?.message ?? '')) return undefined;
+        throw e;
+      }
+    };
     const w = variant === 'europe' ? buildEuropeWorld(tenantId, at) : variant === 'portfolio' ? buildPortfolioWorld(tenantId, at) : buildDemoWorld(tenantId, at);
     const currency = this.config.get(tenantId).currency;
     const unitId = (code: string) => `demo-unit-${code}`;
@@ -4362,16 +4377,17 @@ export class App {
 
     const propId = (code: string) => `demo-prop-${code}`;
     const entId = (code: string) => `demo-ent-${code}`;
-    for (const e of w.legalEntities ?? []) this.entities.addEntity({ id: entId(e.code), tenantId, role: e.role as EntityRole, name: e.name, taxId: e.taxId });
-    for (const pr of w.properties) this.masterData.properties.add({ id: propId(pr.code), tenantId, code: pr.code, name: pr.name, ...(pr.address ? { address: pr.address } : {}), ...(pr.entityCode ? { entityId: entId(pr.entityCode) } : {}) });
+    for (const e of w.legalEntities ?? []) idem(() => this.entities.addEntity({ id: entId(e.code), tenantId, role: e.role as EntityRole, name: e.name, taxId: e.taxId }));
+    for (const pr of w.properties) idem(() => this.masterData.properties.add({ id: propId(pr.code), tenantId, code: pr.code, name: pr.name, ...(pr.address ? { address: pr.address } : {}), ...(pr.entityCode ? { entityId: entId(pr.entityCode) } : {}) }));
     const typeId = (code: string) => `demo-utype-${code}`;
-    for (const ut of w.unitTypes ?? []) this.masterData.unitTypes.add({ id: typeId(ut.code), tenantId, code: ut.code, name: ut.name, bedrooms: ut.bedrooms, bathrooms: ut.bathrooms, maxGuests: ut.maxGuests, areaSqm: ut.areaSqm, baseRentCents: ut.baseRentCents });
-    for (const u of w.units) this.masterData.units.add({ id: unitId(u.code), tenantId, code: u.code, label: u.label, active: u.active, ...(u.propertyCode ? { propertyId: propId(u.propertyCode) } : {}), ...(u.typeCode ? { typeId: typeId(u.typeCode) } : {}) });
-    for (const g of w.guests) this.masterData.guests.add({ id: guestId(g.code), tenantId, code: g.code, fullName: g.fullName, email: g.email });
-    for (const p of w.parties) this.parties.addParty({ id: p.id, tenantId, kind: p.kind, displayName: p.displayName, legalName: p.legalName, taxId: p.taxId, email: p.email, phone: p.phone, attributes: p.attributes });
-    for (const pr of w.pricingRules) this.revenue.setRule({ id: pr.id, tenantId, name: pr.name, baseCents: pr.baseCents, minCents: pr.minCents, maxCents: pr.maxCents, weekendFactorBps: pr.weekendFactorBps, occupancyTiers: pr.occupancyTiers, losDiscounts: pr.losDiscounts });
+    for (const ut of w.unitTypes ?? []) idem(() => this.masterData.unitTypes.add({ id: typeId(ut.code), tenantId, code: ut.code, name: ut.name, bedrooms: ut.bedrooms, bathrooms: ut.bathrooms, maxGuests: ut.maxGuests, areaSqm: ut.areaSqm, baseRentCents: ut.baseRentCents }));
+    for (const u of w.units) idem(() => this.masterData.units.add({ id: unitId(u.code), tenantId, code: u.code, label: u.label, active: u.active, ...(u.propertyCode ? { propertyId: propId(u.propertyCode) } : {}), ...(u.typeCode ? { typeId: typeId(u.typeCode) } : {}) }));
+    for (const g of w.guests) idem(() => this.masterData.guests.add({ id: guestId(g.code), tenantId, code: g.code, fullName: g.fullName, email: g.email }));
+    for (const p of w.parties) idem(() => this.parties.addParty({ id: p.id, tenantId, kind: p.kind, displayName: p.displayName, legalName: p.legalName, taxId: p.taxId, email: p.email, phone: p.phone, attributes: p.attributes }));
+    for (const pr of w.pricingRules) idem(() => this.revenue.setRule({ id: pr.id, tenantId, name: pr.name, baseCents: pr.baseCents, minCents: pr.minCents, maxCents: pr.maxCents, weekendFactorBps: pr.weekendFactorBps, occupancyTiers: pr.occupancyTiers, losDiscounts: pr.losDiscounts }));
 
     for (const a of w.agreements) {
+      if (this.agreements.has(a.id)) continue; // already seeded — idempotent re-seed
       const ag = Agreement.create({ id: a.id, tenantId, guestId: guestId(a.guestCode), unitId: unitId(a.unitCode), kind: a.kind, start: a.start, end: a.end, rateCents: a.rateCents, currency, at });
       this.calendar.hold({ id: `${a.id}-hold`, unitId: unitId(a.unitCode), holderId: a.id, start: a.start, end: a.end }); // invariant 4
       this.agreements.set(a.id, { agreement: ag, tenantId });
@@ -4384,9 +4400,10 @@ export class App {
     }
 
     for (const inv of w.invoices) {
+      if (this.invoiceTenant.has(inv.id)) continue;
       const billToPartyId = this.parties.billTo(inv.agreementId) ?? undefined;
       const propertyId = this.propertyForAgreement(tenantId, inv.agreementId);
-      this.billing.issue({ id: inv.id, agreementId: inv.agreementId, tenantId, issuedAt: inv.issuedAt, dueAt: inv.dueAt, currency, lines: inv.lines, billToPartyId, propertyId });
+      if (!idem(() => this.billing.issue({ id: inv.id, agreementId: inv.agreementId, tenantId, issuedAt: inv.issuedAt, dueAt: inv.dueAt, currency, lines: inv.lines, billToPartyId, propertyId }))) continue;
       this.invoiceTenant.set(inv.id, tenantId);
       if (inv.payCents && inv.payCents > 0) {
         this.payments.record({ id: `pay-${inv.id}`, invoiceId: inv.id, amountCents: inv.payCents, method: inv.payMethod ?? 'pix', receivedAt: inv.paidAt ?? inv.issuedAt, propertyId });
@@ -4394,22 +4411,22 @@ export class App {
       }
     }
 
-    for (const dep of w.deposits) { this.deposits.hold({ id: dep.id, agreementId: dep.agreementId, amountCents: dep.amountCents, currency, heldAt: dep.heldAt }); this.depositTenant.set(dep.id, tenantId); }
+    for (const dep of w.deposits) { if (this.depositTenant.has(dep.id)) continue; if (!idem(() => this.deposits.hold({ id: dep.id, agreementId: dep.agreementId, amountCents: dep.amountCents, currency, heldAt: dep.heldAt }))) continue; this.depositTenant.set(dep.id, tenantId); }
 
     for (const b of w.bills) {
-      this.payables.issue({ id: b.id, tenantId, payeeId: b.payeeId, ...(b.propertyCode ? { propertyId: propId(b.propertyCode) } : {}), issuedAt: b.issuedAt, dueAt: b.dueAt, currency, lines: b.lines, memo: b.memo });
+      if (!idem(() => this.payables.issue({ id: b.id, tenantId, payeeId: b.payeeId, ...(b.propertyCode ? { propertyId: propId(b.propertyCode) } : {}), issuedAt: b.issuedAt, dueAt: b.dueAt, currency, lines: b.lines, memo: b.memo }))) continue;
       if (b.payCents && b.payCents > 0) { this.payables.pay({ id: `appay-${b.id}`, billId: b.id, amountCents: b.payCents, method: b.payMethod ?? 'pix', paidAt: b.paidAt ?? b.issuedAt }); billPayments++; }
     }
 
     for (const wo of w.workOrders) {
-      this.maintenance.open({ id: wo.id, tenantId, title: wo.title, description: wo.description, category: wo.category, priority: wo.priority, requestedByPartyId: wo.requestedByPartyId, openedAt: wo.openedAt });
+      if (!idem(() => this.maintenance.open({ id: wo.id, tenantId, title: wo.title, description: wo.description, category: wo.category, priority: wo.priority, requestedByPartyId: wo.requestedByPartyId, openedAt: wo.openedAt }))) continue;
       if (wo.assignVendorPartyId) this.maintenance.assign(wo.id, wo.assignVendorPartyId, wo.startedAt ?? wo.openedAt);
       if (wo.startedAt) this.maintenance.start(wo.id, wo.startedAt);
       if (wo.completedAt) this.maintenance.complete(wo.id, wo.completedAt, { resolution: wo.resolution });
     }
 
     for (const l of w.leads) {
-      this.crm.createLead({ id: l.id, tenantId, name: l.name, source: l.source, estValueCents: l.estValueCents, createdAt: l.createdAt });
+      if (!idem(() => this.crm.createLead({ id: l.id, tenantId, name: l.name, source: l.source, estValueCents: l.estValueCents, createdAt: l.createdAt }))) continue;
       // 'lost' leaves the pipeline via lose(); the rest advance forward.
       for (const stage of l.advanceTo ?? []) {
         if (stage === 'lost') this.crm.lose(l.id, 'not converted', l.createdAt);
@@ -4420,44 +4437,59 @@ export class App {
     // --- specialty modules (the European portfolio populates these) -------
     let applications = 0, tours = 0, insurance = 0, utilityBills = 0, parcels = 0, waitlist = 0, distributions = 0, contributions = 0, prospects = 0;
     for (const a of w.applications ?? []) {
-      const app = this.applications.submit({ id: a.id, tenantId, applicantName: a.applicantName, applicantEmail: a.applicantEmail, leadId: a.leadId, unitId: a.unitCode ? unitId(a.unitCode) : undefined, ...(a.incomeCents !== undefined ? { incomeCents: a.incomeCents } : {}), submittedAt: a.submittedAt });
+      if (this.applicationTenant.has(a.id)) continue;
+      const app = idem(() => this.applications.submit({ id: a.id, tenantId, applicantName: a.applicantName, applicantEmail: a.applicantEmail, leadId: a.leadId, unitId: a.unitCode ? unitId(a.unitCode) : undefined, ...(a.incomeCents !== undefined ? { incomeCents: a.incomeCents } : {}), submittedAt: a.submittedAt }));
+      if (!app) continue;
       this.applicationTenant.set(app.id, tenantId); applications++;
     }
     for (const tr of w.tours ?? []) {
-      const tour = this.tours.request({ id: tr.id, tenantId, prospectName: tr.prospectName, scheduledAt: tr.scheduledAt, prospectEmail: tr.prospectEmail, leadId: tr.leadId, unitId: tr.unitCode ? unitId(tr.unitCode) : undefined, notes: tr.notes, createdAt: tr.createdAt });
+      if (this.tourTenant.has(tr.id)) continue;
+      const tour = idem(() => this.tours.request({ id: tr.id, tenantId, prospectName: tr.prospectName, scheduledAt: tr.scheduledAt, prospectEmail: tr.prospectEmail, leadId: tr.leadId, unitId: tr.unitCode ? unitId(tr.unitCode) : undefined, notes: tr.notes, createdAt: tr.createdAt }));
+      if (!tour) continue;
       this.tourTenant.set(tour.id, tenantId); tours++;
     }
     for (const ip of w.insurancePolicies ?? []) {
-      const pol = this.insurance.create({ id: ip.id, tenantId, agreementId: ip.agreementId, partyId: ip.partyId, carrier: ip.carrier, policyNumber: ip.policyNumber, liabilityCents: ip.liabilityCents, effectiveAt: ip.effectiveAt, expiresAt: ip.expiresAt, createdAt: ip.createdAt });
+      if (this.insuranceTenant.has(ip.id)) continue;
+      const pol = idem(() => this.insurance.create({ id: ip.id, tenantId, agreementId: ip.agreementId, partyId: ip.partyId, carrier: ip.carrier, policyNumber: ip.policyNumber, liabilityCents: ip.liabilityCents, effectiveAt: ip.effectiveAt, expiresAt: ip.expiresAt, createdAt: ip.createdAt }));
+      if (!pol) continue;
       this.insuranceTenant.set(pol.id, tenantId); insurance++;
     }
     for (const ub of w.utilityBills ?? []) {
-      const bill = this.utilities.create({ id: ub.id, tenantId, propertyId: propId(ub.propertyCode), utility: ub.utility as UtilityKind, method: ub.method as AllocationMethod, periodStart: ub.periodStart, periodEnd: ub.periodEnd, totalCents: ub.totalCents, createdAt: ub.createdAt });
+      if (this.utilityTenant.has(ub.id)) continue;
+      const bill = idem(() => this.utilities.create({ id: ub.id, tenantId, propertyId: propId(ub.propertyCode), utility: ub.utility as UtilityKind, method: ub.method as AllocationMethod, periodStart: ub.periodStart, periodEnd: ub.periodEnd, totalCents: ub.totalCents, createdAt: ub.createdAt }));
+      if (!bill) continue;
       this.utilityTenant.set(bill.id, tenantId); utilityBills++;
     }
     for (const pc of w.parcels ?? []) {
-      const parcel = this.parcels.log({ id: pc.id, tenantId, partyId: pc.partyId, carrier: pc.carrier, receivedAt: pc.receivedAt, agreementId: pc.agreementId, description: pc.description, location: pc.location });
+      if (this.parcelTenant.has(pc.id)) continue;
+      const parcel = idem(() => this.parcels.log({ id: pc.id, tenantId, partyId: pc.partyId, carrier: pc.carrier, receivedAt: pc.receivedAt, agreementId: pc.agreementId, description: pc.description, location: pc.location }));
+      if (!parcel) continue;
       this.parcelTenant.set(parcel.id, tenantId); parcels++;
     }
     for (const wl of w.waitlist ?? []) {
-      const entry = this.waitlist.join({ id: wl.id, tenantId, prospectName: wl.prospectName, propertyId: wl.propertyCode ? propId(wl.propertyCode) : undefined, prospectEmail: wl.prospectEmail, desiredMoveIn: wl.desiredMoveIn, joinedAt: wl.joinedAt });
+      if (this.waitlistTenant.has(wl.id)) continue;
+      const entry = idem(() => this.waitlist.join({ id: wl.id, tenantId, prospectName: wl.prospectName, propertyId: wl.propertyCode ? propId(wl.propertyCode) : undefined, prospectEmail: wl.prospectEmail, desiredMoveIn: wl.desiredMoveIn, joinedAt: wl.joinedAt }));
+      if (!entry) continue;
       this.waitlistTenant.set(entry.id, tenantId); waitlist++;
     }
     for (const rp of w.roommateProspects ?? []) {
-      this.roommates.upsertProspect({ id: rp.id, tenantId, name: rp.name, partyId: rp.partyId, preferences: rp.preferences as RoommatePreferences }); prospects++;
+      if (idem(() => this.roommates.upsertProspect({ id: rp.id, tenantId, name: rp.name, partyId: rp.partyId, preferences: rp.preferences as RoommatePreferences }))) prospects++;
     }
     for (const c of w.contributions ?? []) {
-      const rec = this.contributions.record({ id: c.id, tenantId, entityId: entId(c.entityCode), propertyId: c.propertyCode ? propId(c.propertyCode) : undefined, amountCents: c.amountCents, currency, memo: c.memo, recordedAt: c.recordedAt });
+      if (this.contributionTenant.has(c.id)) continue;
+      const rec = idem(() => this.contributions.record({ id: c.id, tenantId, entityId: entId(c.entityCode), propertyId: c.propertyCode ? propId(c.propertyCode) : undefined, amountCents: c.amountCents, currency, memo: c.memo, recordedAt: c.recordedAt }));
+      if (!rec) continue;
       this.contributionTenant.set(rec.id, tenantId); contributions++;
     }
     for (const dm of w.distributions ?? []) {
-      const rec = this.distributions.record({ id: dm.id, tenantId, entityId: entId(dm.entityCode), propertyId: dm.propertyCode ? propId(dm.propertyCode) : undefined, amountCents: dm.amountCents, currency, memo: dm.memo, recordedAt: dm.recordedAt });
+      if (this.distributionTenant.has(dm.id)) continue;
+      const rec = idem(() => this.distributions.record({ id: dm.id, tenantId, entityId: entId(dm.entityCode), propertyId: dm.propertyCode ? propId(dm.propertyCode) : undefined, amountCents: dm.amountCents, currency, memo: dm.memo, recordedAt: dm.recordedAt }));
+      if (!rec) continue;
       this.distributionTenant.set(rec.id, tenantId); distributions++;
     }
     let propertyBudgets = 0;
     for (const pb of w.propertyBudgets ?? []) {
-      this.propertyBudgets.create({ id: pb.id, tenantId, propertyId: propId(pb.propertyCode), periodStart: pb.periodStart, periodEnd: pb.periodEnd, currency, lines: pb.lines, notes: pb.notes, createdAt: at });
-      propertyBudgets++;
+      if (idem(() => this.propertyBudgets.create({ id: pb.id, tenantId, propertyId: propId(pb.propertyCode), periodStart: pb.periodStart, periodEnd: pb.periodEnd, currency, lines: pb.lines, notes: pb.notes, createdAt: at }))) propertyBudgets++;
     }
 
     // --- operations & finance modules (fill the remaining portal views) -----
@@ -4465,50 +4497,49 @@ export class App {
     let spaces = 0, reservations = 0, threads = 0, messages = 0, bankTransactions = 0;
     let purchaseOrders = 0, procurementBudgets = 0, unitTurns = 0, pmSchedules = 0, envelopes = 0, notifications = 0;
     for (const sp of w.spaces ?? []) {
-      this.spaces.add({ id: spaceId(sp.code), tenantId, type: sp.type, code: sp.code, label: sp.label, leasable: false, ...(sp.capacity !== undefined ? { capacity: sp.capacity } : {}) });
-      spaces++;
+      if (idem(() => this.spaces.add({ id: spaceId(sp.code), tenantId, type: sp.type, code: sp.code, label: sp.label, leasable: false, ...(sp.capacity !== undefined ? { capacity: sp.capacity } : {}) }))) spaces++;
     }
     for (const rv of w.reservations ?? []) {
-      this.reservations.reserve({ id: rv.id, tenantId, spaceId: spaceId(rv.spaceCode), holderPartyId: rv.holderPartyId, start: rv.start, end: rv.end, reservedAt: rv.reservedAt, ...(rv.priceCents !== undefined ? { priceCents: rv.priceCents, currency } : {}), note: rv.note });
-      reservations++;
+      if (idem(() => this.reservations.reserve({ id: rv.id, tenantId, spaceId: spaceId(rv.spaceCode), holderPartyId: rv.holderPartyId, start: rv.start, end: rv.end, reservedAt: rv.reservedAt, ...(rv.priceCents !== undefined ? { priceCents: rv.priceCents, currency } : {}), note: rv.note }))) reservations++;
     }
     for (const th of w.threads ?? []) {
-      this.comms.openThread({ id: th.id, tenantId, subject: th.subject, kind: th.kind, createdAt: th.createdAt, agreementId: th.agreementId, partyId: th.partyId });
+      if (!idem(() => this.comms.openThread({ id: th.id, tenantId, subject: th.subject, kind: th.kind, createdAt: th.createdAt, agreementId: th.agreementId, partyId: th.partyId }))) continue;
       threads++;
-      for (const m of th.messages) { this.comms.post({ id: m.id, threadId: th.id, at: m.at, authorType: m.authorType, authorId: m.authorId, body: m.body }); messages++; }
+      for (const m of th.messages) { if (idem(() => this.comms.post({ id: m.id, threadId: th.id, at: m.at, authorType: m.authorType, authorId: m.authorId, body: m.body }))) messages++; }
       if (th.resolvedAt) this.comms.resolve(th.id, th.resolvedAt);
     }
     for (const bt of w.bankTransactions ?? []) {
-      this.reconciliation.import({ id: bt.id, tenantId, postedAt: bt.postedAt, amountCents: bt.amountCents, description: bt.description, reference: bt.reference });
-      bankTransactions++;
+      if (idem(() => this.reconciliation.import({ id: bt.id, tenantId, postedAt: bt.postedAt, amountCents: bt.amountCents, description: bt.description, reference: bt.reference }))) bankTransactions++;
     }
     for (const po of w.purchaseOrders ?? []) {
-      this.procurement.raise({ id: po.id, tenantId, vendorId: po.vendorId, entityId: po.entityCode ? entId(po.entityCode) : undefined, createdAt: po.createdAt, expectedAt: po.expectedAt, currency, lines: po.lines, memo: po.memo });
+      if (!idem(() => this.procurement.raise({ id: po.id, tenantId, vendorId: po.vendorId, entityId: po.entityCode ? entId(po.entityCode) : undefined, createdAt: po.createdAt, expectedAt: po.expectedAt, currency, lines: po.lines, memo: po.memo }))) continue;
       if (po.approve || po.receive) this.procurement.approve(po.id, po.createdAt);
       if (po.receive) this.procurement.receive(po.id, po.createdAt);
       purchaseOrders++;
     }
     for (const pb of w.procurementBudgets ?? []) {
-      this.procurement.setBudget({ id: pb.id, tenantId, account: pb.account, periodStart: pb.periodStart, periodEnd: pb.periodEnd, amountCents: pb.amountCents, label: pb.label });
-      procurementBudgets++;
+      if (idem(() => this.procurement.setBudget({ id: pb.id, tenantId, account: pb.account, periodStart: pb.periodStart, periodEnd: pb.periodEnd, amountCents: pb.amountCents, label: pb.label }))) procurementBudgets++;
     }
     for (const tn of w.unitTurns ?? []) {
-      const turn = this.turns.open({ id: tn.id, tenantId, unitId: unitId(tn.unitCode), vacatedAt: tn.vacatedAt, createdAt: tn.createdAt, notes: tn.notes });
+      if (this.turnTenant.has(tn.id)) continue;
+      const turn = idem(() => this.turns.open({ id: tn.id, tenantId, unitId: unitId(tn.unitCode), vacatedAt: tn.vacatedAt, createdAt: tn.createdAt, notes: tn.notes }));
+      if (!turn) continue;
       for (let i = 0; i < (tn.tasksDone ?? 0) && i < turn.tasks.length; i++) this.turns.setTask(turn.id, turn.tasks[i]!.key, true, tn.createdAt);
       this.turnTenant.set(turn.id, tenantId); unitTurns++;
     }
     for (const pm of w.pmSchedules ?? []) {
-      const sched = this.pm.create({ id: pm.id, tenantId, title: pm.title, cadenceDays: pm.cadenceDays, nextDueAt: pm.nextDueAt, createdAt: pm.createdAt, priority: pm.priority });
+      if (this.pmTenant.has(pm.id)) continue;
+      const sched = idem(() => this.pm.create({ id: pm.id, tenantId, title: pm.title, cadenceDays: pm.cadenceDays, nextDueAt: pm.nextDueAt, createdAt: pm.createdAt, priority: pm.priority }));
+      if (!sched) continue;
       this.pmTenant.set(sched.id, tenantId); pmSchedules++;
     }
     for (const en of w.signatureEnvelopes ?? []) {
-      this.signatures.create({ id: en.id, tenantId, documentName: en.documentName, provider: en.provider, leadId: en.leadId, agreementId: en.agreementId, signers: en.signers, createdAt: en.createdAt });
+      if (!idem(() => this.signatures.create({ id: en.id, tenantId, documentName: en.documentName, provider: en.provider, leadId: en.leadId, agreementId: en.agreementId, signers: en.signers, createdAt: en.createdAt }))) continue;
       if (en.send) this.signatures.send(en.id, en.createdAt, `demo-ref-${en.id}`);
       envelopes++;
     }
     for (const nt of w.notifications ?? []) {
-      this.notifications.enqueue({ id: nt.id, tenantId, channel: nt.channel, to: nt.to, kind: nt.kind, createdAt: nt.createdAt, data: nt.data });
-      notifications++;
+      if (idem(() => this.notifications.enqueue({ id: nt.id, tenantId, channel: nt.channel, to: nt.to, kind: nt.kind, createdAt: nt.createdAt, data: nt.data }))) notifications++;
     }
 
     return {
