@@ -62,7 +62,7 @@
       else if(attrs[k]!=null) e.setAttribute(k,attrs[k]); }
     (kids||[]).forEach(function(c){ if(c==null)return; e.appendChild(typeof c==="string"?document.createTextNode(c):c); });
     return e; }
-  function fmtMoney(minor){ var c=(state.home&&state.home.currency)||"USD"; try{ return new Intl.NumberFormat(undefined,{style:"currency",currency:c}).format((minor||0)/100);}catch(e){ return (c+" "+((minor||0)/100).toFixed(2)); } }
+  function fmtMoney(minor){ var c=(state.home&&state.home.currency)||"USD"; try{ return new Intl.NumberFormat(undefined,{style:"currency",currency:c,currencyDisplay:"narrowSymbol"}).format((minor||0)/100);}catch(e){ return (c+" "+((minor||0)/100).toFixed(2)); } }
   function t(k,f){ return (state.cat&&state.cat[k])||f; }
   function ti(k,f,vars){ return t(k,f).replace(/\{(\w+)\}/g,function(m,x){ return (vars&&vars[x]!=null)?vars[x]:m; }); }
   function toast(msg,kind){ var t=h("div",{class:"toast"+(kind==="err"?" err":"")},[h("span",{class:"dot"}),msg]); document.body.appendChild(t); setTimeout(function(){t.remove();},2600); }

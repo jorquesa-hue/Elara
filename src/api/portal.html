@@ -119,10 +119,11 @@
   /* Cards */
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px,1fr)); gap: 14px; }
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 17px 18px;
+    min-width: 0; overflow: hidden;
     transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease; }
   .card:hover { transform: translateY(-2px); border-color: var(--border-strong); box-shadow: var(--shadow); }
   .card .k { color: var(--subtle); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; font-weight: 600; }
-  .card .v { font-size: 26px; font-weight: 750; margin-top: 8px; letter-spacing: -.02em; }
+  .card .v { font-size: 26px; font-weight: 750; margin-top: 8px; letter-spacing: -.02em; overflow-wrap: anywhere; }
 
   /* Tables */
   .tablewrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
@@ -434,7 +435,7 @@
     if (!state.config) return String(minor);
     var mu = minorUnits(state.config.currency);
     try {
-      return new Intl.NumberFormat(state.config.locale, { style: "currency", currency: state.config.currency }).format(minor / Math.pow(10, mu));
+      return new Intl.NumberFormat(state.config.locale, { style: "currency", currency: state.config.currency, currencyDisplay: "narrowSymbol" }).format(minor / Math.pow(10, mu));
     } catch (e) { return (minor / Math.pow(10, mu)).toFixed(mu) + " " + state.config.currency; }
   }
 
@@ -901,7 +902,7 @@
     }
   }
   function fmtPlan(sub) {
-    try { return new Intl.NumberFormat(state.config.locale, { style:"currency", currency: sub.currency }).format(sub.totalCents / 100) + " " + t("msg.perMonth"); }
+    try { return new Intl.NumberFormat(state.config.locale, { style:"currency", currency: sub.currency, currencyDisplay: "narrowSymbol" }).format(sub.totalCents / 100) + " " + t("msg.perMonth"); }
     catch (e) { return (sub.totalCents/100) + " " + sub.currency; }
   }
   function card(container, k, v, pill) {
@@ -1866,7 +1867,7 @@
 
   function viewReconcile(main){
     main.appendChild(h("h1",{},[tt("wsi.reconcile","Reconciliation")]));
-    main.appendChild(h("p",{class:"sub"},["Import bank lines and match them to payments — the ranker suggests the best match."]));
+    main.appendChild(h("p",{class:"sub"},[tt("reconcile.sub","Import bank lines and match them to payments — the ranker suggests the best match.")]));
     var cards=h("div",{class:"cards"},[]); main.appendChild(cards);
     var formSlot=h("div",{},[]); main.appendChild(formSlot);
     var wrap=h("div",{},[]); main.appendChild(wrap);
@@ -1945,7 +1946,7 @@
 
   function viewPricing(main){
     main.appendChild(h("h1",{},[tt("revenue.title","Revenue management")]));
-    main.appendChild(h("p",{class:"sub"},["Dynamic pricing turns a base rate into a nightly quote through explainable factors — occupancy, weekend, lead-time, length-of-stay and season — with recommendations that tell you which lever to pull."]));
+    main.appendChild(h("p",{class:"sub"},[tt("revenue.sub","Dynamic pricing turns a base rate into a nightly quote through explainable factors — occupancy, weekend, lead-time, length-of-stay and season — with recommendations that tell you which lever to pull.")]));
     // KPI header — occupancy / ADR / RevPAR / revenue.
     var kpiWrap=h("div",{class:"cards"},[]); main.appendChild(kpiWrap);
     // Smart recommendations feed.
@@ -1998,16 +1999,16 @@
       if(seasonS.value&&seasonE.value) body.seasons=[{start:seasonS.value,end:seasonE.value,factorBps:upliftBps(seasonU.value)}];
       api("/pricing-rules",{method:"POST",body:body}).then(function(r){ if(r.status===201){ toast(t("msg.saved"),"ok"); viewPricing(clear(main)); } else toast((r.body&&r.body.error)||"err","err"); });
     }},[
-      sub("Base & guardrails"),
+      sub(tt("sec.baseGuardrails","Base & guardrails")),
       field("Name",name), field("Base rate (cents)",base), field("Floor (cents)",minC), field("Ceiling (cents)",maxC),
-      sub("Demand & calendar factors"),
+      sub(tt("sec.demandFactors","Demand & calendar factors")),
       field("Weekend uplift %",weekend),
       field("Occupancy tier 1 — at %",occ1p), field("… uplift %",occ1u),
       field("Occupancy tier 2 — at %",occ2p), field("… uplift %",occ2u),
-      sub("Length-of-stay discounts"),
+      sub(tt("sec.losDiscounts","Length-of-stay discounts")),
       field("Nights ≥",los1n), field("… discount %",los1d),
       field("Nights ≥",los2n), field("… discount %",los2d),
-      sub("Season window (optional)"),
+      sub(tt("sec.seasonWindow","Season window (optional)")),
       field("From",seasonS), field("To",seasonE), field("Season uplift %",seasonU),
       h("div",{style:"grid-column:1/-1"},[h("button",{class:"btn",type:"submit"},[tbtn("Create pricing rule")])])
     ]);
