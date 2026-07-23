@@ -42,6 +42,7 @@ export const BUSINESS_STRUCTURES = [
   'short_stay',
   'corporate_housing',
   'multifamily',
+  'student_housing',
   'boutique_hotel',
   'mixed_portfolio',
 ] as const;

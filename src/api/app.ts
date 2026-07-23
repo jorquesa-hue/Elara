@@ -612,7 +612,31 @@ export class App {
     if (ctx.partyId !== undefined && !this.callerLinkedToAgreement(ctx.partyId, id)) {
       throw new HttpError(404, 'agreement not found');
     }
+    // A property-scoped SITE operator (ctx.propertyIds set) may only reach an
+    // agreement whose unit belongs to one of its communities — 404 otherwise.
+    if (ctx.propertyIds && ctx.propertyIds.length) {
+      const propId = this.propertyForAgreement(ctx.tenantId, id);
+      if (!propId || !ctx.propertyIds.includes(propId)) throw new HttpError(404, 'agreement not found');
+    }
     return entry.agreement;
+  }
+
+  /** Resolve the effective community scope for a property-scoped read. `allowed`
+   *  is the operator's assigned communities (undefined/empty = unrestricted). A
+   *  restricted operator may only request a propertyId within its set (else 403);
+   *  with no explicit request it is scoped to its whole set (`.one` = the first,
+   *  for single-value report surfaces; `.set` = all, for list/summary filters). */
+  private effectivePropertyScope(
+    ctx: AuthContext,
+    requested?: string,
+  ): { one?: string; set?: string[] } {
+    const allowed = ctx.propertyIds && ctx.propertyIds.length ? ctx.propertyIds : undefined;
+    if (requested !== undefined && requested !== '') {
+      if (allowed && !allowed.includes(requested)) throw new HttpError(403, 'community out of scope');
+      return { one: requested, set: [requested] };
+    }
+    if (allowed) return { one: allowed[0], set: allowed };
+    return {};
   }
 
   /** Assemble a data-subject access report (LGPD/GDPR) for a party from the
@@ -1200,6 +1224,7 @@ export class App {
         role: ctx.role,
         ...(ctx.partyId ? { partyId: ctx.partyId } : {}),
         ...(ctx.entityId ? { entityId: ctx.entityId } : {}),
+        ...(ctx.propertyIds && ctx.propertyIds.length ? { propertyIds: ctx.propertyIds } : {}),
         permissions: [...this.roles.permissionsFor(ctx.tenantId, ctx.role)],
       },
     }));
@@ -1541,16 +1566,22 @@ export class App {
       return this.gated('agreement.convert', ctx, { to }, () => a.convert(to, at, opts), () => ({ status: 200, body: this.agreementSummary(a) }));
     });
 
-    this.add('GET', '/agreements', 'agreement.read', (ctx) => ({
-      status: 200,
-      body: {
-        agreements: [...this.agreements.values()]
-          .filter((e) => e.tenantId === ctx.tenantId)
-          // A party-scoped token sees only its own agreements, not the whole tenant.
-          .filter((e) => ctx.partyId === undefined || this.callerLinkedToAgreement(ctx.partyId, e.agreement.id))
-          .map((e) => this.agreementSummary(e.agreement)),
-      },
-    }));
+    this.add('GET', '/agreements', 'agreement.read', (ctx) => {
+      // A site operator (ctx.propertyIds) sees only leases in its communities.
+      const scope = this.effectivePropertyScope(ctx).set;
+      return {
+        status: 200,
+        body: {
+          agreements: [...this.agreements.values()]
+            .filter((e) => e.tenantId === ctx.tenantId)
+            // A party-scoped token sees only its own agreements, not the whole tenant.
+            .filter((e) => ctx.partyId === undefined || this.callerLinkedToAgreement(ctx.partyId, e.agreement.id))
+            // A property-scoped operator sees only its communities' leases.
+            .filter((e) => !scope || scope.includes(this.propertyForAgreement(ctx.tenantId, e.agreement.id) ?? ''))
+            .map((e) => this.agreementSummary(e.agreement)),
+        },
+      };
+    });
 
     this.add('GET', '/agreements/:id', 'agreement.read', (ctx, p) => {
       const a = this.ownedAgreement(ctx, p['id']!);
@@ -3825,8 +3856,10 @@ export class App {
 
     this.add('GET', '/reports/:key', 'reports.read', (ctx, p, body) => {
       const w = this.reportWindow(this.optString(body, 'from'), this.optString(body, 'to'));
-      // ?propertyId=<id> scopes operational reports to one community.
-      const propertyId = this.optString(body, 'propertyId');
+      // ?propertyId=<id> scopes operational reports to one community. A site
+      // operator is enforced to its assigned community (403 on an out-of-scope
+      // request; auto-scoped to its own when none is given).
+      const propertyId = this.effectivePropertyScope(ctx, this.optString(body, 'propertyId')).one;
       const input = this.reportingInput(ctx.tenantId, w.from, w.to, propertyId);
       const report = buildReport(p['key']!, input);
       if (!report) throw new HttpError(404, `unknown report '${p['key']}'`);
@@ -3857,7 +3890,13 @@ export class App {
     // A reporting-friendly rollup: agreements by kind/status, ledger, master-data
     // counts, subscription — a single call for dashboards and exports.
     this.add('GET', '/reporting/summary', 'ledger.read', (ctx) => {
-      const mine = [...this.agreements.values()].filter((e) => e.tenantId === ctx.tenantId).map((e) => e.agreement);
+      // A site operator's rollup counts only its own communities.
+      const scope = this.effectivePropertyScope(ctx).set;
+      const inScopeUnit = (unitId?: string) => !scope || (unitId ? scope.includes(this.masterData.units.get(ctx.tenantId, unitId)?.propertyId ?? '') : false);
+      const mine = [...this.agreements.values()]
+        .filter((e) => e.tenantId === ctx.tenantId)
+        .map((e) => e.agreement)
+        .filter((a) => !scope || scope.includes(this.propertyForAgreement(ctx.tenantId, a.id) ?? ''));
       const byKind: Record<string, number> = {};
       const byStatus: Record<string, number> = {};
       for (const a of mine) {
@@ -3865,6 +3904,7 @@ export class App {
         byStatus[a.status] = (byStatus[a.status] ?? 0) + 1;
       }
       const md = this.masterData.snapshot(ctx.tenantId);
+      const units = scope ? md.units.filter((u) => inScopeUnit(u.id)) : md.units;
       return {
         status: 200,
         body: {
@@ -3872,7 +3912,7 @@ export class App {
           agreements: { total: mine.length, byKind, byStatus },
           ledger: this.trialBalance(ctx.tenantId),
           subscription: meterSubscription(md.units.length, this.plan),
-          masterDataCounts: { units: md.units.length, guests: md.guests.length, users: md.users.length, ratePlans: md.ratePlans.length },
+          masterDataCounts: { units: units.length, guests: md.guests.length, users: md.users.length, ratePlans: md.ratePlans.length },
         },
       };
     });

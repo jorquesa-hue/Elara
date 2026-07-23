@@ -36,6 +36,15 @@ export interface AuthContext {
    * tokens (orthogonal to partyId — a token is at most one of the two).
    */
   entityId?: string;
+  /**
+   * The communities (properties) this login is scoped to. When set and non-empty,
+   * the caller is a SITE operator restricted to these properties — the API filters
+   * property-scoped reads to this set and rejects an explicit out-of-scope request.
+   * Undefined/empty means unrestricted (a regional/portfolio login that sees every
+   * community and may pick which to view). Enforced server-side, so a site manager
+   * can never reach another community's data.
+   */
+  propertyIds?: string[];
 }
 
 export interface Authenticator {
@@ -75,6 +84,8 @@ export interface JwtClaimMap {
   partyId: string;
   /** The owning legal entity, for an owner/investor token (owner portal). */
   entityId: string;
+  /** The communities a site operator is scoped to (array, or comma-separated). */
+  propertyIds: string;
   /** The subject/actor identifier. */
   actor: string;
 }
@@ -84,6 +95,7 @@ const DEFAULT_CLAIM_MAP: JwtClaimMap = {
   tenantId: 'tenant_id',
   partyId: 'party_id',
   entityId: 'entity_id',
+  propertyIds: 'property_ids',
   actor: 'sub',
 };
 
@@ -220,6 +232,17 @@ export class JwtAuthenticator implements Authenticator {
       const v = payload[key] ?? meta[key];
       return typeof v === 'string' && v.length > 0 ? v : undefined;
     };
+    // A list claim: a JSON array of strings, or a comma-separated string.
+    const pickList = (key: string): string[] | undefined => {
+      const v = payload[key] ?? meta[key];
+      const arr = Array.isArray(v)
+        ? v
+        : typeof v === 'string' && v.length > 0
+          ? v.split(',')
+          : [];
+      const out = arr.map((x) => String(x).trim()).filter((x) => x.length > 0);
+      return out.length ? out : undefined;
+    };
 
     const tenantId = pick(this.claims.tenantId);
     if (!tenantId) return null; // no tenant claim → no access (deny-by-default)
@@ -227,11 +250,13 @@ export class JwtAuthenticator implements Authenticator {
     const role: Role = pick(this.claims.role) ?? 'read_only';
     const partyId = pick(this.claims.partyId);
     const entityId = pick(this.claims.entityId);
+    const propertyIds = pickList(this.claims.propertyIds);
 
     return {
       actor, tenantId, role,
       ...(partyId ? { partyId } : {}),
       ...(entityId ? { entityId } : {}),
+      ...(propertyIds ? { propertyIds } : {}),
     };
   }
 }
