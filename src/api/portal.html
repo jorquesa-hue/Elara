@@ -3550,11 +3550,14 @@
   }
   // Interpolate {k} placeholders in a translated string with the insight's params.
   function interp(tpl, params) { return tpl.replace(/\{(\w+)\}/g, function(m,k){ return (params && params[k]!=null) ? params[k] : m; }); }
-  // Translate an insight part (title/detail/action) by its stable code, falling
-  // back to the server's English text when the locale lacks the key.
+  // Translate an insight part (title/detail/action) by its explicit i18n key
+  // (titleKey/messageKey/actionKey) — or, for legacy shapes, one derived from
+  // its stable code — falling back to the server's English text when the locale
+  // lacks the key.
   function insightText(i, part, fallback) {
     if (!fallback) return fallback;
-    var key = i.code ? ("insight."+i.code+"."+part) : null;
+    var keyField = part === "title" ? "titleKey" : (part === "action" ? "actionKey" : "messageKey");
+    var key = i[keyField] || (i.code ? ("insight." + i.code + "." + part) : null);
     var tpl = key && state.cat && state.cat[key];
     return tpl ? interp(tpl, i.params) : fallback;
   }

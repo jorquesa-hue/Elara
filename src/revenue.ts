@@ -8,6 +8,8 @@
 //
 // Factors are basis points where 10000 = 1.0x (no change); 12500 = +25%.
 
+import { interpolate } from './i18n.ts';
+
 export interface OccupancyTier { minOccupancyPct: number; factorBps: number; }
 export interface LeadTimeTier { maxDaysOut: number; factorBps: number; } // last-minute → small maxDaysOut
 export interface LosDiscount { minNights: number; discountBps: number; } // length-of-stay discount
@@ -140,6 +142,96 @@ export interface RevenueInsight {
   detail: string;
   metric?: { value: number; kind: 'money' | 'number' | 'percent' };
   action?: string;
+  /** Stable i18n keys for the title/detail/action templates, with the English
+   *  strings above as the fallback. The portal renders tt(key) + interpolate(params). */
+  titleKey?: string;
+  messageKey?: string;
+  actionKey?: string;
+  /** Interpolation values for the translated templates (e.g. {pct}, {name}). */
+  params?: Record<string, string | number>;
+}
+
+// English templates for each revenue insight, keyed by a stable slug. The plain
+// English title/detail/action are rendered from these same templates + params,
+// so the English output is identical whether or not a locale is loaded; the i18n
+// catalog holds a translation of each under `insight.<slug>.{title|detail|action}`.
+const REVENUE_INSIGHT_TEMPLATES: Record<string, { title: string; detail: string; action?: string }> = {
+  no_pricing: {
+    title: 'No dynamic pricing rule yet',
+    detail: 'You are pricing statically, so your rates never respond to demand, weekends, lead time, or length of stay — the classic way revenue is left on the table.',
+    action: 'Create a pricing rule below to start pricing dynamically.',
+  },
+  no_occupancy_tiers: {
+    title: 'Rate does not respond to occupancy',
+    detail: '“{name}” has no occupancy tiers, so a full week and a dead week are priced the same. Occupancy-based tiers are the core of dynamic pricing.',
+    action: 'Add occupancy tiers (e.g. +10% at 60%, +30% at 85%).',
+  },
+  no_weekend: {
+    title: 'No weekend uplift set',
+    detail: 'Friday/Saturday check-ins usually command a premium; without an uplift you are pricing peak nights like mid-week.',
+    action: 'Set a weekend uplift (e.g. +25%).',
+  },
+  no_floor: {
+    title: 'No rate floor',
+    detail: 'With no floor, a soft-demand discount can drive the nightly rate below your break-even.',
+    action: 'Set a floor at or above your cost per night.',
+  },
+  no_ceiling: {
+    title: 'No rate ceiling',
+    detail: 'With no ceiling, a high-demand multiplier can overshoot what the market will pay and deter bookings.',
+    action: 'Set a ceiling near your best historical ADR.',
+  },
+  no_los: {
+    title: 'No length-of-stay discount',
+    detail: 'Longer stays cut per-night turnover and cleaning cost; a weekly/monthly discount fills gap nights and wins direct bookings.',
+    action: 'Add a length-of-stay discount (e.g. −10% at 7 nights).',
+  },
+  adr_at_ceiling: {
+    title: 'ADR is at your rate ceiling',
+    detail: 'Your realized ADR has reached the ceiling on “{name}”, so peak-date demand can no longer lift the rate.',
+    action: 'Raise the ceiling to test higher peak pricing.',
+  },
+  occupancy_strong: {
+    title: 'Occupancy is strong at {pct}%',
+    detail: 'Demand is outrunning supply — there is likely room to raise rates without hurting fill.',
+    action: 'Increase the occupancy-tier uplift or the ceiling.',
+  },
+  occupancy_soft: {
+    title: 'Occupancy is soft at {pct}%',
+    detail: 'Empty nights never come back. Stimulate demand before the dates pass.',
+    action: 'Lower the floor, deepen the length-of-stay discount, or run a promotion.',
+  },
+  revenue_healthy: {
+    title: 'Revenue setup looks healthy',
+    detail: 'Occupancy {pct}% at an ADR of {adr} cents gives a RevPAR of {revpar} cents.',
+  },
+  revenue_no_data: {
+    title: 'Not enough data yet',
+    detail: 'Add units, bookings and a pricing rule to unlock revenue recommendations.',
+  },
+};
+
+/** Build a RevenueInsight from a slug: render the English title/detail/action
+ *  from the templates + params, and attach the i18n keys so the portal can show
+ *  the translated equivalents. */
+function revenueInsight(
+  slug: keyof typeof REVENUE_INSIGHT_TEMPLATES,
+  severity: RevenueInsightSeverity,
+  params: Record<string, string | number> = {},
+  metric?: { value: number; kind: 'money' | 'number' | 'percent' },
+): RevenueInsight {
+  const tpl = REVENUE_INSIGHT_TEMPLATES[slug]!;
+  const ins: RevenueInsight = {
+    severity,
+    title: interpolate(tpl.title, params),
+    detail: interpolate(tpl.detail, params),
+    titleKey: `insight.${slug}.title`,
+    messageKey: `insight.${slug}.detail`,
+    params,
+  };
+  if (tpl.action) { ins.action = interpolate(tpl.action, params); ins.actionKey = `insight.${slug}.action`; }
+  if (metric) ins.metric = metric;
+  return ins;
 }
 export interface RevenueSignals {
   occupancyPct: number; // 0..100
@@ -159,31 +251,31 @@ export function computeRevenueInsights(sig: RevenueSignals): RevenueInsight[] {
 
   // No dynamic pricing at all — the single biggest revenue gap.
   if (rules.length === 0) {
-    out.push({ severity: 'warning', title: 'No dynamic pricing rule yet', detail: 'You are pricing statically, so your rates never respond to demand, weekends, lead time, or length of stay — the classic way revenue is left on the table.', action: 'Create a pricing rule below to start pricing dynamically.' });
+    out.push(revenueInsight('no_pricing', 'warning'));
   } else {
     // Configuration gaps on the primary (first) rule — each is a lever not pulled.
     const r = rules[0]!;
-    if (!(r.occupancyTiers?.length)) out.push({ severity: 'opportunity', title: 'Rate does not respond to occupancy', detail: `“${r.name}” has no occupancy tiers, so a full week and a dead week are priced the same. Occupancy-based tiers are the core of dynamic pricing.`, action: 'Add occupancy tiers (e.g. +10% at 60%, +30% at 85%).' });
-    if (!r.weekendFactorBps) out.push({ severity: 'info', title: 'No weekend uplift set', detail: 'Friday/Saturday check-ins usually command a premium; without an uplift you are pricing peak nights like mid-week.', action: 'Set a weekend uplift (e.g. +25%).' });
-    if (r.minCents === undefined) out.push({ severity: 'warning', title: 'No rate floor', detail: 'With no floor, a soft-demand discount can drive the nightly rate below your break-even.', action: 'Set a floor at or above your cost per night.' });
-    if (r.maxCents === undefined) out.push({ severity: 'info', title: 'No rate ceiling', detail: 'With no ceiling, a high-demand multiplier can overshoot what the market will pay and deter bookings.', action: 'Set a ceiling near your best historical ADR.' });
-    if (!(r.losDiscounts?.length)) out.push({ severity: 'info', title: 'No length-of-stay discount', detail: 'Longer stays cut per-night turnover and cleaning cost; a weekly/monthly discount fills gap nights and wins direct bookings.', action: 'Add a length-of-stay discount (e.g. −10% at 7 nights).' });
+    if (!(r.occupancyTiers?.length)) out.push(revenueInsight('no_occupancy_tiers', 'opportunity', { name: r.name }));
+    if (!r.weekendFactorBps) out.push(revenueInsight('no_weekend', 'info'));
+    if (r.minCents === undefined) out.push(revenueInsight('no_floor', 'warning'));
+    if (r.maxCents === undefined) out.push(revenueInsight('no_ceiling', 'info'));
+    if (!(r.losDiscounts?.length)) out.push(revenueInsight('no_los', 'info'));
     // ADR pressed against the ceiling → the ceiling may be capping revenue.
     const cappedRule = rules.find((x) => x.maxCents !== undefined && sig.adrCents > 0 && sig.adrCents >= x.maxCents);
-    if (cappedRule) out.push({ severity: 'opportunity', title: 'ADR is at your rate ceiling', detail: `Your realized ADR has reached the ceiling on “${cappedRule.name}”, so peak-date demand can no longer lift the rate.`, metric: { value: sig.adrCents, kind: 'money' }, action: 'Raise the ceiling to test higher peak pricing.' });
+    if (cappedRule) out.push(revenueInsight('adr_at_ceiling', 'opportunity', { name: cappedRule.name }, { value: sig.adrCents, kind: 'money' }));
   }
 
   // Demand response from occupancy.
   if (sig.unitCount > 0) {
-    if (sig.occupancyPct >= 80) out.push({ severity: 'opportunity', title: `Occupancy is strong at ${sig.occupancyPct}%`, detail: 'Demand is outrunning supply — there is likely room to raise rates without hurting fill.', metric: { value: sig.occupancyPct, kind: 'percent' }, action: 'Increase the occupancy-tier uplift or the ceiling.' });
-    else if (sig.occupancyPct < 40) out.push({ severity: 'warning', title: `Occupancy is soft at ${sig.occupancyPct}%`, detail: 'Empty nights never come back. Stimulate demand before the dates pass.', metric: { value: sig.occupancyPct, kind: 'percent' }, action: 'Lower the floor, deepen the length-of-stay discount, or run a promotion.' });
+    if (sig.occupancyPct >= 80) out.push(revenueInsight('occupancy_strong', 'opportunity', { pct: sig.occupancyPct }, { value: sig.occupancyPct, kind: 'percent' }));
+    else if (sig.occupancyPct < 40) out.push(revenueInsight('occupancy_soft', 'warning', { pct: sig.occupancyPct }, { value: sig.occupancyPct, kind: 'percent' }));
   }
 
   // A healthy, well-configured setup deserves a positive note.
   if (out.every((i) => i.severity !== 'critical' && i.severity !== 'warning') && sig.unitCount > 0 && sig.revparCents > 0) {
-    out.push({ severity: 'positive', title: 'Revenue setup looks healthy', detail: `Occupancy ${sig.occupancyPct}% at an ADR of ${sig.adrCents} cents gives a RevPAR of ${sig.revparCents} cents.`, metric: { value: sig.revparCents, kind: 'money' } });
+    out.push(revenueInsight('revenue_healthy', 'positive', { pct: sig.occupancyPct, adr: sig.adrCents, revpar: sig.revparCents }, { value: sig.revparCents, kind: 'money' }));
   }
-  if (out.length === 0) out.push({ severity: 'info', title: 'Not enough data yet', detail: 'Add units, bookings and a pricing rule to unlock revenue recommendations.' });
+  if (out.length === 0) out.push(revenueInsight('revenue_no_data', 'info'));
 
   return out.sort((a, b) => order[a.severity] - order[b.severity]);
 }

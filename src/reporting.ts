@@ -70,6 +70,12 @@ export interface Insight {
   /** Stable code so the UI can translate title/detail/action (with the English
    *  strings above as the fallback). */
   code?: string;
+  /** Stable i18n keys, derived from `code`, for each translatable part — the
+   *  portal renders tt(titleKey) + interpolate(params), falling back to the
+   *  English title/detail/action above. */
+  titleKey?: string;
+  messageKey?: string;
+  actionKey?: string;
   /** Interpolation values for the translated strings (e.g. {n}, {occ}). */
   params?: Record<string, string | number>;
 }
@@ -1257,5 +1263,16 @@ export function computeInsights(inp: ReportingInput): Insight[] {
   }
 
   if (out.length === 0) out.push({ severity: 'positive', code: 'all_clear', title: 'Nothing needs attention', detail: 'No overdue receivables, healthy occupancy, and no stalled work — all clear for this window.' });
+  // Derive the stable i18n keys from the code, so every insight carries a
+  // titleKey/messageKey (and actionKey when it has an action) + params for the
+  // portal to translate, with the English strings above as the fallback.
+  for (const i of out) {
+    if (i.code) {
+      i.titleKey = `insight.${i.code}.title`;
+      i.messageKey = `insight.${i.code}.detail`;
+      if (i.action != null) i.actionKey = `insight.${i.code}.action`;
+    }
+    if (!i.params) i.params = {};
+  }
   return out.sort((a, b) => order[a.severity] - order[b.severity]);
 }
