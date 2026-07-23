@@ -26,21 +26,47 @@ function mint() {
 }
 
 const token = mint();
+
+// Fly runs on IPv6; Node's fetch to a bare 127.0.0.1 can miss a server bound on
+// :: / ::1. Probe a few hosts once to find the one the app actually answers on.
+const hosts = ['localhost', '127.0.0.1', '[::1]'];
+async function post(host, payload) {
+  return fetch(`http://${host}:${port}/demo/seed`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+async function findHost() {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    for (const host of hosts) {
+      try {
+        const r = await fetch(`http://${host}:${port}/health`, { headers: { authorization: `Bearer ${token}` } });
+        console.log(`[probe] ${host} /health -> ${r.status}`);
+        return host; // any HTTP response means the socket is reachable
+      } catch (e) {
+        console.log(`[probe] ${host} -> ${e?.cause?.code || e?.message || e}`);
+      }
+    }
+    await new Promise((res) => setTimeout(res, 1500));
+  }
+  return null;
+}
+
+const host = await findHost();
+if (!host) { console.error('no reachable host for the app on port ' + port); process.exit(3); }
+
 const variants = [null, 'europe', 'portfolio'];
 let failed = false;
 for (const v of variants) {
   const payload = Object.assign({ force: true, at: '2026-07-24T00:00:00Z' }, v ? { variant: v } : {});
   try {
-    const r = await fetch(`http://127.0.0.1:${port}/demo/seed`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    const r = await post(host, payload);
     const text = await r.text();
-    console.log(`[seed ${v || 'brazil'}] ${r.status} ${text.slice(0, 400)}`);
+    console.log(`[seed ${v || 'brazil'}] ${r.status} ${text.slice(0, 500)}`);
     if (r.status >= 300) failed = true;
   } catch (e) {
-    console.error(`[seed ${v || 'brazil'}] ERROR ${e?.message || e}`);
+    console.error(`[seed ${v || 'brazil'}] ERROR ${e?.cause?.code || e?.message || e}`);
     failed = true;
   }
 }
