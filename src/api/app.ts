@@ -83,7 +83,7 @@ import { buildCustomReport, dataSources, type CustomReportSpec } from '../report
 import { siteListing, checkAvailability, isValidDate, type BookingSiteInput } from '../booking-site.ts';
 import { SiteContentStore, SiteContentError, sanitizeSiteContent } from '../site-content.ts';
 import { templateGallery, isKnownTemplate, resolveTheme } from '../site-templates.ts';
-import { buildDemoWorld, DEMO_MARKER_UNIT_ID } from '../demo-data.ts';
+import { buildDemoWorld, DEMO_MARKER_UNIT_ID, buildEuropeWorld, EUROPE_MARKER_UNIT_ID } from '../demo-data.ts';
 
 export interface ApiRequest {
   method: string;
@@ -3884,7 +3884,8 @@ export class App {
     // kernel path, so seeded data honors the money/inventory invariants.
     this.add('POST', '/demo/seed', 'masterdata.manage', (ctx, _p, body) => {
       const at = this.optString(body, 'at') ?? this.now();
-      return { status: 201, body: this.seedDemoData(ctx.tenantId, at) };
+      // variant 'europe' loads the Meridian Living multi-country portfolio.
+      return { status: 201, body: this.seedDemoData(ctx.tenantId, at, this.optString(body, 'variant')) };
     });
 
     // A reporting-friendly rollup: agreements by kind/status, ledger, master-data
@@ -4150,12 +4151,14 @@ export class App {
    * Payables, Deposits, …) so seeded data honors every invariant — this is the
    * same discipline as the onboarding importer, governed by masterdata.manage.
    */
-  private seedDemoData(tenantId: string, at: string): {
+  private seedDemoData(tenantId: string, at: string, variant?: string): {
     seeded: boolean;
     counts?: Record<string, number>;
   } {
-    if (this.masterData.units.get(tenantId, DEMO_MARKER_UNIT_ID)) return { seeded: false };
-    const w = buildDemoWorld(tenantId, at);
+    const europe = variant === 'europe';
+    const marker = europe ? EUROPE_MARKER_UNIT_ID : DEMO_MARKER_UNIT_ID;
+    if (this.masterData.units.get(tenantId, marker)) return { seeded: false };
+    const w = europe ? buildEuropeWorld(tenantId, at) : buildDemoWorld(tenantId, at);
     const currency = this.config.get(tenantId).currency;
     const unitId = (code: string) => `demo-unit-${code}`;
     const guestId = (code: string) => `demo-guest-${code}`;

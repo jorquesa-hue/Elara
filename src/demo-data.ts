@@ -235,3 +235,147 @@ export function buildDemoWorld(tenantId: string, at: string): DemoWorld {
 
   return { tenantId, properties, units, guests, parties, pricingRules, agreements, invoices, deposits, bills, workOrders, leads };
 }
+
+/** Marker unit for the European portfolio (distinct from the Ilhabela one). */
+export const EUROPE_MARKER_UNIT_ID = 'demo-unit-BER-101';
+
+/**
+ * A large European operator ("Meridian Living") across four communities:
+ * two multifamily buildings that also run short-stay (Berlin, Amsterdam), one
+ * pure long-lease multifamily (Munich), and a student campus (Berlin). Amounts
+ * are in EUR cents. Mirrors the Ilhabela world's shape so it applies through the
+ * same kernel loop (balanced journals, no double-booking).
+ */
+export function buildEuropeWorld(tenantId: string, at: string): DemoWorld {
+  const now = Date.parse(at);
+  const d = (o: number) => isoDate(now + o * DAY);
+  const t = (o: number) => isoStamp(now + o * DAY);
+
+  const properties: DemoProperty[] = [
+    { code: 'BER', name: 'Meridian Berlin Mitte', address: 'Torstraße 140, 10119 Berlin' },       // MF + short-stay
+    { code: 'MUC', name: 'Meridian München Schwabing', address: 'Leopoldstraße 82, 80802 München' }, // MF, long-lease only
+    { code: 'AMS', name: 'Meridian Amsterdam Zuid', address: 'Gustav Mahlerplein 12, 1082 Amsterdam' }, // MF + short-stay
+    { code: 'CAMP', name: 'Meridian Campus Berlin', address: 'Ostendstraße 25, 12459 Berlin' },     // student housing
+  ];
+  const units: DemoUnit[] = [
+    { code: 'BER-101', label: 'Berlin Mitte — Apt 1.01 (1BR)', active: true, propertyCode: 'BER' },
+    { code: 'BER-204', label: 'Berlin Mitte — Apt 2.04 (2BR)', active: true, propertyCode: 'BER' },
+    { code: 'BER-STU7', label: 'Berlin Mitte — Studio 0.7 (short-stay)', active: true, propertyCode: 'BER' },
+    { code: 'BER-PH1', label: 'Berlin Mitte — Penthouse (short-stay)', active: true, propertyCode: 'BER' },
+    { code: 'MUC-12', label: 'München Schwabing — Whg 12 (2BR)', active: true, propertyCode: 'MUC' },
+    { code: 'MUC-14', label: 'München Schwabing — Whg 14 (3BR)', active: true, propertyCode: 'MUC' },
+    { code: 'MUC-21', label: 'München Schwabing — Whg 21 (1BR)', active: true, propertyCode: 'MUC' },
+    { code: 'MUC-GEW', label: 'München — Gewerbeeinheit EG (retail)', active: true, propertyCode: 'MUC' },
+    { code: 'AMS-3A', label: 'Amsterdam Zuid — 3A (2BR)', active: true, propertyCode: 'AMS' },
+    { code: 'AMS-5B', label: 'Amsterdam Zuid — 5B (studio, short-stay)', active: true, propertyCode: 'AMS' },
+    { code: 'AMS-6C', label: 'Amsterdam Zuid — 6C (loft, short-stay)', active: true, propertyCode: 'AMS' },
+    { code: 'CAMP-A12', label: 'Campus Berlin — Room A12 (shared flat)', active: true, propertyCode: 'CAMP' },
+    { code: 'CAMP-A13', label: 'Campus Berlin — Room A13 (shared flat)', active: true, propertyCode: 'CAMP' },
+    { code: 'CAMP-B04', label: 'Campus Berlin — Studio B04', active: true, propertyCode: 'CAMP' },
+    { code: 'CAMP-B05', label: 'Campus Berlin — Studio B05', active: true, propertyCode: 'CAMP' },
+    { code: 'AMS-7D', label: 'Amsterdam Zuid — 7D (refurb)', active: false, propertyCode: 'AMS' },
+  ];
+  const guests: DemoGuest[] = [
+    { code: 'G-ANNA', fullName: 'Anna Schmidt', email: 'anna.schmidt@example.de' },
+    { code: 'G-LUKAS', fullName: 'Lukas Weber', email: 'lukas.weber@example.de' },
+    { code: 'G-SOFIA', fullName: 'Sofia Rossi', email: 'sofia.rossi@example.it' },
+    { code: 'G-JEROEN', fullName: 'Jeroen de Vries', email: 'jeroen.devries@example.nl' },
+    { code: 'G-CLARA', fullName: 'Clara Fontaine', email: 'clara.fontaine@example.fr' },
+    { code: 'G-MAX', fullName: 'Maximilian Bauer', email: 'max.bauer@example.de' },
+    { code: 'G-EMMA', fullName: 'Emma Janssen', email: 'emma.janssen@example.nl' },
+    { code: 'G-STU1', fullName: 'Noah Keller (student)', email: 'noah.keller@uni-berlin.de' },
+    { code: 'G-STU2', fullName: 'Mia Hofer (student)', email: 'mia.hofer@uni-berlin.de' },
+    { code: 'G-SHOP', fullName: 'Café Nordlicht GmbH', email: 'hallo@cafe-nordlicht.de' },
+  ];
+  const parties: DemoParty[] = [
+    { id: 'demo-party-anna', kind: 'person', displayName: 'Anna Schmidt', taxId: 'DE-11-222-3334', email: 'anna.schmidt@example.de', phone: '+49 30 5550 0001' },
+    { id: 'demo-party-lukas', kind: 'person', displayName: 'Lukas Weber', taxId: 'DE-22-333-4445', email: 'lukas.weber@example.de', phone: '+49 89 5550 0002' },
+    { id: 'demo-party-sofia', kind: 'person', displayName: 'Sofia Rossi', taxId: 'IT-33-444-5556', email: 'sofia.rossi@example.it', phone: '+39 02 5550 0003' },
+    { id: 'demo-party-jeroen', kind: 'person', displayName: 'Jeroen de Vries', taxId: 'NL-44-555-6667', email: 'jeroen.devries@example.nl', phone: '+31 20 5550 0004' },
+    { id: 'demo-party-clara', kind: 'person', displayName: 'Clara Fontaine', taxId: 'FR-55-666-7778', email: 'clara.fontaine@example.fr', phone: '+33 1 5550 0005' },
+    { id: 'demo-party-emma', kind: 'person', displayName: 'Emma Janssen', taxId: 'NL-66-777-8889', email: 'emma.janssen@example.nl', phone: '+31 20 5550 0006' },
+    { id: 'demo-party-eu-guarantor', kind: 'person', displayName: 'Heinrich Weber (Bürge)', taxId: 'DE-77-888-9990', email: 'h.weber@example.de', phone: '+49 89 5550 0007' },
+    { id: 'demo-party-stu1', kind: 'person', displayName: 'Noah Keller', taxId: 'DE-88-999-0001', email: 'noah.keller@uni-berlin.de', phone: '+49 30 5550 0008' },
+    { id: 'demo-party-stu2', kind: 'person', displayName: 'Mia Hofer', taxId: 'DE-99-000-1112', email: 'mia.hofer@uni-berlin.de', phone: '+49 30 5550 0009' },
+    { id: 'demo-party-eu-parent', kind: 'person', displayName: 'Petra Keller (Elternteil)', taxId: 'DE-10-111-2223', email: 'petra.keller@example.de', phone: '+49 30 5550 0010' },
+    { id: 'demo-party-shop', kind: 'organization', displayName: 'Café Nordlicht GmbH', legalName: 'Café Nordlicht Gastronomie GmbH', taxId: 'DE-812345678', email: 'hallo@cafe-nordlicht.de', phone: '+49 89 5550 0100' },
+    { id: 'demo-party-eu-vendor', kind: 'organization', displayName: 'EuroFM Facility Services', legalName: 'EuroFM Facility Services GmbH', taxId: 'DE-887654321', email: 'service@eurofm.eu', phone: '+49 30 5550 0200' },
+  ];
+  const pricingRules: DemoPricingRule[] = [
+    {
+      id: 'demo-price-berlin', name: 'Berlin short-stay — dynamic',
+      baseCents: 14_000, minCents: 9_000, maxCents: 42_000, weekendFactorBps: 13_000,
+      occupancyTiers: [{ minOccupancyPct: 65, factorBps: 11_500 }, { minOccupancyPct: 88, factorBps: 14_000 }],
+      losDiscounts: [{ minNights: 7, discountBps: 1_200 }, { minNights: 28, discountBps: 2_500 }],
+    },
+  ];
+
+  const agreements: DemoAgreement[] = [
+    // Berlin MF long leases
+    { id: 'demo-agr-ber-1', guestCode: 'G-ANNA', unitCode: 'BER-101', kind: 'lease', start: d(-210), end: d(155), rateCents: 148_000, activate: true, moveIn: true, residentPartyId: 'demo-party-anna', payerPartyId: 'demo-party-anna' },
+    { id: 'demo-agr-ber-2', guestCode: 'G-MAX', unitCode: 'BER-204', kind: 'lease', start: d(-95), end: d(270), rateCents: 219_000, activate: true, moveIn: true, residentPartyId: 'demo-party-anna', payerPartyId: 'demo-party-anna', guarantorPartyId: 'demo-party-eu-guarantor' },
+    // Berlin short-stay
+    { id: 'demo-agr-ber-3', guestCode: 'G-CLARA', unitCode: 'BER-STU7', kind: 'nightly', start: d(-2), end: d(5), rateCents: 16_500, activate: true, moveIn: true, payerPartyId: 'demo-party-clara' },
+    { id: 'demo-agr-ber-4', guestCode: 'G-SOFIA', unitCode: 'BER-PH1', kind: 'nightly', start: d(14), end: d(19), rateCents: 38_000, activate: false, payerPartyId: 'demo-party-sofia' },
+    // Munich MF long leases (no short-stay)
+    { id: 'demo-agr-muc-1', guestCode: 'G-LUKAS', unitCode: 'MUC-12', kind: 'lease', start: d(-320), end: d(45), rateCents: 232_000, activate: true, moveIn: true, residentPartyId: 'demo-party-lukas', payerPartyId: 'demo-party-lukas', guarantorPartyId: 'demo-party-eu-guarantor' },
+    { id: 'demo-agr-muc-2', guestCode: 'G-SOFIA', unitCode: 'MUC-14', kind: 'lease', start: d(-150), end: d(215), rateCents: 298_000, activate: true, moveIn: true, residentPartyId: 'demo-party-sofia', payerPartyId: 'demo-party-sofia' },
+    { id: 'demo-agr-muc-3', guestCode: 'G-SHOP', unitCode: 'MUC-GEW', kind: 'lease', start: d(-260), end: d(470), rateCents: 410_000, activate: true, moveIn: true, residentPartyId: 'demo-party-shop', payerPartyId: 'demo-party-shop' },
+    // Amsterdam MF + short-stay
+    { id: 'demo-agr-ams-1', guestCode: 'G-JEROEN', unitCode: 'AMS-3A', kind: 'monthly', start: d(-30), end: d(60), rateCents: 245_000, activate: true, moveIn: true, residentPartyId: 'demo-party-jeroen', payerPartyId: 'demo-party-jeroen' },
+    { id: 'demo-agr-ams-2', guestCode: 'G-EMMA', unitCode: 'AMS-5B', kind: 'nightly', start: d(-1), end: d(6), rateCents: 19_000, activate: true, moveIn: true, payerPartyId: 'demo-party-emma' },
+    // Student campus — parent is the financial responsible on one
+    { id: 'demo-agr-camp-1', guestCode: 'G-STU1', unitCode: 'CAMP-A12', kind: 'lease', start: d(-70), end: d(295), rateCents: 62_000, activate: true, moveIn: true, residentPartyId: 'demo-party-stu1', payerPartyId: 'demo-party-eu-parent' },
+    { id: 'demo-agr-camp-2', guestCode: 'G-STU2', unitCode: 'CAMP-B04', kind: 'lease', start: d(-40), end: d(325), rateCents: 74_000, activate: true, moveIn: true, residentPartyId: 'demo-party-stu2', payerPartyId: 'demo-party-stu2' },
+    // A completed past short-stay
+    { id: 'demo-agr-ber-5', guestCode: 'G-EMMA', unitCode: 'BER-STU7', kind: 'nightly', start: d(-25), end: d(-20), rateCents: 15_000, activate: true, payerPartyId: 'demo-party-emma' },
+  ];
+
+  const invoices: DemoInvoice[] = [
+    { id: 'demo-inv-e1', agreementId: 'demo-agr-ber-1', issuedAt: t(-8), dueAt: d(2), lines: [{ description: 'Kaltmiete — Apt 1.01 (Juli)', account: 'revenue:rent', amountCents: 148_000 }, { description: 'Nebenkosten', account: 'revenue:utility_reimbursement', amountCents: 32_000 }], payCents: 180_000, payMethod: 'transfer', paidAt: t(-6) },
+    { id: 'demo-inv-e2', agreementId: 'demo-agr-ber-2', issuedAt: t(-6), dueAt: d(4), lines: [{ description: 'Kaltmiete — Apt 2.04 (Juli)', account: 'revenue:rent', amountCents: 219_000 }] },
+    { id: 'demo-inv-e3', agreementId: 'demo-agr-ber-3', issuedAt: t(-2), dueAt: d(-1), lines: [{ description: '7 Nächte — Studio 0.7', account: 'revenue:nightly', amountCents: 115_500 }, { description: 'Endreinigung', account: 'revenue:cleaning', amountCents: 9_000 }], payCents: 124_500, payMethod: 'card', paidAt: t(-2) },
+    { id: 'demo-inv-e4', agreementId: 'demo-agr-muc-1', issuedAt: t(-40), dueAt: d(-22), lines: [{ description: 'Miete — Whg 12 (Juni)', account: 'revenue:rent', amountCents: 232_000 }] }, // overdue
+    { id: 'demo-inv-e5', agreementId: 'demo-agr-muc-1', issuedAt: t(-9), dueAt: d(3), lines: [{ description: 'Miete — Whg 12 (Juli)', account: 'revenue:rent', amountCents: 232_000 }] },
+    { id: 'demo-inv-e6', agreementId: 'demo-agr-muc-2', issuedAt: t(-7), dueAt: d(3), lines: [{ description: 'Miete — Whg 14 (Juli)', account: 'revenue:rent', amountCents: 298_000 }], payCents: 149_000, payMethod: 'transfer', paidAt: t(-4) }, // partial
+    { id: 'demo-inv-e7', agreementId: 'demo-agr-muc-3', issuedAt: t(-8), dueAt: d(-2), lines: [{ description: 'Gewerbemiete — EG (Juli)', account: 'revenue:rent', amountCents: 410_000 }], payCents: 410_000, payMethod: 'transfer', paidAt: t(-3) },
+    { id: 'demo-inv-e8', agreementId: 'demo-agr-ams-1', issuedAt: t(-10), dueAt: d(1), lines: [{ description: 'Huur — 3A (juli)', account: 'revenue:rent', amountCents: 245_000 }], payCents: 245_000, payMethod: 'transfer', paidAt: t(-8) },
+    { id: 'demo-inv-e9', agreementId: 'demo-agr-ams-2', issuedAt: t(-1), dueAt: d(1), lines: [{ description: '7 nachten — Studio 5B', account: 'revenue:nightly', amountCents: 133_000 }, { description: 'Schoonmaak', account: 'revenue:cleaning', amountCents: 8_000 }], payCents: 141_000, payMethod: 'card', paidAt: t(-1) },
+    { id: 'demo-inv-e10', agreementId: 'demo-agr-camp-1', issuedAt: t(-35), dueAt: d(-27), lines: [{ description: 'Miete — Room A12 (Juni)', account: 'revenue:rent', amountCents: 62_000 }] }, // student overdue
+    { id: 'demo-inv-e11', agreementId: 'demo-agr-camp-2', issuedAt: t(-6), dueAt: d(6), lines: [{ description: 'Miete — Studio B04 (Juli)', account: 'revenue:rent', amountCents: 74_000 }], payCents: 74_000, payMethod: 'pix', paidAt: t(-5) },
+    { id: 'demo-inv-e12', agreementId: 'demo-agr-ber-5', issuedAt: t(-25), dueAt: d(-20), lines: [{ description: '5 Nächte — Studio 0.7', account: 'revenue:nightly', amountCents: 75_000 }], payCents: 75_000, payMethod: 'card', paidAt: t(-24) },
+  ];
+
+  const deposits: DemoDeposit[] = [
+    { id: 'demo-dep-e1', agreementId: 'demo-agr-ber-1', amountCents: 444_000, heldAt: t(-210) },
+    { id: 'demo-dep-e2', agreementId: 'demo-agr-ber-2', amountCents: 657_000, heldAt: t(-95) },
+    { id: 'demo-dep-e3', agreementId: 'demo-agr-muc-1', amountCents: 696_000, heldAt: t(-320) },
+    { id: 'demo-dep-e4', agreementId: 'demo-agr-muc-3', amountCents: 1_230_000, heldAt: t(-260) },
+    { id: 'demo-dep-e5', agreementId: 'demo-agr-camp-1', amountCents: 62_000, heldAt: t(-70) },
+  ];
+
+  const bills: DemoBill[] = [
+    { id: 'demo-bill-e1', payeeId: 'demo-party-eu-vendor', propertyCode: 'BER', issuedAt: t(-14), dueAt: d(-1), memo: 'Aufzugswartung — Berlin Mitte', lines: [{ description: 'Wartungsvertrag Q3', account: 'expense:maintenance', amountCents: 180_000 }], payCents: 180_000, payMethod: 'transfer', paidAt: t(-6) },
+    { id: 'demo-bill-e2', payeeId: 'demo-party-eu-vendor', propertyCode: 'MUC', issuedAt: t(-10), dueAt: d(7), memo: 'Treppenhausreinigung (monatlich)', lines: [{ description: 'Reinigung Juli', account: 'expense:cleaning', amountCents: 68_000 }] },
+    { id: 'demo-bill-e3', payeeId: 'demo-party-eu-vendor', propertyCode: 'AMS', issuedAt: t(-30), dueAt: d(-12), memo: 'Tuinonderhoud — Amsterdam Zuid', lines: [{ description: 'Groenonderhoud Q2', account: 'expense:maintenance', amountCents: 145_000 }] }, // overdue
+    { id: 'demo-bill-e4', payeeId: 'demo-party-eu-vendor', propertyCode: 'CAMP', issuedAt: t(-5), dueAt: d(20), memo: 'WLAN & Zutrittssystem — Campus', lines: [{ description: 'Netzwerk + Schließanlage', account: 'expense:utilities', amountCents: 96_000 }] },
+  ];
+
+  const workOrders: DemoWorkOrder[] = [
+    { id: 'demo-wo-e1', title: 'Heizung fällt aus — Whg 14 (München)', description: 'Mieter meldet kalte Heizkörper im Wohnzimmer.', category: 'hvac', priority: 'high', openedAt: t(-1), requestedByPartyId: 'demo-party-sofia', assignVendorPartyId: 'demo-party-eu-vendor', startedAt: t(-1) },
+    { id: 'demo-wo-e2', title: 'Wasserschaden Küche — 3A (Amsterdam)', description: 'Lek onder de gootsteen.', category: 'plumbing', priority: 'urgent', openedAt: t(-4), requestedByPartyId: 'demo-party-jeroen', assignVendorPartyId: 'demo-party-eu-vendor', startedAt: t(-3), completedAt: t(-2), resolution: 'Sifon vervangen; geen lekkage meer.' },
+    { id: 'demo-wo-e3', title: 'Zutrittstür klemmt — Campus B-Flügel', category: 'general', priority: 'normal', openedAt: t(-2), requestedByPartyId: 'demo-party-stu2' },
+    { id: 'demo-wo-e4', title: 'Renovierung 7D — Streichen & Boden', description: 'Einheit bis Fertigstellung außer Betrieb.', category: 'renovation', priority: 'low', openedAt: t(-33), assignVendorPartyId: 'demo-party-eu-vendor', startedAt: t(-30) },
+  ];
+
+  const leads: DemoLead[] = [
+    { id: 'demo-lead-e1', name: 'Corporate relocation — 2BR Berlin', source: 'website', estValueCents: 2_600_000, createdAt: t(-2) },
+    { id: 'demo-lead-e2', name: 'Erasmus intake — 6 rooms Campus', source: 'university', estValueCents: 4_400_000, createdAt: t(-9), advanceTo: ['toured'] },
+    { id: 'demo-lead-e3', name: 'Short-stay — penthouse Berlin (5 nts)', source: 'booking', estValueCents: 190_000, createdAt: t(-14), advanceTo: ['toured', 'applied'] },
+    { id: 'demo-lead-e4', name: 'Family lease — 3BR München', source: 'referral', estValueCents: 3_576_000, createdAt: t(-25), advanceTo: ['toured', 'applied', 'approved'] },
+    { id: 'demo-lead-e5', name: 'Annual — loft Amsterdam', source: 'ils', estValueCents: 2_940_000, createdAt: t(-20), advanceTo: ['toured', 'applied', 'approved', 'signed'] },
+    { id: 'demo-lead-e6', name: 'Group booking — cancelled', source: 'instagram', estValueCents: 800_000, createdAt: t(-18), advanceTo: ['toured', 'lost'] },
+  ];
+
+  return { tenantId, properties, units, guests, parties, pricingRules, agreements, invoices, deposits, bills, workOrders, leads };
+}
