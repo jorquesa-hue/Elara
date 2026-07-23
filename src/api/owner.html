@@ -1,18 +1,27 @@
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Owner portal · Elara</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20128%20128%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22b%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%236D8BFF%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%238B6CFF%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22128%22%20height%3D%22128%22%20rx%3D%2230%22%20fill%3D%22url%28%23b%29%22%2F%3E%3Cpath%20fill%3D%22%23fff%22%20d%3D%22M%2024.40%2029.00%20Q%2024.40%2016.00%2037.40%2016.00%20L%2090.60%2016.00%20Q%20103.60%2016.00%20103.60%2029.00%20L%20103.60%2031.51%20Q%20103.60%2044.51%2090.60%2044.51%20L%2059.92%2044.51%20Q%2056.08%2044.51%2056.08%2048.35%20L%2056.08%2048.35%20Q%2056.08%2052.19%2059.92%2052.19%20L%2074.73%2052.19%20Q%2086.73%2052.19%2086.73%2064.19%20L%2086.73%2064.19%20Q%2086.73%2076.19%2074.73%2076.19%20L%2059.73%2076.19%20Q%2056.08%2076.19%2056.08%2079.84%20L%2056.08%2079.84%20Q%2056.08%2083.49%2059.73%2083.49%20L%2090.60%2083.49%20Q%20103.60%2083.49%20103.60%2096.49%20L%20103.60%2099.00%20Q%20103.60%20112.00%2090.60%20112.00%20L%2037.40%20112.00%20Q%2024.40%20112.00%2024.40%2099.00%20Z%22%2F%3E%3C%2Fsvg%3E"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet"/>
 <style>
   :root{
-    --bg:#f4f6fb; --card:#ffffff; --line:#e6e9f2; --text:#1a1f36; --muted:#6b7280;
-    --accent:#2f6f4f; --accent-soft:#e6f2ec; --ok:#0f9d58; --warn:#e0533a; --radius:14px;
+    --bg:#f5f7fb; --card:#ffffff; --line:#e4e8f0; --text:#1b2333; --muted:#5c6678;
+    --accent:#6572ff; --accent-soft:#ececff; --ok:#10b981; --warn:#f59e0b; --radius:14px;
+    --font-ui:"Inter",ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    --font-display:"Plus Jakarta Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   }
   :root[data-theme="dark"]{
-    --bg:#0e1016; --card:#171a22; --line:#262b38; --text:#e8eaf2; --muted:#9aa2b4;
-    --accent-soft:#173026;
+    --bg:#0b0e14; --card:#12161f; --line:#232a37; --text:#e6e9f0; --muted:#98a2b5;
+    --accent-soft:#20233a;
   }
   *{box-sizing:border-box}
-  body{margin:0;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text)}
+  body{margin:0;font:15px/1.5 var(--font-ui);font-variant-numeric:tabular-nums;background:var(--bg);color:var(--text)}
+  h1,h2,h3{font-family:var(--font-display);letter-spacing:-.01em}
   a{color:var(--accent)}
   .wrap{max-width:900px;margin:0 auto;padding:20px 18px 60px}
   header{display:flex;align-items:center;gap:12px;padding:6px 0 18px}
-  .mark{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--accent),#4faf7f);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700}
+  .mark{width:34px;height:34px;border-radius:9px;background:center/cover no-repeat url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20128%20128%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22b%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%236D8BFF%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%238B6CFF%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22128%22%20height%3D%22128%22%20rx%3D%2230%22%20fill%3D%22url%28%23b%29%22%2F%3E%3Cpath%20fill%3D%22%23fff%22%20d%3D%22M%2024.40%2029.00%20Q%2024.40%2016.00%2037.40%2016.00%20L%2090.60%2016.00%20Q%20103.60%2016.00%20103.60%2029.00%20L%20103.60%2031.51%20Q%20103.60%2044.51%2090.60%2044.51%20L%2059.92%2044.51%20Q%2056.08%2044.51%2056.08%2048.35%20L%2056.08%2048.35%20Q%2056.08%2052.19%2059.92%2052.19%20L%2074.73%2052.19%20Q%2086.73%2052.19%2086.73%2064.19%20L%2086.73%2064.19%20Q%2086.73%2076.19%2074.73%2076.19%20L%2059.73%2076.19%20Q%2056.08%2076.19%2056.08%2079.84%20L%2056.08%2079.84%20Q%2056.08%2083.49%2059.73%2083.49%20L%2090.60%2083.49%20Q%20103.60%2083.49%20103.60%2096.49%20L%20103.60%2099.00%20Q%20103.60%20112.00%2090.60%20112.00%20L%2037.40%20112.00%20Q%2024.40%20112.00%2024.40%2099.00%20Z%22%2F%3E%3C%2Fsvg%3E");font-size:0}
   h1{font-size:22px;margin:0}
   h2{font-size:16px;margin:24px 0 10px}
   .sub{color:var(--muted);margin:2px 0 0}

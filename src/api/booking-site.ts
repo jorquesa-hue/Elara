@@ -11,10 +11,17 @@ export function bookingSiteHtml(): string {
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Book your stay</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20128%20128%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22b%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%236D8BFF%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%238B6CFF%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22128%22%20height%3D%22128%22%20rx%3D%2230%22%20fill%3D%22url%28%23b%29%22%2F%3E%3Cpath%20fill%3D%22%23fff%22%20d%3D%22M%2024.40%2029.00%20Q%2024.40%2016.00%2037.40%2016.00%20L%2090.60%2016.00%20Q%20103.60%2016.00%20103.60%2029.00%20L%20103.60%2031.51%20Q%20103.60%2044.51%2090.60%2044.51%20L%2059.92%2044.51%20Q%2056.08%2044.51%2056.08%2048.35%20L%2056.08%2048.35%20Q%2056.08%2052.19%2059.92%2052.19%20L%2074.73%2052.19%20Q%2086.73%2052.19%2086.73%2064.19%20L%2086.73%2064.19%20Q%2086.73%2076.19%2074.73%2076.19%20L%2059.73%2076.19%20Q%2056.08%2076.19%2056.08%2079.84%20L%2056.08%2079.84%20Q%2056.08%2083.49%2059.73%2083.49%20L%2090.60%2083.49%20Q%20103.60%2083.49%20103.60%2096.49%20L%20103.60%2099.00%20Q%20103.60%20112.00%2090.60%20112.00%20L%2037.40%20112.00%20Q%2024.40%20112.00%2024.40%2099.00%20Z%22%2F%3E%3C%2Fsvg%3E"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet"/>
 <style>
-  :root{ --bg:#f5f6fb; --card:#fff; --line:#e6e8f0; --text:#151a2e; --muted:#5b6480; --accent:#6d8bff; --accent2:#8b6cff; --ok:#3aa76d; --radius:12px; --herobg:linear-gradient(135deg,#6d8bff,#8b6cff); }
+  :root{ --bg:#f5f6fb; --card:#fff; --line:#e6e8f0; --text:#151a2e; --muted:#5b6480; --accent:#6d8bff; --accent2:#8b6cff; --ok:#3aa76d; --radius:12px; --herobg:linear-gradient(135deg,#6d8bff,#8b6cff);
+    --brand-body:"Inter",ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --brand-display:"Plus Jakarta Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
   *{ box-sizing:border-box; } html,body{ margin:0; }
-  body{ background:var(--bg); color:var(--text); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  body{ background:var(--bg); color:var(--text); font:15px/1.5 var(--brand-body); font-variant-numeric:tabular-nums; }
+  h1,h2,h3,.price{ font-family:var(--brand-display); letter-spacing:-.01em; }
   body.font-all, body.font-all input, body.font-all .btn{ font-family:var(--font-body,inherit); }
   body.font-display h1, body.font-display h2, body.font-display h3, body.font-display .price{ font-family:var(--font-display,inherit); }
   .wrap{ max-width:1040px; margin:0 auto; padding:24px 18px 60px; }
@@ -78,7 +85,7 @@ export function bookingSiteHtml(): string {
 </style></head><body>
 <div class="wrap">
   <header class="hero">
-    <div class="brand"><svg class="logo" viewBox="0 0 28 28" fill="none"><defs><linearGradient id="lm" x1="0" y1="28" x2="28" y2="0"><stop stop-color="#6d8bff"/><stop offset="1" stop-color="#8b6cff"/></linearGradient></defs><rect x="3" y="16" width="5" height="9" rx="2" fill="url(#lm)"/><rect x="11.5" y="9" width="5" height="16" rx="2" fill="url(#lm)"/><rect x="20" y="3" width="5" height="22" rx="2" fill="url(#lm)"/></svg>
+    <div class="brand"><svg class="logo" viewBox="0 0 128 128"><defs><linearGradient id="lm" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#6d8bff"/><stop offset="1" stop-color="#8b6cff"/></linearGradient></defs><rect width="128" height="128" rx="30" fill="url(#lm)"/><path fill="#fff" d="M 24.40 29.00 Q 24.40 16.00 37.40 16.00 L 90.60 16.00 Q 103.60 16.00 103.60 29.00 L 103.60 31.51 Q 103.60 44.51 90.60 44.51 L 59.92 44.51 Q 56.08 44.51 56.08 48.35 L 56.08 48.35 Q 56.08 52.19 59.92 52.19 L 74.73 52.19 Q 86.73 52.19 86.73 64.19 L 86.73 64.19 Q 86.73 76.19 74.73 76.19 L 59.73 76.19 Q 56.08 76.19 56.08 79.84 L 56.08 79.84 Q 56.08 83.49 59.73 83.49 L 90.60 83.49 Q 103.60 83.49 103.60 96.49 L 103.60 99.00 Q 103.60 112.00 90.60 112.00 L 37.40 112.00 Q 24.40 112.00 24.40 99.00 Z"/></svg>
       <strong id="brandName">Loading…</strong></div>
     <h1 id="heroTitle">Find your stay</h1>
     <p class="sub">Live availability and instant pricing — request to book in seconds.</p>
