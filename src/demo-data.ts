@@ -27,6 +27,17 @@ export interface DemoCapitalMove { id: string; entityCode: string; propertyCode?
 export interface DemoProspect { id: string; name: string; partyId?: string; preferences: Record<string, unknown> }
 export interface DemoBudgetLine { category: 'revenue' | 'expense'; label: string; amountCents: number; account?: string }
 export interface DemoPropertyBudget { id: string; propertyCode: string; periodStart: string; periodEnd: string; lines: DemoBudgetLine[]; notes?: string }
+export interface DemoSpace { code: string; label: string; type: 'common' | 'amenity'; capacity?: number }
+export interface DemoReservation { id: string; spaceCode: string; holderPartyId: string; start: string; end: string; reservedAt: string; priceCents?: number; note?: string }
+export interface DemoThreadMessage { id: string; at: string; authorType: 'party' | 'user' | 'agent'; authorId: string; body: string }
+export interface DemoThread { id: string; subject: string; kind: 'resident' | 'finance' | 'internal'; createdAt: string; agreementId?: string; partyId?: string; resolvedAt?: string; messages: DemoThreadMessage[] }
+export interface DemoBankTx { id: string; postedAt: string; amountCents: number; description: string; reference?: string }
+export interface DemoPurchaseOrder { id: string; vendorId: string; entityCode?: string; createdAt: string; expectedAt?: string; memo?: string; lines: { description: string; account: string; amountCents: number }[]; approve?: boolean; receive?: boolean }
+export interface DemoProcBudget { id: string; account: string; periodStart: string; periodEnd: string; amountCents: number; label?: string }
+export interface DemoUnitTurn { id: string; unitCode: string; vacatedAt: string; createdAt: string; notes?: string; tasksDone?: number }
+export interface DemoPmSchedule { id: string; title: string; cadenceDays: number; nextDueAt: string; createdAt: string; priority?: string }
+export interface DemoEnvelope { id: string; documentName: string; provider: string; createdAt: string; agreementId?: string; leadId?: string; signers: { name: string; email: string; role: string; partyId?: string }[]; send?: boolean }
+export interface DemoNotification { id: string; channel: 'email' | 'sms'; to: string; kind: string; createdAt: string; data?: Record<string, unknown> }
 export interface DemoGuest { code: string; fullName: string; email: string }
 export interface DemoParty {
   id: string; kind: 'person' | 'organization'; displayName: string;
@@ -98,6 +109,16 @@ export interface DemoWorld {
   contributions?: DemoCapitalMove[];
   roommateProspects?: DemoProspect[];
   propertyBudgets?: DemoPropertyBudget[];
+  spaces?: DemoSpace[];
+  reservations?: DemoReservation[];
+  threads?: DemoThread[];
+  bankTransactions?: DemoBankTx[];
+  purchaseOrders?: DemoPurchaseOrder[];
+  procurementBudgets?: DemoProcBudget[];
+  unitTurns?: DemoUnitTurn[];
+  pmSchedules?: DemoPmSchedule[];
+  signatureEnvelopes?: DemoEnvelope[];
+  notifications?: DemoNotification[];
 }
 
 const DAY = 86_400_000;
@@ -123,9 +144,17 @@ export function buildDemoWorld(tenantId: string, at: string): DemoWorld {
 
   // Two communities so per-property rollups (rent roll, occupancy, financials)
   // have real data to compare.
+  // Owning legal entities (an operating company + one SPE per community) so the
+  // owner statements, distributions, contributions and capital-account views all
+  // have a real entity to roll up to.
+  const legalEntities: DemoEntity[] = [
+    { code: 'OPCO', role: 'operator', name: 'Ilhabela Stays Operações Ltda', taxId: '11.111.111/0001-11' },
+    { code: 'SPE-CURRAL', role: 'spe', name: 'Curral SPE Participações Ltda', taxId: '22.222.222/0001-22' },
+    { code: 'SPE-VILA', role: 'spe', name: 'Vila Perequê SPE Ltda', taxId: '33.333.333/0001-33' },
+  ];
   const properties: DemoProperty[] = [
-    { code: 'CURRAL', name: 'Praia do Curral', address: 'Av. Force, Ilhabela' },
-    { code: 'VILA', name: 'Vila & Perequê', address: 'Perequê, Ilhabela' },
+    { code: 'CURRAL', name: 'Praia do Curral', address: 'Av. Force, Ilhabela', entityCode: 'SPE-CURRAL' },
+    { code: 'VILA', name: 'Vila & Perequê', address: 'Perequê, Ilhabela', entityCode: 'SPE-VILA' },
   ];
   const units: DemoUnit[] = [
     { code: 'ILH-101', label: 'Praia do Curral — Apto 101 (frente mar)', active: true, propertyCode: 'CURRAL' },
@@ -268,7 +297,129 @@ export function buildDemoWorld(tenantId: string, at: string): DemoWorld {
       { category: 'expense', label: 'Property management', account: 'expense:management', amountCents: 12_300_00 },
       { category: 'expense', label: 'Repairs & maintenance', account: 'expense:maintenance', amountCents: 9_000_00 } ] },
   ];
-  return { tenantId, properties, units, guests, parties, pricingRules, agreements, invoices, deposits, bills, workOrders, leads, propertyBudgets };
+  // --- leasing funnel: tours + applications (tie back to CRM leads) --------
+  const tours: DemoTour[] = [
+    { id: 'demo-tour-1', prospectName: 'Grupo corporativo — offsite', prospectEmail: 'eventos@corp.example.com', scheduledAt: t(2), leadId: 'demo-lead-2', unitCode: 'ILH-CASA', notes: 'Interessados na casa inteira para 10 pax.', createdAt: t(-1) },
+    { id: 'demo-tour-2', prospectName: 'Temporada janeiro — Loft 201', scheduledAt: t(5), leadId: 'demo-lead-5', unitCode: 'ILH-LOFT1', createdAt: t(-2) },
+    { id: 'demo-tour-3', prospectName: 'Casal lua de mel', prospectEmail: 'casal@example.com', scheduledAt: t(-1), leadId: 'demo-lead-3', unitCode: 'ILH-LOFT2', createdAt: t(-4) },
+  ];
+  const applications: DemoApplication[] = [
+    { id: 'demo-app-1', applicantName: 'Casal lua de mel', applicantEmail: 'casal@example.com', leadId: 'demo-lead-3', unitCode: 'ILH-LOFT2', incomeCents: 900_000, submittedAt: t(-13) },
+    { id: 'demo-app-2', applicantName: 'Locação anual — Perequê', applicantEmail: 'anual@example.com', leadId: 'demo-lead-4', unitCode: 'ILH-RES1', incomeCents: 1_500_000, submittedAt: t(-24) },
+  ];
+
+  // --- renters-insurance compliance (one active, one expiring soon) --------
+  const insurancePolicies: DemoInsurance[] = [
+    { id: 'demo-ins-1', agreementId: 'demo-agr-lease-1', partyId: 'demo-party-joao', carrier: 'Porto Seguro', policyNumber: 'PS-2026-0001', liabilityCents: 5_000_000, effectiveAt: d(-190), expiresAt: d(175), createdAt: t(-190) },
+    { id: 'demo-ins-2', agreementId: 'demo-agr-lease-3', partyId: 'demo-party-loja', carrier: 'Bradesco Seguros', policyNumber: 'BR-2025-7788', liabilityCents: 8_000_000, effectiveAt: d(-350), expiresAt: d(20), createdAt: t(-350) },
+  ];
+
+  // --- utility billing (RUBS) — a draft master bill per community ----------
+  const utilityBills: DemoUtilityBill[] = [
+    { id: 'demo-util-1', propertyCode: 'VILA', utility: 'water', method: 'equal', periodStart: d(-30), periodEnd: d(0), totalCents: 90_000, createdAt: t(-2) },
+    { id: 'demo-util-2', propertyCode: 'CURRAL', utility: 'electric', method: 'occupancy', periodStart: d(-30), periodEnd: d(0), totalCents: 220_000, createdAt: t(-2) },
+  ];
+
+  // --- front-desk parcel room (one fresh, one aging past a week) -----------
+  const parcels: DemoParcel[] = [
+    { id: 'demo-par-1', partyId: 'demo-party-carlos', carrier: 'Correios', receivedAt: t(-1), description: 'Encomenda Mercado Livre', location: 'Recepção — Prateleira A2' },
+    { id: 'demo-par-2', partyId: 'demo-party-lucia', carrier: 'Jadlog', receivedAt: t(-9), description: 'Caixa grande', location: 'Sala de encomendas' },
+  ];
+
+  // --- prospect waitlist (≥3 → the demand insight fires) -------------------
+  const waitlist: DemoWaitlist[] = [
+    { id: 'demo-wl-1', prospectName: 'Bianca Alves', propertyCode: 'CURRAL', prospectEmail: 'bianca@example.com', desiredMoveIn: d(30), joinedAt: t(-5) },
+    { id: 'demo-wl-2', prospectName: 'Diego Ferreira', propertyCode: 'VILA', joinedAt: t(-3) },
+    { id: 'demo-wl-3', prospectName: 'Marina Lopes', propertyCode: 'CURRAL', desiredMoveIn: d(45), joinedAt: t(-2) },
+  ];
+
+  // --- capital in (contributions) and out (distributions) per SPE ----------
+  const contributions: DemoCapitalMove[] = [
+    { id: 'demo-contrib-1', entityCode: 'SPE-CURRAL', propertyCode: 'CURRAL', amountCents: 5_000_000, recordedAt: t(-180), memo: 'Capital inicial — aquisição Praia do Curral' },
+    { id: 'demo-contrib-2', entityCode: 'SPE-VILA', propertyCode: 'VILA', amountCents: 3_000_000, recordedAt: t(-150), memo: 'Capital inicial — Vila & Perequê' },
+  ];
+  const distributions: DemoCapitalMove[] = [
+    { id: 'demo-dist-1', entityCode: 'SPE-CURRAL', propertyCode: 'CURRAL', amountCents: 400_000, recordedAt: t(-30), memo: 'Distribuição trimestral aos cotistas' },
+    { id: 'demo-dist-2', entityCode: 'SPE-VILA', propertyCode: 'VILA', amountCents: 250_000, recordedAt: t(-20), memo: 'Distribuição trimestral aos cotistas' },
+  ];
+
+  // --- student roommate prospects (for the shared República room) ----------
+  const roommateProspects: DemoProspect[] = [
+    { id: 'demo-rm-1', name: 'Tiago Martins', partyId: 'demo-party-student', preferences: { cleanliness: 4, social: 3, chronotype: 'early', smoker: false } },
+    { id: 'demo-rm-2', name: 'Bruno Carvalho', preferences: { cleanliness: 4, social: 3, chronotype: 'early', smoker: false } },
+    { id: 'demo-rm-3', name: 'Felipe Costa', preferences: { cleanliness: 2, social: 5, chronotype: 'late', smoker: true, smokeFreeOnly: false } },
+  ];
+
+  // --- bookable amenity spaces + reservations (common-area calendar) -------
+  const spaces: DemoSpace[] = [
+    { code: 'CURRAL-POOL', label: 'Praia do Curral — Piscina/Deck', type: 'amenity', capacity: 20 },
+    { code: 'CURRAL-SALAO', label: 'Praia do Curral — Salão de festas', type: 'amenity', capacity: 40 },
+    { code: 'VILA-CHURR', label: 'Vila & Perequê — Churrasqueira', type: 'amenity', capacity: 15 },
+  ];
+  const reservations: DemoReservation[] = [
+    { id: 'demo-resv-1', spaceCode: 'CURRAL-SALAO', holderPartyId: 'demo-party-carlos', start: d(6), end: d(7), reservedAt: t(-1), priceCents: 30_000, note: 'Aniversário — 30 convidados' },
+    { id: 'demo-resv-2', spaceCode: 'VILA-CHURR', holderPartyId: 'demo-party-lucia', start: d(3), end: d(4), reservedAt: t(-2), note: 'Confraternização' },
+  ];
+
+  // --- inbox threads (resident + internal) --------------------------------
+  const threads: DemoThread[] = [
+    { id: 'demo-thr-1', subject: 'Wi-Fi instável no Loft 202', kind: 'resident', createdAt: t(-3), agreementId: 'demo-agr-monthly-2', partyId: 'demo-party-lucia', messages: [
+      { id: 'demo-msg-1a', at: t(-3), authorType: 'party', authorId: 'demo-party-lucia', body: 'A internet cai várias vezes ao dia. Podem verificar?' },
+      { id: 'demo-msg-1b', at: t(-2), authorType: 'user', authorId: 'demo-user-desk', body: 'Abrimos um chamado com a operadora; técnico agendado para amanhã.' },
+    ] },
+    { id: 'demo-thr-2', subject: 'Repasse de condomínio — julho', kind: 'internal', createdAt: t(-5), messages: [
+      { id: 'demo-msg-2a', at: t(-5), authorType: 'user', authorId: 'demo-user-fin', body: 'Condomínio do Loft 201 a repassar ao síndico até dia 10.' },
+    ] },
+  ];
+
+  // --- bank reconciliation feed (an inflow that matches, an outflow, noise) -
+  const bankTransactions: DemoBankTx[] = [
+    { id: 'demo-btx-1', postedAt: t(-2), amountCents: 424_000, description: 'PIX RECEBIDO — MARIA F COSTA', reference: 'E2026...0001' },
+    { id: 'demo-btx-2', postedAt: t(-5), amountCents: -120_000, description: 'PIX ENVIADO — ILHA MANUTENCAO', reference: 'E2026...0002' },
+    { id: 'demo-btx-3', postedAt: t(-1), amountCents: 5_000, description: 'TARIFA BANCARIA MENSAL', reference: 'TAR-07' },
+  ];
+
+  // --- purchasing: two POs (one approved) + a maintenance budget -----------
+  const purchaseOrders: DemoPurchaseOrder[] = [
+    { id: 'demo-po-1', vendorId: 'demo-party-vendor', entityCode: 'OPCO', createdAt: t(-12), expectedAt: d(5), memo: 'Materiais de reforma — Apto 103', lines: [{ description: 'Tinta + revestimento', account: 'expense:maintenance', amountCents: 180_000 }], approve: true },
+    { id: 'demo-po-2', vendorId: 'demo-party-vendor', entityCode: 'OPCO', createdAt: t(-3), expectedAt: d(14), memo: 'Enxoval e amenities — casas de temporada', lines: [{ description: 'Roupas de cama e banho', account: 'expense:supplies', amountCents: 95_000 }] },
+  ];
+  const procurementBudgets: DemoProcBudget[] = [
+    { id: 'demo-pbud-mnt', account: 'expense:maintenance', periodStart: `${at.slice(0, 4)}-01-01`, periodEnd: `${Number(at.slice(0, 4)) + 1}-01-01`, amountCents: 18_000_00, label: 'Manutenção anual' },
+  ];
+
+  // --- unit turns / make-ready (one stuck past a week → the ops insight) ---
+  const unitTurns: DemoUnitTurn[] = [
+    { id: 'demo-turn-1', unitCode: 'ILH-102B', vacatedAt: d(-10), createdAt: t(-10), notes: 'Reforma completa antes de relistar', tasksDone: 2 },
+    { id: 'demo-turn-2', unitCode: 'ILH-102', vacatedAt: d(-2), createdAt: t(-2), notes: 'Preparação padrão pós check-out' },
+  ];
+
+  // --- preventive-maintenance schedules -----------------------------------
+  const pmSchedules: DemoPmSchedule[] = [
+    { id: 'demo-pm-1', title: 'Manutenção de ar-condicionado (todas as unidades)', cadenceDays: 90, nextDueAt: d(12), createdAt: t(-80), priority: 'normal' },
+    { id: 'demo-pm-2', title: 'Tratamento semanal da piscina — Curral', cadenceDays: 7, nextDueAt: d(2), createdAt: t(-40), priority: 'high' },
+  ];
+
+  // --- e-sign envelope (a lease out for signature) ------------------------
+  const signatureEnvelopes: DemoEnvelope[] = [
+    { id: 'demo-env-1', documentName: 'Contrato de locação — República Quarto A', provider: 'clicksign', agreementId: 'demo-agr-lease-2', createdAt: t(-58), send: true, signers: [
+      { name: 'Tiago Martins', email: 'tiago.martins@example.com', role: 'resident', partyId: 'demo-party-student' },
+      { name: 'Sônia Martins', email: 'sonia.martins@example.com', role: 'guarantor', partyId: 'demo-party-parent' },
+    ] },
+  ];
+
+  // --- notification outbox (receipts + a reminder) ------------------------
+  const notifications: DemoNotification[] = [
+    { id: 'demo-ntf-1', channel: 'email', to: 'maria.costa@example.com', kind: 'payment_receipt', createdAt: t(-2), data: { invoiceId: 'demo-inv-1', amountCents: 424_000 } },
+    { id: 'demo-ntf-2', channel: 'email', to: 'sonia.martins@example.com', kind: 'collections_reminder', createdAt: t(-1), data: { invoiceId: 'demo-inv-7', daysOverdue: 32 } },
+    { id: 'demo-ntf-3', channel: 'email', to: 'joao.almeida@example.com', kind: 'collections_reminder', createdAt: t(-1), data: { invoiceId: 'demo-inv-5', daysOverdue: 20 } },
+  ];
+
+  return {
+    tenantId, properties, units, guests, parties, pricingRules, agreements, invoices, deposits, bills, workOrders, leads, propertyBudgets,
+    legalEntities, tours, applications, insurancePolicies, utilityBills, parcels, waitlist, contributions, distributions, roommateProspects,
+    spaces, reservations, threads, bankTransactions, purchaseOrders, procurementBudgets, unitTurns, pmSchedules, signatureEnvelopes, notifications,
+  };
 }
 
 /** Marker unit for the European portfolio (distinct from the Ilhabela one). */

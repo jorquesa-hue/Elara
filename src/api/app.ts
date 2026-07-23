@@ -4459,6 +4459,57 @@ export class App {
       propertyBudgets++;
     }
 
+    // --- operations & finance modules (fill the remaining portal views) -----
+    const spaceId = (code: string) => `demo-space-${code}`;
+    let spaces = 0, reservations = 0, threads = 0, messages = 0, bankTransactions = 0;
+    let purchaseOrders = 0, procurementBudgets = 0, unitTurns = 0, pmSchedules = 0, envelopes = 0, notifications = 0;
+    for (const sp of w.spaces ?? []) {
+      this.spaces.add({ id: spaceId(sp.code), tenantId, type: sp.type, code: sp.code, label: sp.label, leasable: false, ...(sp.capacity !== undefined ? { capacity: sp.capacity } : {}) });
+      spaces++;
+    }
+    for (const rv of w.reservations ?? []) {
+      this.reservations.reserve({ id: rv.id, tenantId, spaceId: spaceId(rv.spaceCode), holderPartyId: rv.holderPartyId, start: rv.start, end: rv.end, reservedAt: rv.reservedAt, ...(rv.priceCents !== undefined ? { priceCents: rv.priceCents, currency } : {}), note: rv.note });
+      reservations++;
+    }
+    for (const th of w.threads ?? []) {
+      this.comms.openThread({ id: th.id, tenantId, subject: th.subject, kind: th.kind, createdAt: th.createdAt, agreementId: th.agreementId, partyId: th.partyId });
+      threads++;
+      for (const m of th.messages) { this.comms.post({ id: m.id, threadId: th.id, at: m.at, authorType: m.authorType, authorId: m.authorId, body: m.body }); messages++; }
+      if (th.resolvedAt) this.comms.resolve(th.id, th.resolvedAt);
+    }
+    for (const bt of w.bankTransactions ?? []) {
+      this.reconciliation.import({ id: bt.id, tenantId, postedAt: bt.postedAt, amountCents: bt.amountCents, description: bt.description, reference: bt.reference });
+      bankTransactions++;
+    }
+    for (const po of w.purchaseOrders ?? []) {
+      this.procurement.raise({ id: po.id, tenantId, vendorId: po.vendorId, entityId: po.entityCode ? entId(po.entityCode) : undefined, createdAt: po.createdAt, expectedAt: po.expectedAt, currency, lines: po.lines, memo: po.memo });
+      if (po.approve || po.receive) this.procurement.approve(po.id, po.createdAt);
+      if (po.receive) this.procurement.receive(po.id, po.createdAt);
+      purchaseOrders++;
+    }
+    for (const pb of w.procurementBudgets ?? []) {
+      this.procurement.setBudget({ id: pb.id, tenantId, account: pb.account, periodStart: pb.periodStart, periodEnd: pb.periodEnd, amountCents: pb.amountCents, label: pb.label });
+      procurementBudgets++;
+    }
+    for (const tn of w.unitTurns ?? []) {
+      const turn = this.turns.open({ id: tn.id, tenantId, unitId: unitId(tn.unitCode), vacatedAt: tn.vacatedAt, createdAt: tn.createdAt, notes: tn.notes });
+      for (let i = 0; i < (tn.tasksDone ?? 0) && i < turn.tasks.length; i++) this.turns.setTask(turn.id, turn.tasks[i]!.key, true, tn.createdAt);
+      this.turnTenant.set(turn.id, tenantId); unitTurns++;
+    }
+    for (const pm of w.pmSchedules ?? []) {
+      const sched = this.pm.create({ id: pm.id, tenantId, title: pm.title, cadenceDays: pm.cadenceDays, nextDueAt: pm.nextDueAt, createdAt: pm.createdAt, priority: pm.priority });
+      this.pmTenant.set(sched.id, tenantId); pmSchedules++;
+    }
+    for (const en of w.signatureEnvelopes ?? []) {
+      this.signatures.create({ id: en.id, tenantId, documentName: en.documentName, provider: en.provider, leadId: en.leadId, agreementId: en.agreementId, signers: en.signers, createdAt: en.createdAt });
+      if (en.send) this.signatures.send(en.id, en.createdAt, `demo-ref-${en.id}`);
+      envelopes++;
+    }
+    for (const nt of w.notifications ?? []) {
+      this.notifications.enqueue({ id: nt.id, tenantId, channel: nt.channel, to: nt.to, kind: nt.kind, createdAt: nt.createdAt, data: nt.data });
+      notifications++;
+    }
+
     return {
       seeded: true,
       counts: {
@@ -4470,6 +4521,8 @@ export class App {
         leads: w.leads.length,
         applications, tours, insurance, utilityBills, parcels, waitlist,
         distributions, contributions, roommateProspects: prospects, propertyBudgets,
+        spaces, reservations, threads, messages, bankTransactions,
+        purchaseOrders, procurementBudgets, unitTurns, pmSchedules, envelopes, notifications,
       },
     };
   }
