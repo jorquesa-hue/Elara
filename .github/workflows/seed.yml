@@ -1,0 +1,20 @@
+# On-demand: force-reseed the demo portfolios on the running Fly instance so
+# every module is populated through the kernel (balanced journals, idempotent
+# collision handling, durable flush). Runs `src/seed-live.mjs` INSIDE the machine
+# via flyctl ssh, where JWT_SECRET is available — no secret leaves Fly.
+#
+# Trigger: Actions tab -> "Seed live" -> Run workflow (or via the API).
+name: Seed live
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Force-reseed demo portfolios on the live app
+        run: flyctl ssh console -a elara-tvumsw -C "node src/seed-live.mjs"
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
