@@ -3481,7 +3481,7 @@
     else if(p==="qtd") from=ym(new Date(Date.UTC(y,Math.floor(m/3)*3,1)));
     else if(p==="ytd") from=ym(new Date(Date.UTC(y,0,1)));
     else if(p==="t12"){ from=ym(new Date(Date.UTC(y,m-12,1))); }
-    else { from=""; to=""; } // all time
+    else { from="1970-01-01"; } // all time — everything up to today (to stays today+1)
     state.reportFrom=from; state.reportTo=to; state.reportPreset=p;
   }
   function renderCatalogTab(body){

@@ -2022,14 +2022,19 @@ export class App {
       );
     });
 
-    this.add('GET', '/bills', 'bill.read', (ctx) => ({
-      status: 200,
-      body: { bills: this.payables.allBills().filter((b) => b.tenantId === ctx.tenantId).map((b) => this.billRow(ctx.tenantId, b)).sort((a, b) => (a.issuedAt < b.issuedAt ? 1 : -1)) },
-    }));
+    this.add('GET', '/bills', 'bill.read', (ctx) => {
+      const scope = this.effectivePropertyScope(ctx).set; // community-locked operators see only their communities' bills
+      return {
+        status: 200,
+        body: { bills: this.payables.allBills().filter((b) => b.tenantId === ctx.tenantId && (!scope || (b.propertyId != null && scope.includes(b.propertyId)))).map((b) => this.billRow(ctx.tenantId, b)).sort((a, b) => (a.issuedAt < b.issuedAt ? 1 : -1)) },
+      };
+    });
 
     this.add('GET', '/bills/:id', 'bill.read', (ctx, p) => {
       const bill = this.payables.allBills().find((b) => b.id === p['id'] && b.tenantId === ctx.tenantId);
       if (!bill) throw new HttpError(404, 'bill not found');
+      const scope = this.effectivePropertyScope(ctx).set;
+      if (scope && (bill.propertyId == null || !scope.includes(bill.propertyId))) throw new HttpError(404, 'bill not found');
       return { status: 200, body: this.billRow(ctx.tenantId, bill) };
     });
 
@@ -3668,15 +3673,18 @@ export class App {
     // App folds in the ACTUALS from the ledger (per-property revenue/expense),
     // yielding budget-vs-actual NOI and variance. Config-like → RBAC-only.
     this.add('GET', '/property-budgets', 'propbudget.read', (ctx, _p, body) => {
-      const propertyId = this.optString(body, 'propertyId');
+      const scope = this.effectivePropertyScope(ctx, this.optString(body, 'propertyId')).set;
       let list = this.propertyBudgets.list(ctx.tenantId);
-      if (propertyId) list = list.filter((b) => b.propertyId === propertyId);
+      if (scope) list = list.filter((b) => scope.includes(b.propertyId)); // community-locked operators see only their communities
       return { status: 200, body: { budgets: list.map((b) => this.propertyBudgetRow(ctx.tenantId, b)) } };
     });
 
-    this.add('GET', '/property-budgets/:id', 'propbudget.read', (ctx, p) => ({
-      status: 200, body: this.propertyBudgetRow(ctx.tenantId, this.ownedPropertyBudget(ctx, p['id']!)),
-    }));
+    this.add('GET', '/property-budgets/:id', 'propbudget.read', (ctx, p) => {
+      const budget = this.ownedPropertyBudget(ctx, p['id']!);
+      const scope = this.effectivePropertyScope(ctx).set;
+      if (scope && !scope.includes(budget.propertyId)) throw new HttpError(404, 'property budget not found');
+      return { status: 200, body: this.propertyBudgetRow(ctx.tenantId, budget) };
+    });
 
     this.add('POST', '/property-budgets', 'propbudget.manage', (ctx, _p, body) => {
       const propertyId = this.requireString(body, 'propertyId');
