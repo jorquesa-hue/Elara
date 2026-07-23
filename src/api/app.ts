@@ -46,7 +46,7 @@ import { Tours } from '../tours.ts';
 import { Turns, turnDays } from '../turns.ts';
 import { PreventiveMaintenance } from '../preventive.ts';
 import { InsuranceRegistry, coverageStatus } from '../insurance.ts';
-import { UtilityBilling, allocateUtility, isUtilityKind, isAllocationMethod, type AllocationMethod, type UtilityParticipant } from '../utility-billing.ts';
+import { UtilityBilling, allocateUtility, isUtilityKind, isAllocationMethod, type AllocationMethod, type UtilityKind, type UtilityParticipant } from '../utility-billing.ts';
 import { Parcels, parcelDaysWaiting } from '../packages.ts';
 import { Waitlist } from '../waitlist.ts';
 import { Distributions } from '../distributions.ts';
@@ -4166,7 +4166,9 @@ export class App {
     let billPayments = 0;
 
     const propId = (code: string) => `demo-prop-${code}`;
-    for (const pr of w.properties) this.masterData.properties.add({ id: propId(pr.code), tenantId, code: pr.code, name: pr.name, ...(pr.address ? { address: pr.address } : {}) });
+    const entId = (code: string) => `demo-ent-${code}`;
+    for (const e of w.legalEntities ?? []) this.entities.addEntity({ id: entId(e.code), tenantId, role: e.role as EntityRole, name: e.name, taxId: e.taxId });
+    for (const pr of w.properties) this.masterData.properties.add({ id: propId(pr.code), tenantId, code: pr.code, name: pr.name, ...(pr.address ? { address: pr.address } : {}), ...(pr.entityCode ? { entityId: entId(pr.entityCode) } : {}) });
     for (const u of w.units) this.masterData.units.add({ id: unitId(u.code), tenantId, code: u.code, label: u.label, active: u.active, ...(u.propertyCode ? { propertyId: propId(u.propertyCode) } : {}) });
     for (const g of w.guests) this.masterData.guests.add({ id: guestId(g.code), tenantId, code: g.code, fullName: g.fullName, email: g.email });
     for (const p of w.parties) this.parties.addParty({ id: p.id, tenantId, kind: p.kind, displayName: p.displayName, legalName: p.legalName, taxId: p.taxId, email: p.email, phone: p.phone, attributes: p.attributes });
@@ -4218,14 +4220,55 @@ export class App {
       }
     }
 
+    // --- specialty modules (the European portfolio populates these) -------
+    let applications = 0, tours = 0, insurance = 0, utilityBills = 0, parcels = 0, waitlist = 0, distributions = 0, contributions = 0, prospects = 0;
+    for (const a of w.applications ?? []) {
+      const app = this.applications.submit({ id: a.id, tenantId, applicantName: a.applicantName, applicantEmail: a.applicantEmail, leadId: a.leadId, unitId: a.unitCode ? unitId(a.unitCode) : undefined, ...(a.incomeCents !== undefined ? { incomeCents: a.incomeCents } : {}), submittedAt: a.submittedAt });
+      this.applicationTenant.set(app.id, tenantId); applications++;
+    }
+    for (const tr of w.tours ?? []) {
+      const tour = this.tours.request({ id: tr.id, tenantId, prospectName: tr.prospectName, scheduledAt: tr.scheduledAt, prospectEmail: tr.prospectEmail, leadId: tr.leadId, unitId: tr.unitCode ? unitId(tr.unitCode) : undefined, notes: tr.notes, createdAt: tr.createdAt });
+      this.tourTenant.set(tour.id, tenantId); tours++;
+    }
+    for (const ip of w.insurancePolicies ?? []) {
+      const pol = this.insurance.create({ id: ip.id, tenantId, agreementId: ip.agreementId, partyId: ip.partyId, carrier: ip.carrier, policyNumber: ip.policyNumber, liabilityCents: ip.liabilityCents, effectiveAt: ip.effectiveAt, expiresAt: ip.expiresAt, createdAt: ip.createdAt });
+      this.insuranceTenant.set(pol.id, tenantId); insurance++;
+    }
+    for (const ub of w.utilityBills ?? []) {
+      const bill = this.utilities.create({ id: ub.id, tenantId, propertyId: propId(ub.propertyCode), utility: ub.utility as UtilityKind, method: ub.method as AllocationMethod, periodStart: ub.periodStart, periodEnd: ub.periodEnd, totalCents: ub.totalCents, createdAt: ub.createdAt });
+      this.utilityTenant.set(bill.id, tenantId); utilityBills++;
+    }
+    for (const pc of w.parcels ?? []) {
+      const parcel = this.parcels.log({ id: pc.id, tenantId, partyId: pc.partyId, carrier: pc.carrier, receivedAt: pc.receivedAt, agreementId: pc.agreementId, description: pc.description, location: pc.location });
+      this.parcelTenant.set(parcel.id, tenantId); parcels++;
+    }
+    for (const wl of w.waitlist ?? []) {
+      const entry = this.waitlist.join({ id: wl.id, tenantId, prospectName: wl.prospectName, propertyId: wl.propertyCode ? propId(wl.propertyCode) : undefined, prospectEmail: wl.prospectEmail, desiredMoveIn: wl.desiredMoveIn, joinedAt: wl.joinedAt });
+      this.waitlistTenant.set(entry.id, tenantId); waitlist++;
+    }
+    for (const rp of w.roommateProspects ?? []) {
+      this.roommates.upsertProspect({ id: rp.id, tenantId, name: rp.name, partyId: rp.partyId, preferences: rp.preferences as RoommatePreferences }); prospects++;
+    }
+    for (const c of w.contributions ?? []) {
+      const rec = this.contributions.record({ id: c.id, tenantId, entityId: entId(c.entityCode), propertyId: c.propertyCode ? propId(c.propertyCode) : undefined, amountCents: c.amountCents, currency, memo: c.memo, recordedAt: c.recordedAt });
+      this.contributionTenant.set(rec.id, tenantId); contributions++;
+    }
+    for (const dm of w.distributions ?? []) {
+      const rec = this.distributions.record({ id: dm.id, tenantId, entityId: entId(dm.entityCode), propertyId: dm.propertyCode ? propId(dm.propertyCode) : undefined, amountCents: dm.amountCents, currency, memo: dm.memo, recordedAt: dm.recordedAt });
+      this.distributionTenant.set(rec.id, tenantId); distributions++;
+    }
+
     return {
       seeded: true,
       counts: {
+        legalEntities: (w.legalEntities ?? []).length,
         units: w.units.length, guests: w.guests.length, parties: w.parties.length,
         pricingRules: w.pricingRules.length, agreements: w.agreements.length,
         invoices: w.invoices.length, payments, deposits: w.deposits.length,
         bills: w.bills.length, billPayments, workOrders: w.workOrders.length,
         leads: w.leads.length,
+        applications, tours, insurance, utilityBills, parcels, waitlist,
+        distributions, contributions, roommateProspects: prospects,
       },
     };
   }

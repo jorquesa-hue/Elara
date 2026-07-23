@@ -15,7 +15,16 @@
 // pricing rule. Given a fixed `at` it is fully reproducible.
 
 export interface DemoUnit { code: string; label: string; active: boolean; propertyCode?: string }
-export interface DemoProperty { code: string; name: string; address?: string }
+export interface DemoProperty { code: string; name: string; address?: string; entityCode?: string }
+export interface DemoEntity { code: string; role: string; name: string; taxId?: string }
+export interface DemoApplication { id: string; applicantName: string; applicantEmail?: string; leadId?: string; unitCode?: string; incomeCents?: number; submittedAt: string }
+export interface DemoTour { id: string; prospectName: string; scheduledAt: string; prospectEmail?: string; leadId?: string; unitCode?: string; notes?: string; createdAt: string }
+export interface DemoInsurance { id: string; agreementId: string; partyId?: string; carrier: string; policyNumber: string; liabilityCents: number; effectiveAt: string; expiresAt: string; createdAt: string }
+export interface DemoUtilityBill { id: string; propertyCode: string; utility: string; method: string; periodStart: string; periodEnd: string; totalCents: number; createdAt: string }
+export interface DemoParcel { id: string; partyId: string; carrier: string; receivedAt: string; agreementId?: string; description?: string; location?: string }
+export interface DemoWaitlist { id: string; prospectName: string; propertyCode?: string; prospectEmail?: string; desiredMoveIn?: string; joinedAt: string }
+export interface DemoCapitalMove { id: string; entityCode: string; propertyCode?: string; amountCents: number; recordedAt: string; memo?: string }
+export interface DemoProspect { id: string; name: string; partyId?: string; preferences: Record<string, unknown> }
 export interface DemoGuest { code: string; fullName: string; email: string }
 export interface DemoParty {
   id: string; kind: 'person' | 'organization'; displayName: string;
@@ -75,6 +84,17 @@ export interface DemoWorld {
   bills: DemoBill[];
   workOrders: DemoWorkOrder[];
   leads: DemoLead[];
+  // Optional specialty-module data (populated by the European portfolio).
+  legalEntities?: DemoEntity[];
+  applications?: DemoApplication[];
+  tours?: DemoTour[];
+  insurancePolicies?: DemoInsurance[];
+  utilityBills?: DemoUtilityBill[];
+  parcels?: DemoParcel[];
+  waitlist?: DemoWaitlist[];
+  distributions?: DemoCapitalMove[];
+  contributions?: DemoCapitalMove[];
+  roommateProspects?: DemoProspect[];
 }
 
 const DAY = 86_400_000;
@@ -251,11 +271,15 @@ export function buildEuropeWorld(tenantId: string, at: string): DemoWorld {
   const d = (o: number) => isoDate(now + o * DAY);
   const t = (o: number) => isoStamp(now + o * DAY);
 
+  const legalEntities: DemoEntity[] = [
+    { code: 'DE-SPE', role: 'spe', name: 'Meridian Deutschland SPE GmbH', taxId: 'DE-SPE-100200300' },
+    { code: 'NL-SPE', role: 'spe', name: 'Meridian Nederland Vastgoed B.V.', taxId: 'NL-SPE-400500600' },
+  ];
   const properties: DemoProperty[] = [
-    { code: 'BER', name: 'Meridian Berlin Mitte', address: 'Torstraße 140, 10119 Berlin' },       // MF + short-stay
-    { code: 'MUC', name: 'Meridian München Schwabing', address: 'Leopoldstraße 82, 80802 München' }, // MF, long-lease only
-    { code: 'AMS', name: 'Meridian Amsterdam Zuid', address: 'Gustav Mahlerplein 12, 1082 Amsterdam' }, // MF + short-stay
-    { code: 'CAMP', name: 'Meridian Campus Berlin', address: 'Ostendstraße 25, 12459 Berlin' },     // student housing
+    { code: 'BER', name: 'Meridian Berlin Mitte', address: 'Torstraße 140, 10119 Berlin', entityCode: 'DE-SPE' },       // MF + short-stay
+    { code: 'MUC', name: 'Meridian München Schwabing', address: 'Leopoldstraße 82, 80802 München', entityCode: 'DE-SPE' }, // MF, long-lease only
+    { code: 'AMS', name: 'Meridian Amsterdam Zuid', address: 'Gustav Mahlerplein 12, 1082 Amsterdam', entityCode: 'NL-SPE' }, // MF + short-stay
+    { code: 'CAMP', name: 'Meridian Campus Berlin', address: 'Ostendstraße 25, 12459 Berlin', entityCode: 'DE-SPE' },     // student housing
   ];
   const units: DemoUnit[] = [
     { code: 'BER-101', label: 'Berlin Mitte — Apt 1.01 (1BR)', active: true, propertyCode: 'BER' },
@@ -377,5 +401,50 @@ export function buildEuropeWorld(tenantId: string, at: string): DemoWorld {
     { id: 'demo-lead-e6', name: 'Group booking — cancelled', source: 'instagram', estValueCents: 800_000, createdAt: t(-18), advanceTo: ['toured', 'lost'] },
   ];
 
-  return { tenantId, properties, units, guests, parties, pricingRules, agreements, invoices, deposits, bills, workOrders, leads };
+  // --- specialty modules ---------------------------------------------------
+  const applications: DemoApplication[] = [
+    { id: 'demo-app-e1', applicantName: 'Noah Keller', applicantEmail: 'noah.keller@uni-berlin.de', leadId: 'demo-lead-e2', unitCode: 'CAMP-A13', incomeCents: 120_000, submittedAt: t(-8) },
+    { id: 'demo-app-e2', applicantName: 'Sofia Rossi', applicantEmail: 'sofia.rossi@example.it', leadId: 'demo-lead-e4', unitCode: 'MUC-14', incomeCents: 620_000, submittedAt: t(-12) },
+  ];
+  const tours: DemoTour[] = [
+    { id: 'demo-tour-e1', prospectName: 'Erasmus group (6)', prospectEmail: 'housing@uni-berlin.de', leadId: 'demo-lead-e2', unitCode: 'CAMP-B05', scheduledAt: t(3), notes: 'Group viewing of the B-wing studios.', createdAt: t(-9) },
+    { id: 'demo-tour-e2', prospectName: 'Familie Bauer', leadId: 'demo-lead-e4', unitCode: 'MUC-14', scheduledAt: t(2), createdAt: t(-25) },
+  ];
+  const insurancePolicies: DemoInsurance[] = [
+    { id: 'demo-ins-e1', agreementId: 'demo-agr-ber-1', partyId: 'demo-party-anna', carrier: 'Allianz', policyNumber: 'AZ-DE-88121', liabilityCents: 5_000_000, effectiveAt: d(-210), expiresAt: d(155), createdAt: t(-208) },
+    { id: 'demo-ins-e2', agreementId: 'demo-agr-muc-1', partyId: 'demo-party-lukas', carrier: 'HUK-Coburg', policyNumber: 'HUK-77234', liabilityCents: 5_000_000, effectiveAt: d(-320), expiresAt: d(45), createdAt: t(-318) },
+    { id: 'demo-ins-e3', agreementId: 'demo-agr-ams-1', partyId: 'demo-party-jeroen', carrier: 'Centraal Beheer', policyNumber: 'CB-NL-4021', liabilityCents: 5_000_000, effectiveAt: d(-30), expiresAt: d(60), createdAt: t(-28) },
+  ];
+  const utilityBills: DemoUtilityBill[] = [
+    { id: 'demo-util-e1', propertyCode: 'BER', utility: 'water', method: 'occupancy', periodStart: d(-60), periodEnd: d(-30), totalCents: 92_000, createdAt: t(-28) },
+    { id: 'demo-util-e2', propertyCode: 'MUC', utility: 'gas', method: 'area', periodStart: d(-60), periodEnd: d(-30), totalCents: 214_000, createdAt: t(-27) },
+  ];
+  const parcels: DemoParcel[] = [
+    { id: 'demo-par-e1', partyId: 'demo-party-anna', carrier: 'DHL', receivedAt: t(-1), agreementId: 'demo-agr-ber-1', description: 'Amazon box (medium)', location: 'Mailroom shelf B3' },
+    { id: 'demo-par-e2', partyId: 'demo-party-jeroen', carrier: 'PostNL', receivedAt: t(-2), agreementId: 'demo-agr-ams-1', description: 'Registered letter', location: 'Front desk' },
+    { id: 'demo-par-e3', partyId: 'demo-party-stu2', carrier: 'Hermes', receivedAt: t(0), description: 'Two parcels', location: 'Campus office' },
+  ];
+  const waitlist: DemoWaitlist[] = [
+    { id: 'demo-wl-e1', prospectName: 'Jonas Meier', prospectEmail: 'jonas.meier@uni-berlin.de', propertyCode: 'CAMP', desiredMoveIn: d(30), joinedAt: t(-6) },
+    { id: 'demo-wl-e2', prospectName: 'Lea Vogel', prospectEmail: 'lea.vogel@uni-berlin.de', propertyCode: 'CAMP', desiredMoveIn: d(45), joinedAt: t(-3) },
+    { id: 'demo-wl-e3', prospectName: 'Finn Braun', propertyCode: 'CAMP', desiredMoveIn: d(60), joinedAt: t(-1) },
+  ];
+  const contributions: DemoCapitalMove[] = [
+    { id: 'demo-con-e1', entityCode: 'DE-SPE', amountCents: 50_000_000, recordedAt: t(-300), memo: 'Seed equity — German portfolio' },
+    { id: 'demo-con-e2', entityCode: 'NL-SPE', amountCents: 20_000_000, recordedAt: t(-260), memo: 'Seed equity — Dutch portfolio' },
+  ];
+  const distributions: DemoCapitalMove[] = [
+    { id: 'demo-dis-e1', entityCode: 'DE-SPE', propertyCode: 'BER', amountCents: 1_800_000, recordedAt: t(-20), memo: 'Q2 distribution — Berlin' },
+    { id: 'demo-dis-e2', entityCode: 'DE-SPE', propertyCode: 'MUC', amountCents: 1_200_000, recordedAt: t(-20), memo: 'Q2 distribution — München' },
+  ];
+  const roommateProspects: DemoProspect[] = [
+    { id: 'demo-rp-e1', name: 'Noah Keller', partyId: 'demo-party-stu1', preferences: { cleanliness: 4, social: 3, chronotype: 'early', smoker: false, smokeFreeOnly: true } },
+    { id: 'demo-rp-e2', name: 'Mia Hofer', partyId: 'demo-party-stu2', preferences: { cleanliness: 5, social: 2, chronotype: 'early', smoker: false, smokeFreeOnly: true } },
+    { id: 'demo-rp-e3', name: 'Elif Yılmaz', preferences: { cleanliness: 3, social: 4, chronotype: 'late', smoker: false } },
+  ];
+
+  return {
+    tenantId, properties, units, guests, parties, pricingRules, agreements, invoices, deposits, bills, workOrders, leads,
+    legalEntities, applications, tours, insurancePolicies, utilityBills, parcels, waitlist, distributions, contributions, roommateProspects,
+  };
 }

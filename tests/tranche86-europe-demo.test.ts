@@ -35,6 +35,17 @@ test('the europe variant seeds four communities across the modules and balances'
   assert.equal((D(app, 'GET', '/ledger/trial-balance').body as { balanced: boolean }).balanced, true);
   // Some cash was collected (payments recorded).
   assert.ok((b.counts.payments ?? 0) >= 5);
+  // The specialty modules are populated too (nothing sits empty in the demo).
+  assert.equal(b.counts.legalEntities, 2);
+  assert.ok((b.counts.applications ?? 0) >= 2, 'rental applications seeded');
+  assert.ok((b.counts.tours ?? 0) >= 2, 'tours seeded');
+  assert.ok((b.counts.insurance ?? 0) >= 3, 'insurance policies seeded');
+  assert.ok((b.counts.utilityBills ?? 0) >= 2, 'utility/RUBS bills seeded');
+  assert.ok((b.counts.parcels ?? 0) >= 3, 'parcels seeded');
+  assert.ok((b.counts.waitlist ?? 0) >= 3, 'waitlist entries seeded');
+  assert.ok((b.counts.distributions ?? 0) >= 2, 'owner distributions seeded');
+  assert.ok((b.counts.contributions ?? 0) >= 2, 'owner capital contributions seeded');
+  assert.ok((b.counts.roommateProspects ?? 0) >= 3, 'roommate prospects seeded');
 });
 
 test('the europe seed is idempotent (re-seeding does nothing)', () => {
