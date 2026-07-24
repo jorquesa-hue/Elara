@@ -261,6 +261,29 @@
     border-radius: 6px; }
   .insight-cta:hover { text-decoration: underline; }
 
+  /* Split view + inspector (agreements) — from the Pro-Console concept */
+  .ag-split { display: flex; gap: 16px; align-items: flex-start; }
+  .ag-list { flex: 3; min-width: 0; }
+  .ag-insp { flex: 2; min-width: 320px; position: sticky; top: 16px; }
+  @media (max-width: 1040px){ .ag-split { flex-direction: column; } .ag-insp { width: 100%; position: static; } }
+  .ag-list tbody tr { cursor: pointer; }
+  .ag-list tbody tr.sel { background: var(--accent-soft); }
+  .ag-list tbody tr.sel td { border-bottom-color: var(--accent-line); }
+  .inspcard { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+  .insp-hd { padding: 15px 17px; border-bottom: 1px solid var(--border); }
+  .insp-hd .iid { font-family: ui-monospace, monospace; font-size: 11px; color: var(--subtle); }
+  .insp-hd h3 { font-size: 17px; font-weight: 700; margin: 3px 0 5px; }
+  .insp-hd .iline { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  .insp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); }
+  .insp-cell { background: var(--surface); padding: 11px 17px; }
+  .insp-cell .ik { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+  .insp-cell .iv { font-size: 14px; font-weight: 650; margin-top: 3px; }
+  .insp-sec { padding: 13px 17px; border-top: 1px solid var(--border); }
+  .insp-sec .ih { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--subtle); font-weight: 750; margin-bottom: 9px; }
+  .insp-act { display: flex; gap: 9px; flex-wrap: wrap; padding: 13px 17px; border-top: 1px solid var(--border); background: var(--surface-2); }
+  .insp-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 11px; padding: 54px 24px; color: var(--subtle); text-align: center; font-size: 13px; }
+  .insp-empty svg { width: 34px; height: 34px; stroke: currentColor; fill: none; stroke-width: 1.4; opacity: .5; }
+
   /* Auth / wizard */
   /* Deployment-durability warning (from GET /health) */
   .healthbar { display: flex; align-items: flex-start; gap: 12px; border-radius: 12px; padding: 13px 15px;
@@ -356,7 +379,7 @@
 "use strict";
 (function () {
   var TOKEN_KEY = "usos.token", THEME_KEY = "usos.theme", REFRESH_KEY = "usos.refresh";
-  var state = { token: localStorage.getItem(TOKEN_KEY) || "", refresh: localStorage.getItem(REFRESH_KEY) || "", auth: null, me: null, config: null, options: null, cat: {}, view: "dashboard", detailId: null, workspace: null, health: null, healthDismissed: false, properties: [], scopeProperty: "" };
+  var state = { token: localStorage.getItem(TOKEN_KEY) || "", refresh: localStorage.getItem(REFRESH_KEY) || "", auth: null, me: null, config: null, options: null, cat: {}, view: "dashboard", detailId: null, inspectId: null, workspace: null, health: null, healthDismissed: false, properties: [], scopeProperty: "" };
   function wsKey(){ return "usos.ws." + ((state.config && state.config.tenantId) || "_"); }
   function setSession(access, refresh){ state.token = access || ""; state.refresh = refresh || ""; if (access) localStorage.setItem(TOKEN_KEY, access); else localStorage.removeItem(TOKEN_KEY); if (refresh) localStorage.setItem(REFRESH_KEY, refresh); else localStorage.removeItem(REFRESH_KEY); }
   function logout(){ setSession("", ""); state.me = null; boot(); }
@@ -1540,13 +1563,72 @@
   function viewAgreements(main) {
     if (state.detailId) return viewAgreementDetail(main, state.detailId);
     main.appendChild(h("h1", {}, [t("nav.agreements")]));
-    main.appendChild(h("p", { class:"sub" }, [t("agreements.subtitle")]));
+    main.appendChild(h("p", { class:"sub" }, [tt("agreements.inspecthint","Click a row to inspect it beside the list — triage without losing your place.")]));
     var sp = scopedPill(); if (sp) main.appendChild(sp);
     var formSlot = h("div", {}, []); main.appendChild(formSlot);
-    var tableWrap = h("div", {}, []); main.appendChild(tableWrap);
+    // Split view: a master list on the left, a sticky inspector on the right.
+    var listWrap = h("div", {}, []);
+    var inspWrap = h("div", { class:"ag-insp" }, []);
+    main.appendChild(h("div", { class:"ag-split" }, [ h("div",{class:"ag-list"},[listWrap]), inspWrap ]));
     if (can("agreement.book")) api("/master-data").then(function(m){ formSlot.appendChild(bookForm(m.body || {})); });
-    refreshAgreements(tableWrap);
+    refreshAgreements(listWrap, inspWrap);
+    renderAgreementInspector(inspWrap, state.inspectId);
   }
+  function agInspEmpty() {
+    return h("div", { class:"insp-empty" }, [
+      h("span", { html: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M3 9h18"/></svg>' }),
+      h("div", {}, [tt("insp.pick","Select a lease to inspect it here.")])
+    ]);
+  }
+  function renderAgreementInspector(wrap, id, summary) {
+    wrap.innerHTML = "";
+    if (!id) { wrap.appendChild(h("div",{class:"inspcard"},[agInspEmpty()])); return; }
+    var card = h("div", { class:"inspcard" }, [h("div",{class:"insp-empty muted"},[tt("msg.loading","Loading…")])]);
+    wrap.appendChild(card);
+    Promise.all([api("/agreements/"+id), api("/agreements/"+id+"/billing")]).then(function(res){
+      if (res[0].status !== 200) { wrap.innerHTML=""; wrap.appendChild(h("div",{class:"inspcard"},[agInspEmpty()])); return; }
+      var a = res[0].body, bill = (res[1].status===200 ? res[1].body : {invoices:[],payments:[],deposits:[]});
+      var outstanding = (bill.invoices||[]).reduce(function(s,i){ return s + Math.max(0,(i.totalCents||0)-(i.paidCents||0)); }, 0);
+      var depositHeld = (bill.deposits||[]).filter(function(d){return d.status==="held";}).reduce(function(s,d){ return s+(d.amountCents||0); }, 0);
+      var openInv = (bill.invoices||[]).filter(function(i){ return i.status!=="paid" && i.status!=="void"; }).length;
+      // The list row folds residentName/unitLabel/propertyName; the single-agreement
+      // endpoint does not — prefer the summary so the header matches the row.
+      var s = summary || {};
+      var resident = s.residentName || a.residentName || (a.parties && a.parties.length ? a.parties[0].displayName : null);
+      a.unitLabel = a.unitLabel || s.unitLabel; a.propertyName = a.propertyName || s.propertyName;
+      var hist = (a.history||[]).slice(-4).reverse();
+      card.innerHTML = "";
+      card.appendChild(h("div",{class:"insp-hd"},[
+        h("div",{class:"iid"},[a.id]),
+        h("h3",{},[resident || h("span",{class:"muted"},["—"])]),
+        h("div",{class:"iline"},[
+          (a.unitLabel? (tt("col.unit","Unit")+" "+a.unitLabel) : ""),
+          a.propertyName? h("span",{class:"muted"},["· "+a.propertyName]) : null,
+          h("span",{class:"pill "+a.status},[t("status."+a.status)])
+        ])
+      ]));
+      card.appendChild(h("div",{class:"insp-grid"},[
+        inspCell(t("field.kind"), t("kind."+a.kind)),
+        inspCell(t("field.rate"), fmt(a.rateCents)),
+        inspCell(tt("bills.outstanding","Outstanding"), outstanding>0 ? h("span",{style:"color:var(--danger)"},[fmt(outstanding)]) : "—"),
+        inspCell(tt("insp.deposit","Deposit held"), depositHeld>0 ? fmt(depositHeld) : "—"),
+        inspCell(t("field.start"), (a.period&&a.period.start)||"—"),
+        inspCell(t("field.end"), (a.period&&a.period.end)||"—")
+      ]));
+      if (hist.length) {
+        card.appendChild(h("div",{class:"insp-sec"},[
+          h("div",{class:"ih"},[tt("insp.activity","Recent activity")]),
+          h("div",{class:"timeline"}, hist.map(function(e){
+            return h("div",{class:"tl-item"},[ h("div",{class:"tl-line"},[h("div",{class:"tl-dot"})]), h("div",{},[h("div",{class:"tl-ty"},[e.type]), h("div",{class:"tl-at"},[String(e.at||"").replace("T"," ").slice(0,16)])]) ]);
+          }))
+        ]));
+      }
+      var acts = [ h("button",{class:"btn sm primary",onclick:function(){ state.detailId=a.id; render(); }},[tt("insp.openfull","Open full detail →")]) ];
+      if (a.status==="draft" && can("agreement.activate")) acts.push(h("button",{class:"btn sm",onclick:function(){ api("/agreements/"+a.id+"/activate",{method:"POST",body:{}}).then(function(x){ if(x.status<400){ toast(t("msg.saved"),"ok"); var m=document.getElementById("main"); if(m){clear(m);viewAgreements(m);} } else toast((x.body||{}).error||"err","err"); }); }},[t("action.activate")]));
+      card.appendChild(h("div",{class:"insp-act"}, acts));
+    });
+  }
+  function inspCell(k,v){ return h("div",{class:"insp-cell"},[h("div",{class:"ik"},[k]),h("div",{class:"iv"},[v])]); }
   function bookForm(md) {
     var units = md.units || [], guests = md.guests || [], plans = md.ratePlans || [];
     var guest = selectFrom(guests.map(function(g){ return [g.id, g.fullName + " (" + g.code + ")"]; }), guests[0] && guests[0].id);
@@ -1577,21 +1659,25 @@
         .then(function(r){ handleMut(r, "agreements"); });
     }}, cells);
   }
-  function refreshAgreements(wrap) {
+  function refreshAgreements(wrap, inspWrap) {
     api("/agreements").then(function(r){
       wrap.innerHTML="";
       var list = (r.body.agreements||[]);
       // The top-bar community scope is a real filter here, not decoration.
       if (state.scopeProperty) list = list.filter(function(a){ return a.propertyId === state.scopeProperty; });
+      // Clear a stale selection that isn't in the current (scoped) list.
+      if (state.inspectId && !list.some(function(a){ return a.id===state.inspectId; })) state.inspectId = null;
       var rows = list.map(function(a){
         var actions = h("div",{class:"row"},[]);
-        actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ state.detailId=a.id; render(); }},[t("action.open")]));
-        if (a.status==="draft" && can("agreement.activate")) actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/agreements/"+a.id+"/activate",{method:"POST",body:{}}).then(function(x){handleMut(x,"agreements");}); }},[t("action.activate")]));
+        // Row click inspects; the buttons stop propagation so they don't also inspect.
+        function stop(fn){ return function(e){ e.stopPropagation(); fn(); }; }
+        actions.appendChild(h("button",{class:"btn ghost sm",onclick:stop(function(){ state.detailId=a.id; render(); })},[t("action.open")]));
+        if (a.status==="draft" && can("agreement.activate")) actions.appendChild(h("button",{class:"btn ghost sm",onclick:stop(function(){ api("/agreements/"+a.id+"/activate",{method:"POST",body:{}}).then(function(x){handleMut(x,"agreements");}); })},[t("action.activate")]));
         if (a.status==="active" && a.kind!=="lease" && can("agreement.convert")) {
           var to = a.kind==="nightly" ? "monthly" : "lease";
-          actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/agreements/"+a.id+"/convert",{method:"POST",body:{to:to}}).then(function(x){handleMut(x,"agreements");}); }},[t("action.convert")+" → "+t("kind."+to)]));
+          actions.appendChild(h("button",{class:"btn ghost sm",onclick:stop(function(){ api("/agreements/"+a.id+"/convert",{method:"POST",body:{to:to}}).then(function(x){handleMut(x,"agreements");}); })},[t("action.convert")+" → "+t("kind."+to)]));
         }
-        return h("tr",{},[
+        var tr = h("tr", { class: (a.id===state.inspectId?"sel":"") }, [
           h("td",{},[a.residentName || h("span",{class:"muted mono"},[a.id])]),
           h("td",{class:"mono"},[a.unitLabel || "—"]),
           h("td",{},[a.propertyName || "—"]),
@@ -1599,6 +1685,14 @@
           h("td",{},[h("span",{class:"pill "+a.status},[t("status."+a.status)])]),
           h("td",{class:"mono"},[fmt(a.rateCents)]),
           h("td",{},[actions]) ]);
+        tr.setAttribute("data-agid", a.id);
+        tr.addEventListener("click", function(){
+          state.inspectId = a.id;
+          // Repaint selection in place (no full render — keeps filter/scroll).
+          wrap.querySelectorAll("tbody tr").forEach(function(x){ x.classList.toggle("sel", x.getAttribute("data-agid")===a.id); });
+          if (inspWrap) renderAgreementInspector(inspWrap, a.id, a);
+        });
+        return tr;
       });
       wrap.appendChild(tableEl([th(tcol("Resident")),th(tcol("Unit")),th(tcol("Community")),th(t("field.kind")),th(t("field.status")),th(t("field.rate")),th(tcol(""))], rows, 7, t("dash.noAgreements")));
     });
