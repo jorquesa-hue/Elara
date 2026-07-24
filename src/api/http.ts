@@ -6,7 +6,43 @@ import type { App } from './app.ts';
 import { portalHtml } from './portal.ts';
 import { residentHtml } from './resident.ts';
 import { ownerHtml } from './owner.ts';
-import { bookingSiteHtml } from './booking-site.ts';
+import { bookingSiteHtml, SEO_PLACEHOLDER } from './booking-site.ts';
+import { siteSeo, type SiteListing } from '../booking-site.ts';
+
+// Build the SEO/social <head> for a served booking site from its listing, so
+// crawlers and link unfurlers see real content before the page hydrates.
+function seoHead(listing: SiteListing): string {
+  const seo = siteSeo(listing);
+  const esc = (s: string) =>
+    String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const tags = [
+    `<title>${esc(seo.title)}</title>`,
+    `<meta name="description" content="${esc(seo.description)}"/>`,
+    `<meta property="og:type" content="website"/>`,
+    `<meta property="og:site_name" content="${esc(listing.displayName)}"/>`,
+    `<meta property="og:title" content="${esc(seo.title)}"/>`,
+    `<meta property="og:description" content="${esc(seo.description)}"/>`,
+    `<meta name="twitter:card" content="${seo.image ? 'summary_large_image' : 'summary'}"/>`,
+    `<meta name="twitter:title" content="${esc(seo.title)}"/>`,
+    `<meta name="twitter:description" content="${esc(seo.description)}"/>`,
+  ];
+  if (seo.image) {
+    tags.push(`<meta property="og:image" content="${esc(seo.image)}"/>`);
+    tags.push(`<meta name="twitter:image" content="${esc(seo.image)}"/>`);
+  }
+  const ld: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'LodgingBusiness',
+    name: listing.displayName,
+    description: seo.description,
+  };
+  if (seo.image) ld['image'] = seo.image;
+  const addr = listing.content?.location?.address;
+  if (addr) ld['address'] = addr;
+  // Escape "<" so a value can never break out of the <script> element.
+  tags.push(`<script type="application/ld+json">${JSON.stringify(ld).replace(/</g, '\\u003c')}</script>`);
+  return tags.join('\n');
+}
 
 // Reject oversized bodies before buffering them fully — an unbounded POST is a
 // trivial memory-exhaustion DoS. 1 MiB is generous for this JSON API (the
@@ -83,8 +119,17 @@ export function createHttpServer(app: App, hooks: HttpHooks = {}): Server {
       // The public guest-facing booking microsite at /site/<tenant> (exactly two
       // segments — deeper paths like /site/<tenant>/availability are JSON API).
       if (req.method === 'GET' && /^\/site\/[^/]+\/?$/.test(path)) {
+        let html = bookingSiteHtml();
+        // Inject real SEO/social meta from the tenant's live listing (best-effort;
+        // a private/unpublished site just serves the static shell). The config
+        // route is public + synchronous, so we can resolve it inline.
+        try {
+          const tenant = decodeURIComponent(path.replace(/^\/site\//, '').replace(/\/.*$/, ''));
+          const cfg = app.dispatch({ method: 'GET', path: `/site/${tenant}/config`, body: {} });
+          if (cfg.status === 200 && cfg.body) html = html.replace(SEO_PLACEHOLDER, seoHead(cfg.body as SiteListing));
+        } catch { /* serve the static shell */ }
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-        res.end(bookingSiteHtml());
+        res.end(html);
         return;
       }
       // Query-string params (e.g. ?from=&to=) are surfaced to handlers as the body,

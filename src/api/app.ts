@@ -4210,12 +4210,41 @@ export class App {
     ];
     const amenities = ['In-unit laundry', 'Air conditioning', 'High-speed Wi-Fi', 'Fitness center', 'Rooftop terrace', 'Pet friendly'];
     const units = types.map((t, i) => ({ id: `sample-unit-${i + 1}`, label: `${t.name} — Residence ${i + 1}0${i + 1}`, active: true, typeId: t.id }));
+    const photo = (seed: string) => `https://picsum.photos/seed/${seed}/900/650`;
+    // Representative rich content so the design preview showcases every section.
+    // Operator-authored content (spread AFTER) always wins over these defaults.
+    const sampleBase = {
+      heroSubtitle: 'Thoughtfully designed homes in the heart of the city — book direct, no fees.',
+      galleryPhotos: ['g1', 'g2', 'g3', 'g4', 'g5', 'g6'].map(photo),
+      highlights: ['Rooftop pool & terrace', '24/7 concierge', 'Pet friendly', 'In-unit laundry', 'Secure parking', 'EV charging', 'Fitness center', 'High-speed Wi-Fi'],
+      location: { address: '1200 Harbor Avenue, Downtown', neighborhood: 'A walkable waterfront district — cafés, parks and transit at your doorstep, ten minutes from the business core.', mapsQuery: 'Downtown Harbor Avenue' },
+      policies: [
+        { label: 'Check-in', value: 'From 3:00 PM' },
+        { label: 'Check-out', value: 'By 11:00 AM' },
+        { label: 'Pets', value: 'Welcome (2 max)' },
+        { label: 'Smoking', value: 'Non-smoking homes' },
+        { label: 'Cancellation', value: 'Free up to 7 days out' },
+        { label: 'Minimum stay', value: '2 nights' },
+      ],
+      faqs: [
+        { q: 'Is parking included?', a: 'Yes — one secure covered space per home, with EV charging available.' },
+        { q: 'How do I check in?', a: 'You will receive a smart-lock code by email the morning of arrival. Self check-in any time after 3 PM.' },
+        { q: 'Are the homes pet friendly?', a: 'Absolutely — up to two pets per home. A small cleaning fee applies.' },
+      ],
+      testimonials: [
+        { quote: 'Spotless, beautifully furnished and the rooftop view is unreal. Booking direct saved us a bundle.', name: 'María G.', location: 'Buenos Aires' },
+        { quote: 'Seamless self check-in and the location could not be better. We will definitely be back.', name: 'James P.', location: 'London' },
+        { quote: 'The team answered every question within minutes. Felt like a boutique hotel, priced like a rental.', name: 'Sofia R.', location: 'Lisbon' },
+      ],
+    };
     const content = {
+      ...sampleBase,
       ...(this.siteContent.get(tenantId) ?? {}),
       units: Object.fromEntries(types.map((t, i) => [`sample-unit-${i + 1}`, {
         published: true, headline: `${t.name} home`, description: t.description,
-        bedrooms: t.bedrooms, bathrooms: t.bathrooms, maxGuests: t.maxGuests,
+        bedrooms: t.bedrooms, bathrooms: t.bathrooms, maxGuests: t.maxGuests, areaSqm: t.areaSqm,
         amenities: amenities.slice(0, 3 + i),
+        photoDataUrl: photo(`u${i + 1}a`), photos: [photo(`u${i + 1}b`), photo(`u${i + 1}c`)],
       }])),
     } as BookingSiteInput['content'];
     return {

@@ -4102,9 +4102,12 @@
       return body;
     }
     // --- page content -----------------------------------------------------
+    var taStyle="width:100%;resize:vertical;font:inherit;padding:9px 11px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2);color:var(--text)";
+    function textarea(rows,val,ph){ var t=h("textarea",{rows:String(rows||2),placeholder:ph||"",style:taStyle},[]); t.value=val||""; return t; }
     var heroTitle=h("input",{value:w.heroTitle||"",placeholder:"Find your stay on Ilhabela"});
-    var about=h("textarea",{rows:"4",style:"width:100%;resize:vertical;font:inherit;padding:9px 11px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2);color:var(--text)"},[]);
-    about.value = w.about||"";
+    var heroSub=h("input",{value:w.heroSubtitle||"",placeholder:"Beachfront homes with sunset views — book direct"});
+    var about=textarea(4,w.about);
+    var seoDesc=textarea(2,w.seoDescription,"One line shown in Google results & when the link is shared (optional).");
     var cEmail=h("input",{value:w.contactEmail||"",placeholder:"reservas@example.com"});
     var cPhone=h("input",{value:w.contactPhone||"",placeholder:"+55 12 3896-0000"});
     var cWhats=h("input",{value:w.whatsapp||"",placeholder:"+55 12 99999-0000"});
@@ -4112,9 +4115,48 @@
     var cFace=h("input",{value:w.facebook||"",placeholder:"ilhabelastays"});
     slot.appendChild(h("h2",{},["Page content"]));
     slot.appendChild(h("div",{class:"panel"},[
-      h("div",{class:"grid"},[ field("Hero title",heroTitle), field("Contact email",cEmail), field("Phone",cPhone), field("WhatsApp",cWhats), field("Instagram",cInsta), field("Facebook",cFace) ]),
-      h("div",{style:"margin-top:10px"},[ h("label",{},[tfld("About your properties (shown on the site)")]), about ])
+      h("div",{class:"grid"},[ field("Hero title",heroTitle), field("Hero subtitle",heroSub), field("Contact email",cEmail), field("Phone",cPhone), field("WhatsApp",cWhats), field("Instagram",cInsta), field("Facebook",cFace) ]),
+      h("div",{style:"margin-top:10px"},[ h("label",{},[tfld("About your properties (shown on the site)")]), about ]),
+      h("div",{style:"margin-top:10px"},[ h("label",{},["Search & share description (SEO)"]), seoDesc ])
     ]));
+    // --- rich sections (gallery / highlights / location / good-to-know / FAQ / reviews) ---
+    function repeater(cols, initial, addLabel){
+      var rowObjs=[]; var rowsWrap=h("div",{class:"stack",style:"gap:10px"},[]);
+      function addRow(v){ v=v||{}; var inputs={};
+        var cells=cols.map(function(c){ var inp=c.area?textarea(2,v[c.key],c.ph):h("input",{value:v[c.key]||"",placeholder:c.ph||""}); inputs[c.key]=inp; return field(c.label,inp); });
+        var rm=h("button",{class:"btn ghost sm"},[tbtn("Remove")]);
+        var row=h("div",{class:"panel",style:"padding:12px;background:var(--surface-2)"},[ h("div",{class:"grid"},cells), h("div",{style:"margin-top:6px"},[rm]) ]);
+        var obj={row:row,read:function(){ var o={}; cols.forEach(function(c){ o[c.key]=inputs[c.key].value.trim(); }); return o; }};
+        rm.addEventListener("click",function(e){ e.preventDefault(); rowsWrap.removeChild(row); rowObjs=rowObjs.filter(function(r){return r!==obj;}); });
+        rowObjs.push(obj); rowsWrap.appendChild(row);
+      }
+      (initial||[]).forEach(addRow);
+      var addBtn=h("button",{class:"btn ghost sm"},[addLabel||"Add"]); addBtn.addEventListener("click",function(e){ e.preventDefault(); addRow({}); });
+      return { node:h("div",{},[ rowsWrap, h("div",{style:"margin-top:8px"},[addBtn]) ]), read:function(){ return rowObjs.map(function(r){return r.read();}); } };
+    }
+    var gallery=textarea(3,(w.galleryPhotos||[]).join("\n"),"https://…/photo1.jpg (one image URL per line)");
+    var highlights=h("input",{value:(w.highlights||[]).join(", "),placeholder:"Rooftop pool, 24/7 concierge, Pet friendly, EV charging"});
+    var loc=w.location||{};
+    var locAddr=h("input",{value:loc.address||"",placeholder:"Av. Beira Mar 1200, Ilhabela – SP"});
+    var locHood=textarea(2,loc.neighborhood,"A few words about the area, what's nearby…");
+    var locMaps=h("input",{value:loc.mapsQuery||"",placeholder:"Ilhabela, São Paulo (used for the directions link)"});
+    var faqRep=repeater([{key:"q",label:"Question",ph:"Is parking included?"},{key:"a",label:"Answer",ph:"Yes — one covered space per home.",area:true}], w.faqs||[], "+ Add question");
+    var polRep=repeater([{key:"label",label:"Label",ph:"Check-in"},{key:"value",label:"Detail",ph:"From 3:00 PM"}], w.policies||[], "+ Add fact");
+    var revRep=repeater([{key:"quote",label:"Quote",ph:"Spotless home, incredible view. We'll be back!",area:true},{key:"name",label:"Guest name",ph:"María G."},{key:"location",label:"From (optional)",ph:"Buenos Aires"}], w.testimonials||[], "+ Add review");
+    slot.appendChild(h("h2",{},["Sections"]));
+    slot.appendChild(h("p",{class:"sub"},["Every section below is optional — it only appears on your site once you fill it in."]));
+    slot.appendChild(h("div",{class:"panel"},[
+      h("strong",{},["Photo gallery"]), h("div",{class:"muted",style:"font-size:12.5px;margin:4px 0 8px"},["Paste image URLs (one per line, up to 12). The first is featured larger."]), gallery,
+      h("div",{style:"margin-top:14px"},[ h("strong",{},["Amenities & highlights"]), h("div",{class:"muted",style:"font-size:12.5px;margin:4px 0 8px"},["Comma-separated — shown as a features grid."]), highlights ])
+    ]));
+    slot.appendChild(h("div",{class:"panel",style:"margin-top:12px"},[
+      h("strong",{},["Location"]),
+      h("div",{class:"grid",style:"margin-top:8px"},[ field("Address",locAddr), field("Directions search (map)",locMaps) ]),
+      h("div",{style:"margin-top:10px"},[ h("label",{},["About the area"]), locHood ])
+    ]));
+    slot.appendChild(h("div",{class:"panel",style:"margin-top:12px"},[ h("strong",{},["Good to know"]), h("div",{class:"muted",style:"font-size:12.5px;margin:4px 0 10px"},["Check-in/out times, pet & smoking policy, cancellation…"]), polRep.node ]));
+    slot.appendChild(h("div",{class:"panel",style:"margin-top:12px"},[ h("strong",{},["Frequently asked questions"]), h("div",{style:"margin-top:10px"},[faqRep.node]) ]));
+    slot.appendChild(h("div",{class:"panel",style:"margin-top:12px"},[ h("strong",{},["Guest reviews"]), h("div",{style:"margin-top:10px"},[revRep.node]) ]));
     // --- per-unit presentation ---------------------------------------------
     slot.appendChild(h("h2",{},["Units on your website"]));
     if(!units.length) slot.appendChild(h("p",{class:"muted"},["No properties yet — add them in Properties first."]));
@@ -4126,9 +4168,10 @@
       var beds=h("input",{type:"number",value:d.bedrooms!=null?String(d.bedrooms):"",placeholder:"2",min:"0"});
       var baths=h("input",{type:"number",value:d.bathrooms!=null?String(d.bathrooms):"",placeholder:"1",min:"0"});
       var guests=h("input",{type:"number",value:d.maxGuests!=null?String(d.maxGuests):"",placeholder:"4",min:"1"});
+      var area=h("input",{type:"number",value:d.areaSqm!=null?String(d.areaSqm):"",placeholder:"85",min:"0"});
       var amen=h("input",{value:(d.amenities||[]).join(", "),placeholder:"Wi-Fi, Ar-condicionado, Piscina, Cozinha"});
-      var desc=h("textarea",{rows:"2",style:"width:100%;resize:vertical;font:inherit;padding:9px 11px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2);color:var(--text)"},[]);
-      desc.value = d.description||"";
+      var morePhotos=textarea(2,(d.photos||[]).join("\n"),"More photo URLs — one per line (gallery in the detail view)");
+      var desc=textarea(2,d.description);
       var photoData = d.photoDataUrl||"";
       var preview=h("div",{class:"row",style:"gap:10px;align-items:center"},[]);
       function drawP(){ preview.innerHTML=""; if(photoData){ var img=document.createElement("img"); img.src=photoData; img.style.cssText="height:54px;width:86px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"; preview.appendChild(img); var rm=h("button",{class:"btn ghost sm"},[tbtn("Remove")]); rm.addEventListener("click",function(e){e.preventDefault(); photoData=""; drawP();}); preview.appendChild(rm); } else preview.appendChild(h("span",{class:"muted",style:"font-size:12.5px"},["No photo"])); }
@@ -4140,9 +4183,10 @@
           h("strong",{},[u.label + (u.active===false?" (inactive)":"")]),
           h("label",{class:"row",style:"gap:7px;font-size:13px;cursor:pointer"},[pub, "Show on website"])
         ]),
-        h("div",{class:"grid"},[ field("Headline",headline), field("Bedrooms",beds), field("Bathrooms",baths), field("Max guests",guests), field("Amenities (comma-separated)",amen), field("Photo (≤256 KB)",file) ]),
+        h("div",{class:"grid"},[ field("Headline",headline), field("Bedrooms",beds), field("Bathrooms",baths), field("Max guests",guests), field("Area (m²)",area), field("Cover photo (≤256 KB)",file), field("Amenities (comma-separated)",amen) ]),
         h("div",{style:"margin:8px 0"},[preview]),
-        h("div",{},[ h("label",{},[tfld("Description")]), desc ])
+        h("div",{},[ h("label",{},["Gallery photos"]), morePhotos ]),
+        h("div",{style:"margin-top:8px"},[ h("label",{},[tfld("Description")]), desc ])
       ]));
       return { unit:u, read:function(){
         var det={ published: pub.checked };
@@ -4151,16 +4195,25 @@
         if(beds.value!=="") det.bedrooms=Number(beds.value);
         if(baths.value!=="") det.bathrooms=Number(baths.value);
         if(guests.value!=="") det.maxGuests=Number(guests.value);
+        if(area.value!=="") det.areaSqm=Number(area.value);
         var am=amen.value.split(",").map(function(s){return s.trim();}).filter(Boolean);
         if(am.length) det.amenities=am;
         if(photoData) det.photoDataUrl=photoData;
+        var pl=morePhotos.value.split(/\n+/).map(function(s){return s.trim();}).filter(Boolean);
+        if(pl.length) det.photos=pl;
         return det;
       } };
     });
     // --- save ----------------------------------------------------------------
     if(editable){
       slot.appendChild(h("div",{style:"margin:6px 0 30px"},[ h("button",{class:"btn",onclick:function(){
-        var body=readDesign({ heroTitle:heroTitle.value, about:about.value, contactEmail:cEmail.value, contactPhone:cPhone.value, whatsapp:cWhats.value, instagram:cInsta.value, facebook:cFace.value, units:{} });
+        var body=readDesign({ heroTitle:heroTitle.value, heroSubtitle:heroSub.value, about:about.value, seoDescription:seoDesc.value, contactEmail:cEmail.value, contactPhone:cPhone.value, whatsapp:cWhats.value, instagram:cInsta.value, facebook:cFace.value, units:{} });
+        var gp=gallery.value.split(/\n+/).map(function(s){return s.trim();}).filter(Boolean); if(gp.length) body.galleryPhotos=gp;
+        var hl=highlights.value.split(",").map(function(s){return s.trim();}).filter(Boolean); if(hl.length) body.highlights=hl;
+        var lo={}; if(locAddr.value.trim())lo.address=locAddr.value.trim(); if(locHood.value.trim())lo.neighborhood=locHood.value.trim(); if(locMaps.value.trim())lo.mapsQuery=locMaps.value.trim(); if(Object.keys(lo).length) body.location=lo;
+        var fq=faqRep.read().filter(function(r){return r.q&&r.a;}); if(fq.length) body.faqs=fq;
+        var pol=polRep.read().filter(function(r){return r.label&&r.value;}); if(pol.length) body.policies=pol;
+        var rev=revRep.read().filter(function(r){return r.quote&&r.name;}).map(function(r){ return r.location?r:{quote:r.quote,name:r.name}; }); if(rev.length) body.testimonials=rev;
         unitEls.forEach(function(ue){ body.units[ue.unit.id]=ue.read(); });
         api("/site-content",{method:"PUT",body:{content:body}}).then(function(r){
           if(r.status!==200) return toast((r.body&&r.body.error)||t("msg.denied"),"err");

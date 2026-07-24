@@ -15,13 +15,27 @@ export interface UnitSiteDetails {
   bedrooms?: number;
   bathrooms?: number;
   maxGuests?: number;
+  areaSqm?: number;
   amenities?: string[];
-  /** data:image/* base64 (≤256 KB) or an https URL. */
+  /** Cover photo — data:image/* base64 (≤256 KB) or an https URL. */
   photoDataUrl?: string;
+  /** Extra gallery photos (https URLs — kept out of the base64 payload). */
+  photos?: string[];
 }
+
+/** A question/answer pair for the FAQ section. */
+export interface SiteFaq { q: string; a: string }
+/** A "good to know" fact — check-in time, pet policy, cancellation, etc. */
+export interface SitePolicy { label: string; value: string }
+/** A guest testimonial/review. */
+export interface SiteTestimonial { quote: string; name: string; location?: string }
+/** Where the properties are, for a Location section + directions link. */
+export interface SiteLocation { address?: string; neighborhood?: string; mapsQuery?: string }
 
 export interface SiteContent {
   heroTitle?: string;
+  /** A short line under the hero title. */
+  heroSubtitle?: string;
   about?: string;
   contactEmail?: string;
   contactPhone?: string;
@@ -34,6 +48,20 @@ export interface SiteContent {
   templateOptions?: TemplateOptions;
   /** A hero background photo for banner/split heroes (data:image ≤256 KB or https). */
   heroPhotoDataUrl?: string;
+  /** Portfolio-wide photo gallery (https URLs). */
+  galleryPhotos?: string[];
+  /** Building/community amenities & selling points (chips). */
+  highlights?: string[];
+  /** Where the properties are — powers the Location section + a directions link. */
+  location?: SiteLocation;
+  /** Frequently-asked questions (accordion). */
+  faqs?: SiteFaq[];
+  /** "Good to know" facts — check-in/out, pets, smoking, cancellation. */
+  policies?: SitePolicy[];
+  /** Guest testimonials / reviews. */
+  testimonials?: SiteTestimonial[];
+  /** Overrides the SEO meta description (else derived from about/hero). */
+  seoDescription?: string;
   units?: Record<string, UnitSiteDetails>;
 }
 
@@ -56,6 +84,24 @@ function num(v: unknown, lo: number, hi: number): number | undefined {
   return Math.min(hi, Math.max(lo, Math.round(n)));
 }
 
+/** A list of trimmed, non-empty, capped strings. */
+function strList(v: unknown, cap: number, max = MAX_LINE): string[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out = v.map((x) => str(x, max)).filter((x): x is string => !!x).slice(0, cap);
+  return out.length ? out : undefined;
+}
+
+/** A list of validated photo URLs (throws on a malformed one). */
+function photoList(v: unknown, cap: number): string[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out = v
+    .map((x) => str(x, 300 * 1024))
+    .filter((x): x is string => !!x)
+    .slice(0, cap)
+    .map((x) => assertSitePhoto(x));
+  return out.length ? out : undefined;
+}
+
 export function assertSitePhoto(url: string): string {
   if (!/^data:image\/(png|jpeg|jpg|svg\+xml|webp|gif);base64,/.test(url) && !/^https:\/\//.test(url)) {
     throw new SiteContentError('photo must be an https URL or a data:image/* base64 URL');
@@ -70,9 +116,61 @@ export function sanitizeSiteContent(input: unknown): SiteContent {
   const raw = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
   const out: SiteContent = {};
   const heroTitle = str(raw['heroTitle']); if (heroTitle) out.heroTitle = heroTitle;
+  const heroSubtitle = str(raw['heroSubtitle'], 300); if (heroSubtitle) out.heroSubtitle = heroSubtitle;
   const about = str(raw['about'], MAX_TEXT); if (about) out.about = about;
+  const seoDescription = str(raw['seoDescription'], 320); if (seoDescription) out.seoDescription = seoDescription;
   for (const k of ['contactEmail', 'contactPhone', 'whatsapp', 'instagram', 'facebook'] as const) {
     const v = str(raw[k]); if (v) out[k] = v;
+  }
+  // --- rich page sections (all optional) ----------------------------------
+  const gallery = photoList(raw['galleryPhotos'], 12); if (gallery) out.galleryPhotos = gallery;
+  const highlights = strList(raw['highlights'], 30, 80); if (highlights) out.highlights = highlights;
+  const locRaw = raw['location'];
+  if (locRaw && typeof locRaw === 'object') {
+    const l = locRaw as Record<string, unknown>;
+    const loc: SiteLocation = {};
+    const address = str(l['address'], 300); if (address) loc.address = address;
+    const neighborhood = str(l['neighborhood'], MAX_TEXT); if (neighborhood) loc.neighborhood = neighborhood;
+    const mapsQuery = str(l['mapsQuery'], 300); if (mapsQuery) loc.mapsQuery = mapsQuery;
+    if (Object.keys(loc).length) out.location = loc;
+  }
+  if (Array.isArray(raw['faqs'])) {
+    const faqs: SiteFaq[] = [];
+    for (const fRaw of raw['faqs'] as unknown[]) {
+      if (!fRaw || typeof fRaw !== 'object') continue;
+      const f = fRaw as Record<string, unknown>;
+      const q = str(f['q'], 300);
+      const a = str(f['a'], MAX_TEXT);
+      if (q && a) faqs.push({ q, a });
+      if (faqs.length >= 12) break;
+    }
+    if (faqs.length) out.faqs = faqs;
+  }
+  if (Array.isArray(raw['policies'])) {
+    const policies: SitePolicy[] = [];
+    for (const pRaw of raw['policies'] as unknown[]) {
+      if (!pRaw || typeof pRaw !== 'object') continue;
+      const p = pRaw as Record<string, unknown>;
+      const label = str(p['label'], 80);
+      const value = str(p['value'], 300);
+      if (label && value) policies.push({ label, value });
+      if (policies.length >= 12) break;
+    }
+    if (policies.length) out.policies = policies;
+  }
+  if (Array.isArray(raw['testimonials'])) {
+    const testimonials: SiteTestimonial[] = [];
+    for (const tRaw of raw['testimonials'] as unknown[]) {
+      if (!tRaw || typeof tRaw !== 'object') continue;
+      const t = tRaw as Record<string, unknown>;
+      const quote = str(t['quote'], 600);
+      const name = str(t['name'], 80);
+      if (!quote || !name) continue;
+      const location = str(t['location'], 80);
+      testimonials.push(location ? { quote, name, location } : { quote, name });
+      if (testimonials.length >= 12) break;
+    }
+    if (testimonials.length) out.testimonials = testimonials;
   }
   // Template + adjustments: unknown ids/values are dropped, never stored.
   const template = str(raw['template'], 40);
@@ -102,12 +200,14 @@ export function sanitizeSiteContent(input: unknown): SiteContent {
       const bedrooms = num(d['bedrooms'], 0, 50); if (bedrooms !== undefined) det.bedrooms = bedrooms;
       const bathrooms = num(d['bathrooms'], 0, 50); if (bathrooms !== undefined) det.bathrooms = bathrooms;
       const maxGuests = num(d['maxGuests'], 1, 100); if (maxGuests !== undefined) det.maxGuests = maxGuests;
+      const areaSqm = num(d['areaSqm'], 0, 100000); if (areaSqm !== undefined) det.areaSqm = areaSqm;
       if (Array.isArray(d['amenities'])) {
         const am = (d['amenities'] as unknown[]).map((a) => str(a, 60)).filter((a): a is string => !!a).slice(0, MAX_AMENITIES);
         if (am.length) det.amenities = am;
       }
       const photo = str(d['photoDataUrl'], 300 * 1024);
       if (photo) det.photoDataUrl = assertSitePhoto(photo);
+      const photos = photoList(d['photos'], 8); if (photos) det.photos = photos;
       if (Object.keys(det).length) units[unitId] = det;
     }
     if (Object.keys(units).length) out.units = units;

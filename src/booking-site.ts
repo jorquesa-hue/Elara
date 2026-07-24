@@ -123,6 +123,7 @@ export function siteListing(inp: BookingSiteInput): SiteListing {
             ...(t.bedrooms !== undefined ? { bedrooms: t.bedrooms } : {}),
             ...(t.bathrooms !== undefined ? { bathrooms: t.bathrooms } : {}),
             ...(t.maxGuests !== undefined ? { maxGuests: t.maxGuests } : {}),
+            ...(t.areaSqm !== undefined ? { areaSqm: t.areaSqm } : {}),
             ...(t.description !== undefined && !own?.description ? { description: t.description } : {}),
             ...own,
           }
@@ -155,6 +156,29 @@ export function siteListing(inp: BookingSiteInput): SiteListing {
     units,
     floorplans,
   };
+}
+
+/** SEO/social summary for a listing — used to inject <title>/<meta>/OpenGraph
+ *  and JSON-LD into the served HTML so shared links and crawlers see real
+ *  content (the page itself hydrates client-side). Pure. og:image prefers an
+ *  https URL, since social scrapers don't embed data: URLs. */
+export interface SiteSeo { title: string; description: string; image?: string }
+export function siteSeo(listing: SiteListing): SiteSeo {
+  const name = listing.displayName;
+  const c = listing.content ?? {};
+  const title = c.heroTitle ? `${c.heroTitle} · ${name}` : `${name} · Book your stay`;
+  const firstSentence = (c.about ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  const description =
+    c.seoDescription ??
+    (firstSentence ||
+      `Browse ${listing.units.length} home${listing.units.length === 1 ? '' : 's'} at ${name} with live availability and instant pricing.`);
+  const candidates: Array<string | undefined> = [
+    c.heroPhotoDataUrl,
+    ...(c.galleryPhotos ?? []),
+    ...listing.units.flatMap((u) => [u.details?.photoDataUrl, ...(u.details?.photos ?? [])]),
+  ];
+  const image = candidates.find((u) => typeof u === 'string' && /^https:\/\//.test(u));
+  return image ? { title, description, image } : { title, description };
 }
 
 function overlaps(hold: SiteHold, from: string, to: string): boolean {
