@@ -1756,9 +1756,9 @@
           actions.appendChild(h("button",{class:"btn ghost sm",onclick:stop(function(){ api("/agreements/"+a.id+"/convert",{method:"POST",body:{to:to}}).then(function(x){handleMut(x,"agreements");}); })},[t("action.convert")+" → "+t("kind."+to)]));
         }
         var tr = h("tr", { class: (a.id===state.inspectId?"sel":"") }, [
-          h("td",{},[a.residentName || h("span",{class:"muted mono"},[a.id])]),
+          h("td",{style:"white-space:nowrap"},[a.residentName || h("span",{class:"muted mono"},[a.id])]),
           h("td",{class:"mono"},[a.unitLabel || "—"]),
-          h("td",{},[a.propertyName || "—"]),
+          h("td",{style:"white-space:nowrap"},[a.propertyName || "—"]),
           h("td",{},[t("kind."+a.kind)]),
           h("td",{},[h("span",{class:"pill "+a.status},[t("status."+a.status)])]),
           h("td",{class:"mono"},[fmt(a.rateCents)]),
@@ -2652,11 +2652,11 @@
         var actions=h("div",{class:"row"},[]);
         if(can("crm.manage") && l.stage!=="signed" && l.stage!=="lost"){
           var idx=STAGES.indexOf(l.stage); var next=STAGES[idx+1];
-          if(next) actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/leads/"+l.id+"/advance",{method:"POST",body:{stage:next}}).then(function(x){handleLead(x,wrap,kpiWrap);}); }},["→ "+next]));
+          if(next) actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/leads/"+l.id+"/advance",{method:"POST",body:{stage:next}}).then(function(x){handleLead(x,wrap,kpiWrap);}); }},["→ "+humanize(next)]));
           actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/leads/"+l.id+"/lose",{method:"POST",body:{reason:"lost"}}).then(function(x){handleLead(x,wrap,kpiWrap);}); }},[tbtn("Lose")]));
         }
         var pillCls = l.stage==="signed"?"active":(l.stage==="lost"?"terminated":"draft");
-        return h("tr",{},[ h("td",{},[l.name]), h("td",{class:"muted"},[l.source||"—"]), h("td",{},[fmt(l.estValueCents)]), h("td",{},[h("span",{class:"pill "+pillCls},[l.stage])]), h("td",{},[actions]) ]);
+        return h("tr",{},[ h("td",{},[l.name]), h("td",{class:"muted"},[l.source||"—"]), h("td",{},[fmt(l.estValueCents)]), h("td",{},[h("span",{class:"pill "+pillCls},[humanize(l.stage)])]), h("td",{},[actions]) ]);
       });
       wrap.appendChild(tableEl([th(tcol("Lead")),th(tcol("Source")),th(tcol("Est. value")),th(tcol("Stage")),th(tcol(""))], rows, 5, "No leads yet."));
     });
