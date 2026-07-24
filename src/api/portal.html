@@ -1066,6 +1066,10 @@
   // One keystroke to reach any screen in any workspace, plus a few quick
   // actions — the fastest path across a portal that now spans five lenses.
   var palette = { open: false };
+  // Cache of agreement summaries (folded resident/unit/community), keyed by id —
+  // populated by the list and by the palette's record search, so the inspector
+  // header matches the row no matter how you arrived.
+  var agSummaries = {};
   function commandItems() {
     var items = [], seen = {};
     availableWorkspaces().forEach(function (ws) {
@@ -1087,26 +1091,52 @@
     return items.concat(actions);
   }
   function scoreItem(it, q) {
-    if (!q) return 1;
+    if (!q) return it.kind === "record" ? 0 : 1;  // records only surface on a query
+    if (it.kind === "record") {
+      var hay = it.search || "";
+      if (hay.indexOf(q) === 0) return 95;
+      // a token (word) starting with the query — e.g. a last name
+      if ((" " + hay).indexOf(" " + q) >= 0) return 85;
+      if (hay.indexOf(q) >= 0) return 55;
+      var qi = 0; for (var j = 0; j < hay.length && qi < q.length; j++) if (hay[j] === q[qi]) qi++;
+      return qi === q.length ? 15 : 0;
+    }
     var l = it.label.toLowerCase(), w = (it.ws || "").toLowerCase();
     var i = l.indexOf(q); if (i === 0) return 100; if (i > 0) return 60;
     if (w.indexOf(q) >= 0) return 40;
-    // subsequence (fuzzy) fallback
-    var qi = 0; for (var k = 0; k < l.length && qi < q.length; k++) if (l[k] === q[qi]) qi++;
-    return qi === q.length ? 20 : 0;
+    var qi2 = 0; for (var k = 0; k < l.length && qi2 < q.length; k++) if (l[k] === q[qi2]) qi2++;
+    return qi2 === q.length ? 20 : 0;
   }
   function openPalette() {
     if (palette.open) return; palette.open = true;
     var all = commandItems();
+    var records = [];   // live lease records, fetched once per open
+    if (can("agreement.read")) api("/agreements").then(function (r) {
+      if (r.status !== 200) return;
+      records = (r.body.agreements || []).map(function (a) {
+        agSummaries[a.id] = a;
+        var name = a.residentName || a.id;
+        var sub = [a.unitLabel, a.propertyName].filter(Boolean).join(" · ");
+        return { kind: "record", id: a.id, label: name, sub: sub, view: "agreements", icon: "agreements",
+          summary: a, search: (name + " " + (a.unitLabel||"") + " " + (a.propertyName||"") + " " + a.id).toLowerCase() };
+      });
+      if (palette.open) draw();
+    });
     var input = h("input", { type: "text", placeholder: tt("cmdk.placeholder", "Search screens & actions…"), spellcheck: "false" });
     var list = h("div", { class: "cmdk-list" }, []);
     var scrim = h("div", { class: "cmdk-scrim" }, []);
     var sel = 0, shown = [];
     function close() { palette.open = false; scrim.remove(); document.removeEventListener("keydown", onKey, true); }
-    function activate(it) { close(); if (it.kind === "nav") gotoWorkspaceView(it.wsId, it.view); else if (it.run) it.run(); }
+    function activate(it) {
+      close();
+      if (it.kind === "record") { agSummaries[it.id] = it.summary; state.inspectId = it.id; gotoWorkspaceView(workspaceForView("agreements"), "agreements"); }
+      else if (it.kind === "nav") gotoWorkspaceView(it.wsId, it.view);
+      else if (it.run) it.run();
+    }
     function draw() {
       var q = input.value.trim().toLowerCase();
-      shown = all.map(function (it) { return { it: it, s: scoreItem(it, q) }; })
+      var pool = q ? all.concat(records) : all;
+      shown = pool.map(function (it) { return { it: it, s: scoreItem(it, q) }; })
         .filter(function (x) { return x.s > 0; })
         .sort(function (a, b) { return b.s - a.s; })
         .slice(0, 40).map(function (x) { return x.it; });
@@ -1114,11 +1144,13 @@
       list.innerHTML = "";
       if (!shown.length) { list.appendChild(h("div", { class: "cmdk-empty" }, [tt("cmdk.none", "No matches")])); return; }
       shown.forEach(function (it, i) {
+        var tag = it.kind === "record" ? (it.sub || tt("cmdk.lease", "Lease"))
+          : it.kind === "nav" ? it.ws : tt("cmdk.action", "Action");
         var row = h("div", { class: "cmdk-row" + (i === sel ? " sel" : ""), onclick: function () { activate(it); },
           onmousemove: function () { if (sel !== i) { sel = i; paint(); } } }, [
           svg(ICONS[it.icon] || ICONS.dashboard),
           h("span", { class: "cr-l" }, [it.label]),
-          it.kind === "nav" ? h("span", { class: "cr-ws" }, [it.ws]) : h("span", { class: "cr-ws" }, [tt("cmdk.action", "Action")])
+          h("span", { class: "cr-ws" }, [tag])
         ]);
         list.appendChild(row);
       });
@@ -1572,7 +1604,7 @@
     main.appendChild(h("div", { class:"ag-split" }, [ h("div",{class:"ag-list"},[listWrap]), inspWrap ]));
     if (can("agreement.book")) api("/master-data").then(function(m){ formSlot.appendChild(bookForm(m.body || {})); });
     refreshAgreements(listWrap, inspWrap);
-    renderAgreementInspector(inspWrap, state.inspectId);
+    renderAgreementInspector(inspWrap, state.inspectId, agSummaries[state.inspectId]);
   }
   function agInspEmpty() {
     return h("div", { class:"insp-empty" }, [
@@ -1667,6 +1699,7 @@
       if (state.scopeProperty) list = list.filter(function(a){ return a.propertyId === state.scopeProperty; });
       // Clear a stale selection that isn't in the current (scoped) list.
       if (state.inspectId && !list.some(function(a){ return a.id===state.inspectId; })) state.inspectId = null;
+      list.forEach(function(a){ agSummaries[a.id] = a; });
       var rows = list.map(function(a){
         var actions = h("div",{class:"row"},[]);
         // Row click inspects; the buttons stop propagation so they don't also inspect.

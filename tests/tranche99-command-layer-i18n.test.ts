@@ -12,7 +12,7 @@ import { mergedCatalog } from '../src/i18n.ts';
 const KEYS = [
   'cmdk.title', 'cmdk.search', 'cmdk.placeholder', 'cmdk.none',
   'cmdk.navigate', 'cmdk.select', 'cmdk.close', 'cmdk.action',
-  'cmdk.act.theme', 'cmdk.act.signout', 'cmdk.act.sample', 'cmdk.act.samplehint',
+  'cmdk.act.theme', 'cmdk.act.signout', 'cmdk.act.sample', 'cmdk.act.samplehint', 'cmdk.lease',
   'field.price', 'field.baserate', 'field.floor', 'field.ceiling',
   'field.estvalue', 'field.income', 'field.budget', 'field.amountsigned',
 ];

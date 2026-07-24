@@ -620,7 +620,8 @@ export const MESSAGES: Record<string, Catalog> = {
     // Command palette + batch-3 money field labels
     'cmdk.title': 'Search & commands',
     'cmdk.search': 'Search',
-    'cmdk.placeholder': 'Search screens & actions…',
+    'cmdk.placeholder': 'Search leases, screens & actions…',
+    'cmdk.lease': 'Lease',
     'cmdk.none': 'No matches',
     'cmdk.navigate': 'navigate',
     'cmdk.select': 'open',
@@ -1456,7 +1457,8 @@ export const MESSAGES: Record<string, Catalog> = {
     // Command palette + batch-3 money field labels
     'cmdk.title': 'Buscar e comandos',
     'cmdk.search': 'Buscar',
-    'cmdk.placeholder': 'Buscar telas e ações…',
+    'cmdk.placeholder': 'Buscar contratos, telas e ações…',
+    'cmdk.lease': 'Contrato',
     'cmdk.none': 'Nenhum resultado',
     'cmdk.navigate': 'navegar',
     'cmdk.select': 'abrir',
@@ -2291,7 +2293,8 @@ export const MESSAGES: Record<string, Catalog> = {
     // Command palette + batch-3 money field labels
     'cmdk.title': 'Buscar y comandos',
     'cmdk.search': 'Buscar',
-    'cmdk.placeholder': 'Buscar pantallas y acciones…',
+    'cmdk.placeholder': 'Buscar contratos, pantallas y acciones…',
+    'cmdk.lease': 'Contrato',
     'cmdk.none': 'Sin resultados',
     'cmdk.navigate': 'navegar',
     'cmdk.select': 'abrir',
@@ -3010,7 +3013,8 @@ export const MESSAGES: Record<string, Catalog> = {
     // Command palette + batch-3 money field labels
     'cmdk.title': 'Recherche et commandes',
     'cmdk.search': 'Rechercher',
-    'cmdk.placeholder': 'Rechercher écrans et actions…',
+    'cmdk.placeholder': 'Rechercher baux, écrans et actions…',
+    'cmdk.lease': 'Bail',
     'cmdk.none': 'Aucun résultat',
     'cmdk.navigate': 'naviguer',
     'cmdk.select': 'ouvrir',
@@ -3729,7 +3733,8 @@ export const MESSAGES: Record<string, Catalog> = {
     // Command palette + batch-3 money field labels
     'cmdk.title': 'Ricerca e comandi',
     'cmdk.search': 'Cerca',
-    'cmdk.placeholder': 'Cerca schermate e azioni…',
+    'cmdk.placeholder': 'Cerca contratti, schermate e azioni…',
+    'cmdk.lease': 'Contratto',
     'cmdk.none': 'Nessun risultato',
     'cmdk.navigate': 'naviga',
     'cmdk.select': 'apri',
@@ -4448,7 +4453,8 @@ export const MESSAGES: Record<string, Catalog> = {
     // Command palette + batch-3 money field labels
     'cmdk.title': 'Suche & Befehle',
     'cmdk.search': 'Suchen',
-    'cmdk.placeholder': 'Bildschirme & Aktionen suchen…',
+    'cmdk.placeholder': 'Verträge, Bildschirme & Aktionen suchen…',
+    'cmdk.lease': 'Vertrag',
     'cmdk.none': 'Keine Treffer',
     'cmdk.navigate': 'navigieren',
     'cmdk.select': 'öffnen',
