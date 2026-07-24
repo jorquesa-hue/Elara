@@ -189,6 +189,46 @@
   .toast.ok { border-color: var(--success); } .toast.ok::before { background: var(--success); }
   @keyframes toastin { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
+  /* Confirmation dialog (governed money actions) */
+  .modal-scrim { position: fixed; inset: 0; background: rgba(6,9,16,.55); backdrop-filter: blur(2px);
+    display: flex; align-items: flex-start; justify-content: center; padding: 8vh 20px 20px; z-index: 80;
+    animation: scrimin .16s ease; }
+  @keyframes scrimin { from { opacity: 0; } to { opacity: 1; } }
+  .modal { background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius);
+    box-shadow: var(--shadow); width: 100%; max-width: 440px; overflow: hidden;
+    animation: modalin .2s cubic-bezier(.2,.8,.2,1); }
+  @keyframes modalin { from { opacity: 0; transform: translateY(-8px) scale(.98); } to { opacity: 1; transform: none; } }
+  .modal-hd { padding: 17px 20px 13px; border-bottom: 1px solid var(--border); }
+  .modal-hd h3 { margin: 0; font-size: 15.5px; }
+  .modal-hd .modal-sub { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+  .modal-bd { padding: 17px 20px; }
+  .modal-bd label { font-size: 11px; }
+  .modal-recap { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 12px 14px; margin: 0 0 15px; }
+  .modal-recap .rr { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 13px; }
+  .modal-recap .rr .rk { color: var(--muted); } .modal-recap .rr .rv { font-weight: 600; text-align: right; }
+  .modal-recap .rr .rv.big { font-size: 16px; font-family: var(--font-display); }
+  .modal-warn { display: flex; gap: 9px; align-items: flex-start; background: var(--warn-soft);
+    border: 1px solid var(--warn); border-radius: var(--radius-sm); padding: 10px 13px; margin: 0 0 15px; font-size: 12.5px; }
+  .modal-warn.danger { background: var(--danger-soft); border-color: var(--danger); }
+  .modal-warn .mw-ico { flex: none; font-size: 15px; line-height: 1.2; }
+  .modal-ft { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border);
+    background: var(--surface-2); }
+  .btn.ghost { background: transparent; }
+  .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+  /* Money input: leading currency symbol + live echo */
+  .moneyin { position: relative; display: flex; align-items: center; }
+  .moneyin .cur { position: absolute; left: 11px; color: var(--muted); font-size: 13px; pointer-events: none; }
+  .moneyin input { padding-left: 26px; }
+  .money-echo { font-size: 11.5px; color: var(--muted); margin-top: 4px; min-height: 15px; }
+  .money-echo.warn { color: var(--warn); }
+  .radioset { display: flex; flex-direction: column; gap: 7px; margin: 2px 0 4px; }
+  .radioset label.opt { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; cursor: pointer;
+    padding: 8px 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+  .radioset label.opt.sel { border-color: var(--accent); background: var(--accent-soft); }
+  .radioset label.opt input { width: auto; margin-top: 2px; flex: none; accent-color: var(--accent); }
+  .radioset label.opt span { flex: 1; min-width: 0; }
+
   /* Auth / wizard */
   /* Deployment-durability warning (from GET /health) */
   .healthbar { display: flex; align-items: flex-start; gap: 12px; border-radius: 12px; padding: 13px 15px;
@@ -674,6 +714,78 @@
     return h("select", {}, pairs.map(function (p){ return h("option", { value: p[0], selected: p[0]===sel ? "selected" : null }, [p[1]]); }));
   }
   function field(labelText, control) { return h("div", { style:"margin:0 0 13px" }, [h("label", {}, [tfld(labelText)]), control]); }
+
+  // ---- governed money helpers ---------------------------------------------
+  // A money input typed in MAJOR units (dollars-and-cents), with the currency
+  // symbol inline and a live formatted echo. Returns { el, cents(), input } so a
+  // caller reads cents() at submit — killing the old "(minor)" fields where an
+  // operator typed 5000 meaning $50 and moved $5,000. defaultCents seeds it.
+  function currencySymbol() {
+    try { var parts = new Intl.NumberFormat(state.config.locale, { style:"currency", currency: state.config.currency, currencyDisplay:"narrowSymbol" }).formatToParts(0);
+      var s = parts.find(function(p){ return p.type==="currency"; }); return s ? s.value : "$"; } catch(e){ return "$"; }
+  }
+  function moneyField(defaultCents) {
+    var mu = state.config ? minorUnits(state.config.currency) : 2;
+    var major = (Number(defaultCents||0) / Math.pow(10, mu));
+    var input = h("input", { type:"text", inputmode:"decimal", value: defaultCents ? major.toFixed(mu) : "" });
+    var echo = h("div", { class:"money-echo" }, [""]);
+    var box = h("div", { class:"moneyin" }, [h("span",{class:"cur"},[currencySymbol()]), input]);
+    var wrap = h("div", {}, [box, echo]);
+    function centsOf() {
+      var raw = String(input.value||"").replace(/[^0-9.,-]/g, "").replace(/,/g, mu>0?".":"");
+      // keep only the last dot as the decimal separator
+      var dot = raw.lastIndexOf("."); var n;
+      if (dot < 0) { n = parseFloat(raw); } else { n = parseFloat(raw.slice(0,dot).replace(/\./g,"") + "." + raw.slice(dot+1)); }
+      if (!isFinite(n)) return NaN; return Math.round(n * Math.pow(10, mu));
+    }
+    function redraw() {
+      var c = centsOf();
+      if (isNaN(c)) { echo.textContent = input.value ? tt("money.invalid","Enter a valid amount") : ""; echo.className = "money-echo warn"; }
+      else { echo.textContent = fmt(c); echo.className = "money-echo"; }
+    }
+    input.addEventListener("input", redraw); redraw();
+    return { el: wrap, input: input, cents: centsOf };
+  }
+  function moneyFieldRow(labelText, defaultCents) {
+    var mf = moneyField(defaultCents);
+    mf.row = h("div", { style:"margin:0 0 13px" }, [h("label", {}, [tfld(labelText)]), mf.el]);
+    return mf;
+  }
+  // A confirmation dialog for irreversible / money-moving actions. opts:
+  //   title, subtitle, recap:[[k,v,big?]], warn:{text,danger}, fields:[nodes],
+  //   confirmLabel, confirmDanger, onConfirm() -> may return a Promise; the
+  //   dialog closes on resolve. Returns nothing; renders a modal.
+  function confirmDialog(opts) {
+    var scrim = h("div", { class:"modal-scrim" }, []);
+    function close(){ scrim.remove(); document.removeEventListener("keydown", onKey); }
+    function onKey(e){ if(e.key==="Escape") close(); }
+    document.addEventListener("keydown", onKey);
+    var recap = (opts.recap||[]).length ? h("div",{class:"modal-recap"}, opts.recap.map(function(r){
+      return h("div",{class:"rr"},[h("span",{class:"rk"},[tfld(r[0])]), h("span",{class:"rv"+(r[2]?" big":"")},[String(r[1])])]); })) : null;
+    var warn = opts.warn ? h("div",{class:"modal-warn"+(opts.warn.danger?" danger":"")},[h("span",{class:"mw-ico"},["⚠"]), h("div",{},[opts.warn.text])]) : null;
+    var confirmBtn = h("button", { class:"btn sm "+(opts.confirmDanger?"danger":""), onclick:function(){
+      confirmBtn.disabled = true;
+      var r; try { r = opts.onConfirm(); } catch(e){ confirmBtn.disabled=false; return; }
+      if (r && typeof r.then === "function") { r.then(function(ok){ if(ok!==false) close(); else confirmBtn.disabled=false; }, function(){ confirmBtn.disabled=false; }); }
+      else { close(); }
+    } }, [opts.confirmLabel || tt("action.confirm","Confirm")]);
+    var body = [];
+    if (recap) body.push(recap);
+    if (warn) body.push(warn);
+    (opts.fields||[]).forEach(function(f){ body.push(f); });
+    var modal = h("div", { class:"modal", onclick:function(e){ e.stopPropagation(); } }, [
+      h("div",{class:"modal-hd"},[h("h3",{},[opts.title||tt("action.confirm","Confirm")]), opts.subtitle?h("div",{class:"modal-sub"},[opts.subtitle]):null].filter(Boolean)),
+      h("div",{class:"modal-bd"}, body),
+      h("div",{class:"modal-ft"},[
+        h("button",{class:"btn sm ghost",onclick:close},[tt("action.cancel","Cancel")]),
+        confirmBtn
+      ])
+    ]);
+    scrim.appendChild(modal);
+    scrim.addEventListener("click", close);
+    document.body.appendChild(scrim);
+    setTimeout(function(){ (opts.focusFirst && modal.querySelector("input,textarea,select")||confirmBtn).focus(); }, 30);
+  }
 
   // ---- workspaces ---------------------------------------------------------
   // Five role-shaped lenses over one resident lifecycle. Each workspace is a
@@ -1209,7 +1321,13 @@
     var acts = h("div", { class: "row", style: "margin-top:13px" }, []);
     if (canDecide) {
       acts.appendChild(h("button", { class: "btn sm", onclick: function () { decideException(x.id, "approve", null, wrap, canDecide); } }, [tbtn("Approve")]));
-      acts.appendChild(h("button", { class: "btn ghost sm", onclick: function () { var note = prompt("Reason for rejecting (optional):"); decideException(x.id, "reject", note || undefined, wrap, canDecide); } }, ["Reject"]));
+      acts.appendChild(h("button", { class: "btn ghost sm", onclick: function () {
+        var note = h("textarea", { rows: "3", placeholder: tt("reject.placeholder","Why is this being rejected? (optional)"), style:"width:100%;font:inherit;padding:9px 11px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text)" });
+        confirmDialog({ title: tt("confirm.reject.title","Reject this request?"),
+          subtitle: tt("confirm.reject.sub","The action stays parked and will not run."),
+          fields: [ field(tt("field.reason","Reason"), note) ], confirmLabel: tt("btn.reject","Reject"), confirmDanger: true, focusFirst: true,
+          onConfirm: function () { decideException(x.id, "reject", (note.value||"").trim() || undefined, wrap, canDecide); } });
+      } }, [tt("btn.reject","Reject")]));
     }
     return h("div", { class: "panel", style: "margin:0 0 12px;border-left:3px solid var(--warn)" }, [
       h("div", { style: "display:flex;align-items:center;gap:9px;margin-bottom:9px" }, [
@@ -1257,13 +1375,14 @@
     var unit = selectFrom(units.map(function(u){ return [u.id, u.code + " — " + u.label]; }), units[0] && units[0].id);
     var kind = selectFrom([["nightly",t("kind.nightly")],["monthly",t("kind.monthly")],["lease",t("kind.lease")]],"nightly");
     var start = h("input",{value:"2026-07-01",type:"date"}); var end = h("input",{value:"2026-07-10",type:"date"});
-    var rate = h("input",{value:"20000",type:"number"});
+    var rate = moneyField(20000);
+    var setRateMinor = function(m){ var mu=state.config?minorUnits(state.config.currency):2; rate.input.value=(Number(m||0)/Math.pow(10,mu)).toFixed(mu); rate.input.dispatchEvent(new Event("input")); };
     var planSel = null;
     if (plans.length) {
       planSel = selectFrom([["", t("field.ratePlanNone")]].concat(plans.map(function(p){ return [p.id, p.code + " — " + p.name]; })), "");
       planSel.addEventListener("change", function(){
         var p = plans.find(function(x){ return x.id === planSel.value; });
-        if (p) { kind.value = p.kind; rate.value = String(p.baseMinor); }
+        if (p) { kind.value = p.kind; setRateMinor(p.baseMinor); }
       });
     }
     if (!units.length || !guests.length) {
@@ -1272,10 +1391,11 @@
     var cells = [];
     if (planSel) cells.push(field(t("field.ratePlan"), planSel));
     cells.push(field(t("field.guest"), guest), field(t("field.unit"), unit), field(t("field.kind"), kind),
-      field(t("field.start"), start), field(t("field.end"), end), field(t("field.rate")+" (minor)", rate),
+      field(t("field.start"), start), field(t("field.end"), end), field(t("field.rate"), rate.el),
       h("div",{},[h("button",{class:"btn",type:"submit"},[t("action.book")])]));
     return h("form", { class:"grid panel", onsubmit: function(e){ e.preventDefault();
-      api("/agreements",{method:"POST",body:{id:"ag-"+Date.now(),guestId:guest.value,unitId:unit.value,kind:kind.value,start:start.value,end:end.value,rateCents:parseInt(rate.value,10)}})
+      var c=rate.cents(); if(isNaN(c)||c<=0) return toast(tt("money.invalid","Enter a valid amount"),"err");
+      api("/agreements",{method:"POST",body:{id:"ag-"+Date.now(),guestId:guest.value,unitId:unit.value,kind:kind.value,start:start.value,end:end.value,rateCents:c}})
         .then(function(r){ handleMut(r, "agreements"); });
     }}, cells);
   }
@@ -1417,11 +1537,11 @@
     return box;
   }
   function renewForm(id){
-    var rate=h("input",{type:"number",placeholder:"New rent (minor) — blank = +5%"});
+    var rate=moneyField(0); rate.input.placeholder="blank = +5%";
     var end=h("input",{type:"text",placeholder:"New end YYYY-MM-DD — blank = +12mo"});
-    return mini("Renew lease",[ field("New rent (optional)",rate), field("New end (optional)",end),
+    return mini("Renew lease",[ field("New rent (optional)",rate.el), field("New end (optional)",end),
       h("button",{class:"btn sm",onclick:function(){
-        var body={}; if(rate.value) body.rateCents=Number(rate.value); if(end.value) body.end=end.value;
+        var body={}; var c=rate.cents(); if(!isNaN(c) && c>0) body.rateCents=c; if(end.value) body.end=end.value;
         api("/agreements/"+id+"/renew",{method:"POST",body:body}).then(actThen);
       }},["Renew"]) ]);
   }
@@ -1451,11 +1571,18 @@
     ]);
   }
   function adjustRentForm(id){
-    var basis=selectFrom([["percent","percent %"],["fixed","fixed (minor)"]],"percent");
-    var val=h("input",{type:"number",value:"5"});
-    return mini("Adjust rent",[ field("Basis",basis), field("Value",val),
+    var basis=selectFrom([["percent","percent %"],["fixed","fixed amount"]],"percent");
+    var val=h("input",{type:"number",value:"5",step:"0.01"});
+    var hint=h("div",{class:"money-echo"},[""]);
+    var mu=state.config?minorUnits(state.config.currency):2;
+    function redraw(){ var raw=parseFloat(val.value); if(!isFinite(raw)){ hint.textContent=""; return; }
+      hint.textContent = basis.value==="fixed" ? fmt(Math.round(raw*Math.pow(10,mu))) : (raw+"%"); }
+    val.addEventListener("input",redraw); basis.addEventListener("change",redraw); redraw();
+    return mini("Adjust rent",[ field("Basis",basis), field("Value",h("div",{},[val,hint])),
       h("button",{class:"btn sm",onclick:function(){
-        api("/agreements/"+id+"/adjust-rent",{method:"POST",body:{basis:basis.value,value:parseInt(val.value,10)}}).then(actThen);
+        var raw=parseFloat(val.value); if(!isFinite(raw)) return toast(tt("money.invalid","Enter a valid amount"),"err");
+        var value = basis.value==="fixed" ? Math.round(raw*Math.pow(10,mu)) : Math.round(raw);
+        api("/agreements/"+id+"/adjust-rent",{method:"POST",body:{basis:basis.value,value:value}}).then(actThen);
       }},["Adjust rent"]) ]);
   }
   function transferForm(id){
@@ -1510,44 +1637,63 @@
   function issueInvoiceForm(id){
     var desc=h("input",{placeholder:"9 nights"});
     var acct=selectFrom([["revenue:room","revenue:room"],["revenue:amenity","revenue:amenity"],["revenue:late_fee","revenue:late_fee"]],"revenue:room");
-    var amt=h("input",{type:"number",value:"180000"}); var due=h("input",{type:"date",value:"2026-07-09"});
+    var amt=moneyField(180000); var due=h("input",{type:"date",value:"2026-07-09"});
     return mini(t("action.issueInvoice"),[
-      field(t("field.description"),desc), field(t("field.account"),acct), field(t("field.amount")+" (minor)",amt), field(t("field.dueAt"),due),
+      field(t("field.description"),desc), field(t("field.account"),acct), field(t("field.amount"),amt.el), field(t("field.dueAt"),due),
       h("button",{class:"btn sm",onclick:function(){
-        api("/invoices",{method:"POST",body:{id:"inv-"+Date.now(),agreementId:id,dueAt:due.value,lines:[{description:desc.value||"Charge",account:acct.value,amountCents:parseInt(amt.value,10)}]}}).then(actThen);
+        var c=amt.cents(); if(isNaN(c)||c<=0) return toast(tt("money.invalid","Enter a valid amount"),"err");
+        api("/invoices",{method:"POST",body:{id:"inv-"+Date.now(),agreementId:id,dueAt:due.value,lines:[{description:desc.value||"Charge",account:acct.value,amountCents:c}]}}).then(actThen);
       }},[t("action.issueInvoice")])
     ]);
   }
   function recordPaymentForm(bill){
     var open=(bill.invoices||[]).filter(function(i){return i.status==="open"||i.status==="partially_paid";});
     if(!open.length) return mini(t("action.recordPayment"),[h("div",{class:"muted",style:"font-size:12.5px"},[t("msg.none")])]);
-    var inv=selectFrom(open.map(function(i){return [i.id, i.id+" ("+fmt(i.totalCents-i.paidCents)+")"];}), open[0].id);
-    var amt=h("input",{type:"number",value:String(open[0].totalCents-open[0].paidCents)});
+    var invPairs=open.map(function(i){return [i.id, i.id+" ("+fmt(i.totalCents-i.paidCents)+")"];});
+    var inv=selectFrom(invPairs, open[0].id);
+    var amt=moneyField(open[0].totalCents-open[0].paidCents);
     var method=selectFrom([["pix","pix"],["card","card"],["transfer","transfer"],["cash","cash"]],"pix");
+    // Re-seed the amount to the selected invoice's outstanding when the operator switches invoices.
+    inv.addEventListener("change",function(){ var s=open.find(function(i){return i.id===inv.value;}); if(s){ var mu=state.config?minorUnits(state.config.currency):2; amt.input.value=((s.totalCents-s.paidCents)/Math.pow(10,mu)).toFixed(mu); amt.input.dispatchEvent(new Event("input")); } });
     return mini(t("action.recordPayment"),[
-      field(t("section.invoices"),inv), field(t("field.amount")+" (minor)",amt), field(t("field.method"),method),
+      field(t("section.invoices"),inv), field(t("field.amount"),amt.el), field(t("field.method"),method),
       h("button",{class:"btn sm",onclick:function(){
-        api("/payments",{method:"POST",body:{id:"pay-"+Date.now(),invoiceId:inv.value,amountCents:parseInt(amt.value,10),method:method.value}}).then(actThen);
+        var c=amt.cents(); if(isNaN(c)||c<=0) return toast(tt("money.invalid","Enter a valid amount"),"err");
+        confirmDialog({ title: tt("confirm.payment.title","Record this payment?"),
+          subtitle: tt("confirm.payment.sub","This posts to the ledger and reduces the resident's balance."),
+          recap: [[t("section.invoices"), inv.value], [t("field.method"), method.value], [t("field.amount"), fmt(c), true]],
+          confirmLabel: t("action.recordPayment"),
+          onConfirm: function(){ return api("/payments",{method:"POST",body:{id:"pay-"+Date.now(),invoiceId:inv.value,amountCents:c,method:method.value}}).then(actThen); } });
       }},[t("action.recordPayment")])
     ]);
   }
   function holdDepositForm(id){
-    var amt=h("input",{type:"number",value:"50000"});
-    return mini(t("action.holdDeposit"),[ field(t("field.amount")+" (minor)",amt),
+    var amt=moneyField(50000);
+    return mini(t("action.holdDeposit"),[ field(t("field.amount"),amt.el),
       h("button",{class:"btn sm",onclick:function(){
-        api("/deposits",{method:"POST",body:{id:"dep-"+Date.now(),agreementId:id,amountCents:parseInt(amt.value,10)}}).then(actThen);
+        var c=amt.cents(); if(isNaN(c)||c<=0) return toast(tt("money.invalid","Enter a valid amount"),"err");
+        api("/deposits",{method:"POST",body:{id:"dep-"+Date.now(),agreementId:id,amountCents:c}}).then(actThen);
       }},[t("action.holdDeposit")]) ]);
   }
   function refundDepositForm(bill){
     var held=(bill.deposits||[]).filter(function(d){return d.status==="held";});
     if(!held.length) return null;
-    var dep=selectFrom(held.map(function(d){return [d.id, d.id+" ("+fmt(d.amountCents)+")"];}), held[0].id);
-    var reason=h("input",{placeholder:"cleaning"}); var damt=h("input",{type:"number",value:"0"});
+    var depPairs=held.map(function(d){return [d.id, d.id+" ("+fmt(d.amountCents)+")"];});
+    var dep=selectFrom(depPairs, held[0].id);
+    var reason=h("input",{placeholder:"cleaning"}); var damt=moneyField(0);
     return mini(t("action.refundDeposit"),[
-      field(t("section.deposits"),dep), field(t("field.deduction"),reason), field(t("field.amount")+" (minor)",damt),
+      field(t("section.deposits"),dep), field(t("field.deduction"),reason), field(tt("field.deductionAmount","Deduction amount"),damt.el),
       h("button",{class:"btn sm",onclick:function(){
-        var v=parseInt(damt.value,10); var ded=v>0?[{reason:reason.value||"deduction",amountCents:v}]:[];
-        api("/deposits/"+dep.value+"/refund",{method:"POST",body:{deductions:ded}}).then(actThen);
+        var v=damt.cents(); if(isNaN(v)||v<0) return toast(tt("money.invalid","Enter a valid amount"),"err");
+        var held1=held.find(function(d){return d.id===dep.value;})||held[0];
+        var net=Math.max(0, held1.amountCents - v);
+        var ded=v>0?[{reason:reason.value||"deduction",amountCents:v}]:[];
+        confirmDialog({ title: tt("confirm.refund.title","Refund this deposit?"),
+          subtitle: tt("confirm.refund.sub","Returns money to the resident. This cannot be undone."),
+          recap: [[t("section.deposits"), dep.value], [tt("recap.held","Held"), fmt(held1.amountCents)], [tt("recap.deductions","Deductions"), fmt(v)], [tt("recap.netrefund","Net refund"), fmt(net), true]],
+          warn: { text: tt("confirm.refund.warn","A large net refund parks for approval before any money moves.") },
+          confirmLabel: t("action.refundDeposit"), confirmDanger: true,
+          onConfirm: function(){ return api("/deposits/"+dep.value+"/refund",{method:"POST",body:{deductions:ded}}).then(actThen); } });
       }},[t("action.refundDeposit")])
     ]);
   }
@@ -1699,11 +1845,22 @@
     var actions=h("div",{class:"row",style:"margin-top:10px;gap:8px"},[]);
     if((b.status==="open"||b.status==="partially_paid"||b.status==="issued") && b.outstandingCents>0 && can("bill.pay")){
       actions.appendChild(h("button",{class:"btn sm",onclick:function(){
-        api("/bills/"+b.id+"/pay",{method:"POST",body:{id:"ap-"+Date.now(),amountCents:b.outstandingCents,method:"pix"}}).then(function(x){
-          if(x.status===200||x.status===201){ toast(tt("bills.paidtoast","Bill paid"),"ok"); refreshBills(wrap,kpis); }
-          else if(x.status===202){ toast(tt("bills.parked","Parked for approval (over the policy limit)"),"ok"); refreshBills(wrap,kpis); }
-          else toast((x.body||{}).error||"err","err");
-        });
+        var amt=moneyField(b.outstandingCents);
+        var method=selectFrom([["pix","pix"],["transfer","transfer"],["card","card"],["cash","cash"]],"pix");
+        confirmDialog({ title: tt("confirm.paybill.title","Pay this bill?"),
+          subtitle: tt("confirm.paybill.sub","This moves money out to the payee."),
+          recap: [[tt("recap.payee","Payee"), b.payeeName||b.payeeId], [tt("bills.outstanding","Outstanding"), fmt(b.outstandingCents)]],
+          warn: { text: tt("confirm.paybill.warn","A payment over the policy limit parks for approval instead of paying immediately."), danger: true },
+          fields: [ field(t("field.amount"), amt.el), field(t("field.method"), method) ],
+          confirmLabel: tt("bills.paynow","Pay outstanding"), confirmDanger: true,
+          onConfirm: function(){
+            var c=amt.cents(); if(isNaN(c)||c<=0){ toast(tt("money.invalid","Enter a valid amount"),"err"); return false; }
+            return api("/bills/"+b.id+"/pay",{method:"POST",body:{id:"ap-"+Date.now(),amountCents:c,method:method.value}}).then(function(x){
+              if(x.status===200||x.status===201){ toast(tt("bills.paidtoast","Bill paid"),"ok"); refreshBills(wrap,kpis); }
+              else if(x.status===202){ toast(tt("bills.parked","Parked for approval (over the policy limit)"),"ok"); refreshBills(wrap,kpis); }
+              else { toast((x.body||{}).error||"err","err"); return false; }
+            });
+          } });
       }},[tt("bills.paynow","Pay outstanding")+" ("+fmt(b.outstandingCents)+")"]));
     }
     return h("div",{class:"panel",style:"margin-bottom:12px;border-left:3px solid "+(b.status==="paid"?"#3aa76d":(b.outstandingCents>0?"#e0894a":"var(--border)"))},[head, amts, flow, tl, actions]);
@@ -1714,12 +1871,13 @@
     var acct=selectFrom([["expenses:supplier","expenses:supplier"],["liabilities:deposits_held","liabilities:deposits_held (refund)"]],"expenses:supplier");
     var prop=h("select",{},[h("option",{value:""},["— property (optional) —"])]);
     (properties||[]).forEach(function(p){ prop.appendChild(h("option",{value:p.id},[p.name])); });
-    var desc=h("input",{placeholder:"repair"}); var amt=h("input",{type:"number",value:"25000"}); var due=h("input",{type:"date",value:"2026-07-15"});
+    var desc=h("input",{placeholder:"repair"}); var amt=moneyField(25000); var due=h("input",{type:"date",value:"2026-07-15"});
     return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
-      var body={id:"b-"+Date.now(),payeeId:payee.value,dueAt:due.value,lines:[{description:desc.value||"bill",account:acct.value,amountCents:parseInt(amt.value,10)}]};
+      var c=amt.cents(); if(isNaN(c)||c<=0) return toast(tt("money.invalid","Enter a valid amount"),"err");
+      var body={id:"b-"+Date.now(),payeeId:payee.value,dueAt:due.value,lines:[{description:desc.value||"bill",account:acct.value,amountCents:c}]};
       if(prop.value) body.propertyId=prop.value;
       api("/bills",{method:"POST",body:body}).then(function(r){ handleMut(r,"bills"); });
-    }},[ field("Payee",payee), field("Description",desc), field("Account",acct), field("Amount (minor)",amt), field("Property",prop), field("Due",due), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Record bill")])]) ]);
+    }},[ field("Payee",payee), field("Description",desc), field("Account",acct), field(t("field.amount"),amt.el), field("Property",prop), field("Due",due), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Record bill")])]) ]);
   }
   function refreshBills(wrap, kpis){
     api("/bills").then(function(r){
@@ -1847,13 +2005,14 @@
     var holder=parties.length?selectFrom(parties.map(function(p){return [p.id, p.displayName];}), parties[0].id):h("input",{placeholder:"party id"});
     var start=h("input",{type:"datetime-local",value:"2026-08-01T18:00"});
     var end=h("input",{type:"datetime-local",value:"2026-08-01T22:00"});
-    var price=h("input",{type:"number",value:"5000"});
+    var price=moneyField(5000);
     return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
-      api("/reservations",{method:"POST",body:{id:"rv-"+Date.now(),spaceId:space.value,holderPartyId:holder.value,start:start.value,end:end.value,priceCents:parseInt(price.value,10)}}).then(function(r){
+      var c=price.cents(); if(isNaN(c)||c<0) return toast(tt("money.invalid","Enter a valid amount"),"err");
+      api("/reservations",{method:"POST",body:{id:"rv-"+Date.now(),spaceId:space.value,holderPartyId:holder.value,start:start.value,end:end.value,priceCents:c}}).then(function(r){
         if(r.status===409) return toast("That slot is already booked","err");
         handleMut(r,"reservations");
       });
-    }},[ field("Space",space), field("Reserved by",holder), field("Start",start), field("End",end), field("Price (minor)",price), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Reserve")])]) ]);
+    }},[ field("Space",space), field("Reserved by",holder), field("Start",start), field("End",end), field(tt("field.price","Price"),price.el), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Reserve")])]) ]);
   }
   function refreshReservations(wrap){
     api("/reservations").then(function(r){
@@ -1921,10 +2080,11 @@
     refreshBankTxns(wrap);
   }
   function bankTxnForm(){
-    var amt=h("input",{type:"number",value:"80000"}); var date=h("input",{type:"date",value:"2026-07-02"}); var desc=h("input",{placeholder:"PIX received"});
+    var amt=moneyField(80000); var date=h("input",{type:"date",value:"2026-07-02"}); var desc=h("input",{placeholder:"PIX received"});
     return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
-      api("/bank-transactions",{method:"POST",body:{id:"bt-"+Date.now(),amountCents:parseInt(amt.value,10),postedAt:date.value,description:desc.value||"import"}}).then(function(r){ handleMut(r,"reconcile"); });
-    }},[ field("Amount (signed minor)",amt), field("Posted",date), field("Description",desc), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Import line")])]) ]);
+      var c=amt.cents(); if(isNaN(c)) return toast(tt("money.invalid","Enter a valid amount"),"err");
+      api("/bank-transactions",{method:"POST",body:{id:"bt-"+Date.now(),amountCents:c,postedAt:date.value,description:desc.value||"import"}}).then(function(r){ handleMut(r,"reconcile"); });
+    }},[ field(tt("field.amountsigned","Amount (+ in / − out)"),amt.el), field("Posted",date), field("Description",desc), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Import line")])]) ]);
   }
   function refreshBankTxns(wrap){
     api("/bank-transactions").then(function(r){
@@ -2026,7 +2186,7 @@
   function pctFromBps(bps){ return Math.round((bps-10000)/100*10)/10; }
   function pricingForm(main){
     var name=h("input",{placeholder:"Beachfront apartments"});
-    var base=h("input",{value:"45000",type:"number"}); var minC=h("input",{value:"32000",type:"number"}); var maxC=h("input",{value:"120000",type:"number"});
+    var base=moneyField(45000); var minC=moneyField(32000); var maxC=moneyField(120000);
     var weekend=h("input",{value:"25",type:"number"});
     var occ1p=h("input",{value:"60",type:"number"}); var occ1u=h("input",{value:"10",type:"number"});
     var occ2p=h("input",{value:"85",type:"number"}); var occ2u=h("input",{value:"30",type:"number"});
@@ -2036,9 +2196,10 @@
     function sub(label){ return h("div",{class:"muted",style:"grid-column:1/-1;font-size:12px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;margin-top:4px"},[label]); }
     return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
       if(!name.value) return toast("Enter a name","err");
-      var body={ id:"pr-"+Date.now(), name:name.value, baseCents:Number(base.value) };
-      if(minC.value) body.minCents=Number(minC.value);
-      if(maxC.value) body.maxCents=Number(maxC.value);
+      var baseC=base.cents(); if(isNaN(baseC)||baseC<=0) return toast(tt("money.invalid","Enter a valid amount"),"err");
+      var body={ id:"pr-"+Date.now(), name:name.value, baseCents:baseC };
+      if(!isNaN(minC.cents())&&minC.cents()>0) body.minCents=minC.cents();
+      if(!isNaN(maxC.cents())&&maxC.cents()>0) body.maxCents=maxC.cents();
       if(Number(weekend.value)) body.weekendFactorBps=upliftBps(weekend.value);
       var occ=[]; if(occ1p.value&&occ1u.value) occ.push({minOccupancyPct:Number(occ1p.value),factorBps:upliftBps(occ1u.value)});
       if(occ2p.value&&occ2u.value) occ.push({minOccupancyPct:Number(occ2p.value),factorBps:upliftBps(occ2u.value)});
@@ -2050,7 +2211,7 @@
       api("/pricing-rules",{method:"POST",body:body}).then(function(r){ if(r.status===201){ toast(t("msg.saved"),"ok"); viewPricing(clear(main)); } else toast((r.body&&r.body.error)||"err","err"); });
     }},[
       sub(tt("sec.baseGuardrails","Base & guardrails")),
-      field("Name",name), field("Base rate (cents)",base), field("Floor (cents)",minC), field("Ceiling (cents)",maxC),
+      field(tt("field.baserate","Base rate"),base.el), field(tt("field.floor","Floor"),minC.el), field(tt("field.ceiling","Ceiling"),maxC.el),
       sub(tt("sec.demandFactors","Demand & calendar factors")),
       field("Weekend uplift %",weekend),
       field("Occupancy tier 1 — at %",occ1p), field("… uplift %",occ1u),
@@ -2120,13 +2281,14 @@
     refreshLeads(wrap, kpiWrap);
   }
   function leadForm(wrap, kpiWrap){
-    var name=h("input",{placeholder:"Ana Souza"}); var source=h("input",{placeholder:"website"}); var est=h("input",{value:"300000",type:"number"});
+    var name=h("input",{placeholder:"Ana Souza"}); var source=h("input",{placeholder:"website"}); var est=moneyField(300000);
     return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
       if(!name.value) return toast("Enter a name","err");
-      api("/leads",{method:"POST",body:{id:"ld-"+Date.now(), name:name.value, source:source.value||undefined, estValueCents:Number(est.value)}}).then(function(r){
+      var c=est.cents(); var body={id:"ld-"+Date.now(), name:name.value, source:source.value||undefined}; if(!isNaN(c)&&c>0) body.estValueCents=c;
+      api("/leads",{method:"POST",body:body}).then(function(r){
         if(r.status===201){ toast(t("msg.saved"),"ok"); refreshLeads(wrap, kpiWrap); } else toast(r.body.error||"err","err");
       });
-    }},[ field("Name",name), field("Source",source), field("Est. value (cents)",est), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Add lead")])]) ]);
+    }},[ field("Name",name), field("Source",source), field(tt("field.estvalue","Est. value"),est.el), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Add lead")])]) ]);
   }
   function refreshLeads(wrap, kpiWrap){
     if(kpiWrap) api("/crm/summary").then(function(r){
@@ -2161,7 +2323,7 @@
     refreshApplications(wrap);
   }
   function applicationForm(wrap){
-    var nm=h("input",{placeholder:"Applicant name"}); var em=h("input",{placeholder:"applicant@email.com"}); var inc=h("input",{type:"number",placeholder:"Monthly income (cents)"});
+    var nm=h("input",{placeholder:"Applicant name"}); var em=h("input",{placeholder:"applicant@email.com"}); var inc=moneyField(0); inc.input.placeholder="Monthly income";
     var unit=h("select",{},[h("option",{value:""},["— unit (optional) —"])]);
     var lead=h("select",{},[h("option",{value:""},["— lead (optional) —"])]);
     if(can("masterdata.read")) api("/master-data").then(function(r){ ((r.body||{}).units||[]).forEach(function(u){ unit.appendChild(h("option",{value:u.id},[u.label||u.code||u.id])); }); });
@@ -2170,13 +2332,13 @@
       if(!nm.value) return toast("Enter an applicant name","err");
       var body={ id:"app-"+Date.now(), applicantName:nm.value };
       if(em.value) body.applicantEmail=em.value;
-      if(inc.value) body.incomeCents=Number(inc.value);
+      var ic=inc.cents(); if(!isNaN(ic)&&ic>0) body.incomeCents=ic;
       if(unit.value) body.unitId=unit.value;
       if(lead.value) body.leadId=lead.value;
       api("/applications",{method:"POST",body:body}).then(function(r){
-        if(r.status===201){ toast(t("msg.saved"),"ok"); nm.value=em.value=inc.value=""; refreshApplications(wrap); } else toast((r.body||{}).error||"err","err");
+        if(r.status===201){ toast(t("msg.saved"),"ok"); nm.value=em.value=""; inc.input.value=""; inc.input.dispatchEvent(new Event("input")); refreshApplications(wrap); } else toast((r.body||{}).error||"err","err");
       });
-    }},[ field("Name",nm), field("Email",em), field("Income (cents)",inc), field("Unit",unit), field("Lead",lead), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Add application")])]) ]);
+    }},[ field("Name",nm), field("Email",em), field(tt("field.income","Monthly income"),inc.el), field("Unit",unit), field("Lead",lead), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Add application")])]) ]);
   }
   function refreshApplications(wrap){
     api("/applications").then(function(r){
@@ -2188,7 +2350,7 @@
           if(a.status==="submitted"||a.status==="screening")
             actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/applications/"+a.id+"/screen",{method:"POST",body:{}}).then(function(x){handleApp(x,wrap);}); }},[tbtn("Screen")]));
           actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/applications/"+a.id+"/decide",{method:"POST",body:{decision:"approve"}}).then(function(x){handleApp(x,wrap);}); }},[tbtn("Approve")]));
-          actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ var reason=prompt("Adverse-action reason (required to deny)"); if(!reason) return; api("/applications/"+a.id+"/decide",{method:"POST",body:{decision:"deny",reason:reason}}).then(function(x){handleApp(x,wrap);}); }},[tbtn("Deny")]));
+          actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ denyApplicationDialog(a, wrap); }},[tbtn("Deny")]));
         }
         var pillCls = a.status==="approved"?"active":(a.status==="denied"||a.status==="withdrawn"?"terminated":"draft");
         var scr = a.screening ? (a.screening.recommendation||"—")+(a.screening.creditScore?(" · "+a.screening.creditScore):"") : "—";
@@ -2198,6 +2360,39 @@
     });
   }
   function handleApp(x, wrap){ if(x.status===200){ toast(t("msg.saved"),"ok"); refreshApplications(wrap);} else toast((x.body||{}).error||"err","err"); }
+  // FCRA adverse action: denying a rental application requires a documented
+  // reason the applicant receives. This replaces a bare prompt() with preset
+  // adverse-action reasons plus free text; the reason is required.
+  var ADVERSE_REASONS = [
+    ["credit","Insufficient credit history / low credit score","adverse.credit"],
+    ["income","Income below the required rent-to-income ratio","adverse.income"],
+    ["eviction","Prior eviction or landlord judgment on record","adverse.eviction"],
+    ["criminal","Criminal background per screening policy","adverse.criminal"],
+    ["incomplete","Incomplete or unverifiable application","adverse.incomplete"],
+    ["other","Other (describe below)","adverse.other"]
+  ];
+  function denyApplicationDialog(a, wrap){
+    var sel="credit"; var radios=h("div",{class:"radioset"},[]);
+    var detail=h("textarea",{rows:"2",placeholder:tt("adverse.detail","Add specifics the applicant will receive (required for \"Other\")"),style:"width:100%;font:inherit;padding:9px 11px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text)"});
+    ADVERSE_REASONS.forEach(function(r,i){
+      var input=h("input",{type:"radio",name:"adv",value:r[0],checked:i===0?"checked":null});
+      var lab=h("label",{class:"opt"+(i===0?" sel":"")},[input, h("span",{},[tt(r[2],r[1])])]);
+      input.addEventListener("change",function(){ sel=r[0]; Array.prototype.forEach.call(radios.children,function(c){c.classList.remove("sel");}); lab.classList.add("sel"); });
+      radios.appendChild(lab);
+    });
+    confirmDialog({ title: tt("confirm.deny.title","Deny this application?"),
+      subtitle: tt("confirm.deny.sub","FCRA requires a documented adverse-action reason. The applicant is notified."),
+      recap: [[tt("field.applicant","Applicant"), a.applicantName]],
+      fields: [ field(tt("adverse.reason","Adverse-action reason"), radios), field(tt("field.details","Details"), detail) ],
+      confirmLabel: tbtn("Deny"), confirmDanger: true,
+      onConfirm: function(){
+        var label = (ADVERSE_REASONS.find(function(r){return r[0]===sel;})||[])[1] || "Denied";
+        var extra = (detail.value||"").trim();
+        if(sel==="other" && !extra){ toast(tt("adverse.needdetail","Describe the reason to deny"),"err"); return false; }
+        var reason = extra ? (sel==="other" ? extra : label+" — "+extra) : label;
+        return api("/applications/"+a.id+"/decide",{method:"POST",body:{decision:"deny",reason:reason}}).then(function(x){handleApp(x,wrap);});
+      } });
+  }
 
   // ---- Tours (Phase 2E) ----------------------------------------------------
   function viewTours(main){
@@ -2783,13 +2978,14 @@
     if(!parties.length) return h("div",{class:"panel muted"},["Add a vendor party (People → in an agreement, or via the API) before raising a purchase order."]);
     var vendor=selectFrom(parties.map(function(p){return [p.id, p.displayName];}), parties[0].id);
     var desc=h("input",{placeholder:"Roof repair"}); var account=h("input",{value:"expenses:repairs"});
-    var amount=h("input",{value:"200000",type:"number"}); var expected=h("input",{value:"2026-07-15",type:"date"});
+    var amount=moneyField(200000); var expected=h("input",{value:"2026-07-15",type:"date"});
     return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
       if(!desc.value) return toast("Describe the line","err");
-      api("/purchase-orders",{method:"POST",body:{id:"po-"+Date.now(), vendorId:vendor.value, expectedAt:expected.value, lines:[{description:desc.value, account:account.value, amountCents:Number(amount.value)}]}}).then(function(r){
+      var c=amount.cents(); if(isNaN(c)||c<=0) return toast(tt("money.invalid","Enter a valid amount"),"err");
+      api("/purchase-orders",{method:"POST",body:{id:"po-"+Date.now(), vendorId:vendor.value, expectedAt:expected.value, lines:[{description:desc.value, account:account.value, amountCents:c}]}}).then(function(r){
         if(r.status===201){ toast(t("msg.saved"),"ok"); refreshPurchaseOrders(poWrap, bgWrap); refreshBudgets(bgWrap); } else toast(r.body.error||"err","err");
       });
-    }},[ field("Vendor",vendor), field("Description",desc), field("Account",account), field("Amount (cents)",amount), field("Expected",expected), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Raise PO")])]) ]);
+    }},[ field("Vendor",vendor), field("Description",desc), field("Account",account), field(t("field.amount"),amount.el), field("Expected",expected), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Raise PO")])]) ]);
   }
   function refreshPurchaseOrders(wrap, bgWrap){
     api("/purchase-orders").then(function(r){
@@ -2810,12 +3006,13 @@
   }
   function budgetForm(bgWrap){
     var account=h("input",{value:"expenses:repairs"}); var start=h("input",{value:"2026-07-01",type:"date"}); var end=h("input",{value:"2026-08-01",type:"date"});
-    var amount=h("input",{value:"1000000",type:"number"}); var label=h("input",{placeholder:"July repairs"});
+    var amount=moneyField(1000000); var label=h("input",{placeholder:"July repairs"});
     return h("form",{class:"grid panel",onsubmit:function(e){e.preventDefault();
-      api("/budgets",{method:"POST",body:{id:"bg-"+Date.now(), account:account.value, periodStart:start.value, periodEnd:end.value, amountCents:Number(amount.value), label:label.value||undefined}}).then(function(r){
+      var c=amount.cents(); if(isNaN(c)||c<=0) return toast(tt("money.invalid","Enter a valid amount"),"err");
+      api("/budgets",{method:"POST",body:{id:"bg-"+Date.now(), account:account.value, periodStart:start.value, periodEnd:end.value, amountCents:c, label:label.value||undefined}}).then(function(r){
         if(r.status===201){ toast(t("msg.saved"),"ok"); refreshBudgets(bgWrap); } else toast(r.body.error||"err","err");
       });
-    }},[ field("Account",account), field("From",start), field("To",end), field("Budget (cents)",amount), field("Label",label), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Set budget")])]) ]);
+    }},[ field("Account",account), field("From",start), field("To",end), field(tt("field.budget","Budget"),amount.el), field("Label",label), h("div",{},[h("button",{class:"btn",type:"submit"},[tbtn("Set budget")])]) ]);
   }
   function refreshBudgets(wrap){
     api("/budgets").then(function(r){
