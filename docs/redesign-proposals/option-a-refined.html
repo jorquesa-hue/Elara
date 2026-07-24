@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Option A — Refined Evolution · Elara portal redesign concept</title>
+<style>
+  :root{
+    --bg:#f7f8fb; --card:#ffffff; --line:#e6e8f0; --line2:#eef0f6;
+    --text:#1b1e2b; --muted:#68708a; --faint:#9aa1b8;
+    --accent:#6d5ef2; --accent-2:#5847e8; --accent-soft:#efedfe; --accent-line:#d9d4fb;
+    --ok-bg:#e5f6ec; --ok-fg:#137a3f; --ok-dot:#1ea55a;
+    --bad-bg:#fdeaea; --bad-fg:#bb2e35; --bad-dot:#e04b52;
+    --warn-bg:#fdf4e0; --warn-fg:#8f6210; --warn-dot:#e0a325;
+    --info-bg:#e8f1fd; --info-fg:#1d5cbb; --info-dot:#4a8fe8;
+    --amberstrip-bg:#fdf6e4; --amberstrip-line:#f0e0b2; --amberstrip-fg:#7d5a10;
+    --shadow:0 1px 2px rgba(23,26,45,.05), 0 4px 14px rgba(23,26,45,.05);
+    --shadow-lg:0 8px 40px rgba(23,26,45,.16);
+    --radius:10px;
+  }
+  [data-theme="dark"]{
+    --bg:#131521; --card:#1b1e2d; --line:#2b2f43; --line2:#252940;
+    --text:#e9ebf5; --muted:#a0a7c0; --faint:#737b98;
+    --accent:#8b7ff7; --accent-2:#a49af9; --accent-soft:#2a2848; --accent-line:#3d3a66;
+    --ok-bg:#173427; --ok-fg:#5fd694; --ok-dot:#3dbd74;
+    --bad-bg:#3c2124; --bad-fg:#f2929a; --bad-dot:#e2606b;
+    --warn-bg:#3a2f16; --warn-fg:#ecc06a; --warn-dot:#d9a637;
+    --info-bg:#1c2c45; --info-fg:#8dbcf5; --info-dot:#5f9ded;
+    --amberstrip-bg:#332a13; --amberstrip-line:#4d4120; --amberstrip-fg:#e8c778;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.25);
+    --shadow-lg:0 8px 40px rgba(0,0,0,.5);
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg); color:var(--text); font-size:13.5px; line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+  }
+  button{font:inherit; color:inherit; background:none; border:none; cursor:pointer}
+  input,select{font:inherit; color:inherit}
+  a{color:var(--accent); text-decoration:none}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:4px}
+
+  /* ---------- option banner ---------- */
+  .opt-banner{
+    position:fixed; top:0; left:0; right:0; height:30px; z-index:300;
+    background:#241f4e; color:#e9e6ff; display:flex; align-items:center; justify-content:center;
+    font-size:11.5px; letter-spacing:.04em; font-weight:600;
+  }
+  .opt-banner b{color:#c9c0ff; margin-right:6px; font-weight:700}
+
+  /* ---------- shell ---------- */
+  .shell{padding-top:30px; min-height:100vh}
+  .sidebar{
+    position:fixed; top:30px; bottom:0; left:0; width:230px; z-index:120;
+    background:var(--card); border-right:1px solid var(--line);
+    display:flex; flex-direction:column; overflow-y:auto;
+    transition:transform .18s ease;
+  }
+  .side-top{padding:14px 14px 10px; border-bottom:1px solid var(--line2)}
+  .brand{display:flex; align-items:center; gap:9px; margin-bottom:12px}
+  .brand-mark{
+    width:28px; height:28px; border-radius:8px; background:var(--accent);
+    display:flex; align-items:center; justify-content:center; flex:none;
+  }
+  .brand-mark svg{stroke:#fff}
+  .brand-name{font-size:15px; font-weight:700; letter-spacing:-.01em}
+  .ws-select{
+    width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:8px;
+    background:var(--bg); font-size:12.5px; font-weight:600; color:var(--text);
+    appearance:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23768' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+    background-repeat:no-repeat; background-position:right 8px center;
+  }
+  .nav{padding:10px 8px 20px; flex:1}
+  .nav-h{
+    font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--faint); padding:14px 10px 5px;
+  }
+  .nav-item{
+    display:flex; align-items:center; gap:10px; width:100%; text-align:left;
+    padding:7px 10px; border-radius:8px; color:var(--muted); font-weight:500;
+    position:relative; margin-bottom:1px;
+  }
+  .nav-item svg{flex:none; stroke:currentColor}
+  .nav-item:hover{background:var(--bg); color:var(--text)}
+  .nav-item.active{background:var(--accent-soft); color:var(--accent-2); font-weight:600}
+  .nav-item.active::before{
+    content:""; position:absolute; left:-8px; top:6px; bottom:6px; width:3px;
+    border-radius:0 3px 3px 0; background:var(--accent);
+  }
+  .nav-badge{
+    margin-left:auto; font-size:10.5px; font-weight:700; padding:1px 7px; border-radius:999px;
+    background:var(--bg); color:var(--muted); border:1px solid var(--line);
+  }
+  .nav-item.active .nav-badge{background:var(--card); color:var(--accent-2); border-color:var(--accent-line)}
+  .side-foot{padding:12px 14px; border-top:1px solid var(--line2); font-size:11px; color:var(--faint)}
+  .scrim{position:fixed; inset:30px 0 0 0; background:rgba(15,17,30,.4); z-index:110; display:none}
+
+  .main{margin-left:230px}
+
+  /* ---------- topbar ---------- */
+  .topbar{
+    position:sticky; top:30px; z-index:100;
+    display:flex; align-items:center; gap:10px;
+    background:var(--card); border-bottom:1px solid var(--line);
+    padding:9px 22px;
+  }
+  .menu-btn{display:none; padding:6px; border-radius:8px; border:1px solid var(--line)}
+  .searchbox{
+    display:flex; align-items:center; gap:8px; flex:0 1 340px; min-width:0;
+    border:1px solid var(--line); background:var(--bg); border-radius:8px;
+    padding:6.5px 10px; color:var(--faint); text-align:left;
+  }
+  .searchbox:hover{border-color:var(--accent-line)}
+  .searchbox svg{flex:none; stroke:var(--faint)}
+  .searchbox .sb-text{flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:12.5px}
+  .kbd{
+    font-size:10.5px; font-weight:600; color:var(--muted); border:1px solid var(--line);
+    background:var(--card); border-radius:5px; padding:1px 5px; flex:none;
+  }
+  .topbar-right{margin-left:auto; display:flex; align-items:center; gap:8px}
+  .scope-select{
+    padding:6.5px 28px 6.5px 10px; border:1px solid var(--line); border-radius:8px;
+    background-color:var(--card); font-size:12.5px; font-weight:600; max-width:190px;
+    appearance:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23768' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+    background-repeat:no-repeat; background-position:right 8px center;
+  }
+  .icon-btn{
+    padding:7px; border-radius:8px; border:1px solid transparent; color:var(--muted);
+    display:flex; align-items:center; gap:5px;
+  }
+  .icon-btn:hover{background:var(--bg); color:var(--text)}
+  .icon-btn svg{stroke:currentColor}
+  .lang{font-size:11.5px; font-weight:700}
+  .userchip{
+    display:flex; align-items:center; gap:8px; padding:4px 10px 4px 4px;
+    border:1px solid var(--line); border-radius:999px;
+  }
+  .userchip:hover{background:var(--bg)}
+  .avatar{
+    width:26px; height:26px; border-radius:50%; background:var(--accent-soft); color:var(--accent-2);
+    display:flex; align-items:center; justify-content:center; font-size:10.5px; font-weight:700;
+  }
+  .userchip .uname{font-size:12.5px; font-weight:600}
+
+  /* ---------- page ---------- */
+  .page{padding:22px 22px 60px; max-width:1180px; margin:0 auto}
+  .page-head{margin-bottom:16px}
+  .crumbs{font-size:12px; color:var(--muted); margin-bottom:6px}
+  .crumbs a{color:var(--muted)} .crumbs a:hover{color:var(--accent)}
+  h1{font-size:20px; font-weight:700; letter-spacing:-.015em}
+  .page-sub{color:var(--muted); font-size:12.5px; margin-top:3px}
+  .head-row{display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap}
+  .head-row .grow{flex:1; min-width:200px}
+  .head-actions{display:flex; gap:8px; flex-wrap:wrap}
+
+  .scope-pill{
+    display:none; margin-top:9px; align-items:center; gap:7px;
+    background:var(--accent-soft); border:1px solid var(--accent-line); color:var(--accent-2);
+    font-size:11.5px; font-weight:600; border-radius:999px; padding:3px 6px 3px 11px; width:max-content;
+  }
+  .scope-pill.on{display:inline-flex}
+  .scope-pill button{display:flex; padding:2px; border-radius:50%}
+  .scope-pill button:hover{background:rgba(109,94,242,.15)}
+  .scope-pill svg{stroke:currentColor}
+
+  /* ---------- buttons ---------- */
+  .btn{
+    display:inline-flex; align-items:center; gap:7px; font-weight:600; font-size:12.5px;
+    padding:7.5px 13px; border-radius:8px; border:1px solid var(--line); background:var(--card);
+  }
+  .btn:hover{background:var(--bg)}
+  .btn svg{stroke:currentColor}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+  .btn.primary:hover{background:var(--accent-2); border-color:var(--accent-2)}
+  [data-theme="dark"] .btn.primary{color:#15122e}
+  .btn.danger-ghost{color:var(--bad-fg)}
+  .btn.sm{padding:5.5px 10px; font-size:12px}
+
+  /* ---------- pills ---------- */
+  .pill{
+    display:inline-flex; align-items:center; gap:6px; padding:2px 9px 2px 7px;
+    border-radius:999px; font-size:11px; font-weight:600; white-space:nowrap;
+  }
+  .pill::before{content:""; width:6px; height:6px; border-radius:50%; flex:none}
+  .pill.ok{background:var(--ok-bg); color:var(--ok-fg)} .pill.ok::before{background:var(--ok-dot)}
+  .pill.bad{background:var(--bad-bg); color:var(--bad-fg)} .pill.bad::before{background:var(--bad-dot)}
+  .pill.warn{background:var(--warn-bg); color:var(--warn-fg)} .pill.warn::before{background:var(--warn-dot)}
+  .pill.info{background:var(--info-bg); color:var(--info-fg)} .pill.info::before{background:var(--info-dot)}
+
+  /* ---------- amber approval strip ---------- */
+  .approve-strip{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    background:var(--amberstrip-bg); border:1px solid var(--amberstrip-line); color:var(--amberstrip-fg);
+    border-radius:var(--radius); padding:10px 14px; margin-bottom:16px; font-size:12.5px;
+  }
+  .approve-strip svg{stroke:currentColor; flex:none}
+  .approve-strip b{font-weight:700}
+  .approve-strip .spacer{flex:1}
+  .approve-strip a{color:inherit; font-weight:700; text-decoration:underline; text-underline-offset:2px}
+
+  /* ---------- cards / KPI ---------- */
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow);
+  }
+  .kpis{display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:18px}
+  .kpi{padding:13px 14px 11px; position:relative; overflow:hidden}
+  .kpi .k-label{font-size:11px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--muted)}
+  .kpi .k-value{font-size:22px; font-weight:700; letter-spacing:-.02em; margin-top:5px; font-variant-numeric:tabular-nums; white-space:nowrap}
+  .kpi .k-sub{font-size:11.5px; color:var(--muted); margin-top:2px}
+  .kpi .k-delta{font-size:11px; font-weight:700; margin-top:6px; display:inline-flex; align-items:center; gap:4px}
+  .k-delta.up{color:var(--ok-fg)} .k-delta.down{color:var(--bad-fg)} .k-delta.flat{color:var(--muted)}
+  .k-delta svg{stroke:currentColor}
+  .kpi .spark{position:absolute; right:10px; top:12px; color:var(--accent); opacity:.9}
+  [data-theme="dark"] .kpi .spark{opacity:.8}
+
+  .section-h{
+    display:flex; align-items:baseline; gap:10px; margin:22px 0 10px;
+  }
+  .section-h h2{font-size:14px; font-weight:700}
+  .section-h .sh-sub{font-size:12px; color:var(--muted)}
+  .section-h .sh-link{margin-left:auto; font-size:12px; font-weight:600}
+
+  /* ---------- attention feed ---------- */
+  .feed{overflow:hidden}
+  .feed-row{
+    display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+    padding:11px 14px; border-bottom:1px solid var(--line2);
+  }
+  .feed-row:last-child{border-bottom:none}
+  .feed-row:hover{background:var(--bg)}
+  .feed-ic{
+    width:30px; height:30px; border-radius:8px; display:flex; align-items:center; justify-content:center; flex:none;
+  }
+  .feed-ic.warn{background:var(--warn-bg); color:var(--warn-fg)}
+  .feed-ic.bad{background:var(--bad-bg); color:var(--bad-fg)}
+  .feed-ic.info{background:var(--info-bg); color:var(--info-fg)}
+  .feed-ic.acc{background:var(--accent-soft); color:var(--accent-2)}
+  .feed-ic svg{stroke:currentColor}
+  .feed-t{font-weight:600; font-size:13px}
+  .feed-d{font-size:12px; color:var(--muted); margin-top:1px}
+  .feed-body{flex:1; min-width:0}
+  .feed-chev{color:var(--faint); flex:none}
+  .feed-chev svg{stroke:currentColor}
+
+  /* ---------- tables ---------- */
+  .twrap{overflow:auto; border-radius:var(--radius)}
+  .twrap.tall{max-height:540px}
+  table{width:100%; border-collapse:collapse; font-size:13px; min-width:680px}
+  thead th{
+    position:sticky; top:0; z-index:5; background:var(--card);
+    font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--muted);
+    text-align:left; padding:9px 14px; border-bottom:1px solid var(--line);
+    white-space:nowrap; box-shadow:0 1px 0 var(--line);
+  }
+  tbody td{padding:9.5px 14px; border-bottom:1px solid var(--line2); vertical-align:middle; white-space:nowrap}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:var(--bg)}
+  th.num, td.num{text-align:right; font-variant-numeric:tabular-nums}
+  td.num{font-weight:600}
+  th.sortable{cursor:pointer; user-select:none}
+  th.sortable:hover{color:var(--text)}
+  th .arr{color:var(--accent); font-weight:700; margin-left:3px; font-size:11px}
+  .cell-link{font-weight:600; color:var(--text)}
+  .cell-link:hover{color:var(--accent)}
+  .muted{color:var(--muted)} .faint{color:var(--faint)}
+  .bal-pos{color:var(--bad-fg)}
+  .bal-note{font-size:11px; color:var(--bad-fg); font-weight:500}
+  .occ-bar{width:76px; height:5px; border-radius:3px; background:var(--line2); display:inline-block; vertical-align:middle; overflow:hidden; margin-right:8px}
+  .occ-bar i{display:block; height:100%; background:var(--accent); border-radius:3px}
+
+  .table-tools{
+    display:flex; align-items:center; gap:10px; padding:11px 14px; flex-wrap:wrap;
+    border-bottom:1px solid var(--line2);
+  }
+  .tfilter{
+    display:flex; align-items:center; gap:7px; border:1px solid var(--line); border-radius:8px;
+    background:var(--bg); padding:6px 10px; flex:0 1 280px; min-width:160px;
+  }
+  .tfilter svg{stroke:var(--faint); flex:none}
+  .tfilter input{border:none; outline:none; background:transparent; width:100%; font-size:12.5px; color:var(--text)}
+  .tfilter input::placeholder{color:var(--faint)}
+  .table-foot{
+    display:flex; align-items:center; gap:10px; padding:10px 14px; border-top:1px solid var(--line2);
+    font-size:12px; color:var(--muted);
+  }
+  .pager{margin-left:auto; display:flex; align-items:center; gap:6px}
+  .pager .btn.sm[disabled]{opacity:.45; cursor:default}
+  .pager .btn.sm[disabled]:hover{background:var(--card)}
+
+  /* ---------- lease detail ---------- */
+  .detail-grid{display:grid; grid-template-columns:1.9fr 1fr; gap:14px; align-items:start}
+  .dcard{padding:16px}
+  .dcard h3{font-size:12px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); margin-bottom:12px}
+  .kv{display:grid; grid-template-columns:130px 1fr; gap:7px 14px; font-size:13px}
+  .kv dt{color:var(--muted)} .kv dd{font-weight:600; font-variant-numeric:tabular-nums}
+  .linkrow{display:flex; gap:18px; flex-wrap:wrap; margin-top:10px; font-size:12.5px}
+  .linkrow a{display:inline-flex; align-items:center; gap:5px; font-weight:600}
+  .linkrow a svg{stroke:currentColor}
+  .bal-big{font-size:26px; font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
+  .bal-ok-note{display:inline-flex; align-items:center; gap:6px; margin-top:4px; color:var(--ok-fg); font-size:12px; font-weight:600}
+  .bal-ok-note svg{stroke:currentColor}
+  .mini-rows{margin-top:12px; border-top:1px solid var(--line2)}
+  .mini-row{display:flex; justify-content:space-between; gap:10px; padding:7.5px 0; border-bottom:1px solid var(--line2); font-size:12.5px}
+  .mini-row:last-child{border-bottom:none}
+  .mini-row b{font-variant-numeric:tabular-nums}
+  .chips{display:flex; flex-direction:column; gap:8px}
+  .chip{
+    display:flex; align-items:center; gap:10px; border:1px solid var(--line); border-radius:8px;
+    padding:9px 11px; width:100%; text-align:left;
+  }
+  .chip:hover{background:var(--bg)}
+  .chip .c-ic{width:28px; height:28px; border-radius:7px; display:flex; align-items:center; justify-content:center; flex:none}
+  .chip .c-ic.ok{background:var(--ok-bg); color:var(--ok-fg)}
+  .chip .c-ic.warn{background:var(--warn-bg); color:var(--warn-fg)}
+  .chip .c-ic svg{stroke:currentColor}
+  .chip .c-t{font-weight:600; font-size:12.5px}
+  .chip .c-d{font-size:11.5px; color:var(--muted)}
+  /* timeline */
+  .tl{list-style:none; position:relative; padding-left:22px}
+  .tl::before{content:""; position:absolute; left:7px; top:6px; bottom:6px; width:2px; background:var(--line)}
+  .tl li{position:relative; padding:0 0 16px}
+  .tl li:last-child{padding-bottom:0}
+  .tl .dot{
+    position:absolute; left:-22px; top:3px; width:16px; height:16px; border-radius:50%;
+    background:var(--card); border:2px solid var(--accent); z-index:1;
+  }
+  .tl li.money .dot{border-color:var(--ok-dot)}
+  .tl .tl-t{font-weight:600; font-size:13px}
+  .tl .tl-d{font-size:12px; color:var(--muted); margin-top:1px; font-variant-numeric:tabular-nums}
+
+  /* ---------- approvals ---------- */
+  .appr-list{display:flex; flex-direction:column; gap:12px}
+  .appr{padding:15px 16px}
+  .appr-head{display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap}
+  .appr-amt{font-size:19px; font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:-.01em; white-space:nowrap}
+  .appr-t{font-weight:700; font-size:14px}
+  .appr-d{font-size:12.5px; color:var(--muted); margin-top:2px; max-width:60ch}
+  .appr-meta{font-size:11.5px; color:var(--faint); margin-top:7px}
+  .appr-actions{margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  .appr .why{
+    display:inline-flex; align-items:center; gap:6px; margin-top:8px;
+    background:var(--warn-bg); color:var(--warn-fg); font-size:11.5px; font-weight:600;
+    border-radius:6px; padding:3px 9px;
+  }
+  .appr .why svg{stroke:currentColor}
+  .appr.done{opacity:.62}
+  .sod-note{display:flex; gap:9px; align-items:flex-start; font-size:12px; color:var(--muted); margin-top:14px}
+  .sod-note svg{stroke:var(--faint); flex:none; margin-top:1px}
+
+  /* ---------- palette ---------- */
+  .overlay{
+    position:fixed; inset:0; z-index:400; background:rgba(15,17,30,.45);
+    display:none; align-items:flex-start; justify-content:center; padding:12vh 16px 16px;
+  }
+  .overlay.open{display:flex}
+  .palette{
+    width:100%; max-width:560px; background:var(--card); border:1px solid var(--line);
+    border-radius:12px; box-shadow:var(--shadow-lg); overflow:hidden;
+  }
+  .pal-in{display:flex; align-items:center; gap:10px; padding:13px 15px; border-bottom:1px solid var(--line2)}
+  .pal-in svg{stroke:var(--faint); flex:none}
+  .pal-in input{flex:1; border:none; outline:none; background:transparent; font-size:14.5px; color:var(--text)}
+  .pal-in input::placeholder{color:var(--faint)}
+  .pal-res{max-height:46vh; overflow:auto; padding:6px}
+  .pal-g{font-size:10.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--faint); padding:9px 10px 4px}
+  .pal-item{
+    display:flex; align-items:center; gap:11px; width:100%; text-align:left;
+    padding:8px 10px; border-radius:8px;
+  }
+  .pal-item .p-ic{width:28px; height:28px; border-radius:7px; background:var(--bg); display:flex; align-items:center; justify-content:center; color:var(--muted); flex:none}
+  .pal-item .p-ic svg{stroke:currentColor}
+  .pal-item .p-t{font-weight:600; font-size:13px}
+  .pal-item .p-d{font-size:11.5px; color:var(--muted)}
+  .pal-item.sel, .pal-item:hover{background:var(--accent-soft)}
+  .pal-item.sel .p-t{color:var(--accent-2)}
+  .pal-empty{padding:22px 14px; text-align:center; color:var(--muted); font-size:12.5px}
+  .pal-foot{display:flex; gap:14px; padding:8px 14px; border-top:1px solid var(--line2); font-size:11px; color:var(--faint)}
+
+  /* ---------- drawer ---------- */
+  .drawer-scrim{position:fixed; inset:0; z-index:390; background:rgba(15,17,30,.45); display:none}
+  .drawer-scrim.open{display:block}
+  .drawer{
+    position:fixed; top:0; right:0; bottom:0; width:400px; max-width:94vw; z-index:395;
+    background:var(--card); border-left:1px solid var(--line); box-shadow:var(--shadow-lg);
+    transform:translateX(102%); transition:transform .2s ease; display:flex; flex-direction:column;
+  }
+  .drawer.open{transform:none}
+  .dr-head{display:flex; align-items:center; gap:10px; padding:16px 18px; border-bottom:1px solid var(--line2)}
+  .dr-head h2{font-size:15px; font-weight:700}
+  .dr-head .icon-btn{margin-left:auto}
+  .dr-body{flex:1; overflow:auto; padding:18px}
+  .field{margin-bottom:14px}
+  .field label{display:block; font-size:11.5px; font-weight:700; color:var(--muted); margin-bottom:5px; letter-spacing:.02em}
+  .field input, .field select{
+    width:100%; padding:8.5px 11px; border:1px solid var(--line); border-radius:8px;
+    background:var(--card); font-size:13.5px;
+  }
+  .field input:focus, .field select:focus{border-color:var(--accent); outline:2px solid var(--accent-soft)}
+  .field .hint{font-size:11.5px; color:var(--faint); margin-top:4px}
+  .amount-wrap{position:relative}
+  .amount-wrap .cur{position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--muted); font-weight:600}
+  .amount-wrap input{padding-left:24px; font-variant-numeric:tabular-nums; font-weight:600}
+  .next-note{
+    display:flex; gap:9px; background:var(--accent-soft); border:1px solid var(--accent-line);
+    border-radius:8px; padding:10px 12px; font-size:12px; color:var(--text); line-height:1.5;
+  }
+  .next-note svg{stroke:var(--accent-2); flex:none; margin-top:1px}
+  .next-note b{font-weight:700}
+  .dr-foot{display:flex; gap:9px; padding:14px 18px; border-top:1px solid var(--line2)}
+  .dr-foot .btn{flex:1; justify-content:center}
+
+  /* ---------- toast ---------- */
+  .toast{
+    position:fixed; bottom:22px; left:50%; transform:translate(-50%, 16px); z-index:500;
+    background:#23263a; color:#f0f1f8; font-size:12.5px; font-weight:600;
+    padding:10px 16px; border-radius:9px; box-shadow:var(--shadow-lg);
+    opacity:0; pointer-events:none; transition:all .2s ease; max-width:88vw; text-align:center;
+  }
+  .toast.show{opacity:1; transform:translate(-50%,0)}
+  .toast.warn{background:#4d3c10; color:#f5dfa3}
+  [data-theme="dark"] .toast{background:#e9ebf5; color:#1b1e2b}
+  [data-theme="dark"] .toast.warn{background:#f0d78a; color:#3c2f08}
+
+  section[hidden]{display:none}
+
+  /* ---------- responsive ---------- */
+  @media (max-width:960px){
+    .kpis{grid-template-columns:repeat(3,1fr)}
+    .detail-grid{grid-template-columns:1fr}
+  }
+  @media (max-width:760px){
+    .sidebar{transform:translateX(-102%)}
+    .sidebar.open{transform:none}
+    .scrim.open{display:block}
+    .main{margin-left:0}
+    .menu-btn{display:flex}
+    .searchbox{flex:1 1 auto}
+    .searchbox .sb-text{display:none}
+    .kbd{display:none}
+    .lang{display:none}
+    .userchip .uname{display:none}
+    .topbar{padding:8px 12px; gap:8px}
+    .scope-select{max-width:130px; font-size:12px}
+    .page{padding:16px 12px 60px}
+    .kpis{grid-template-columns:repeat(2,1fr)}
+    .kpi .spark{display:none}
+    .drawer{width:100%; max-width:100vw}
+  }
+</style>
+</head>
+<body>
+<div class="opt-banner"><b>OPTION A — Refined Evolution</b> · Elara portal redesign concept</div>
+
+<div class="shell">
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+    <div class="side-top">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V8l9-5 9 5v13"/><path d="M9 21v-6h6v6"/></svg>
+        </span>
+        <span class="brand-name">Elara</span>
+      </div>
+      <select class="ws-select" aria-label="Workspace" onchange="toast('Workspace switching is mocked — Meridian Residential only in this concept'); this.value='mr'">
+        <option value="mr">Meridian Residential</option>
+        <option value="demo">+ New workspace…</option>
+      </select>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="side-foot">Elara PMS · concept build 0.4<br>Meridian Residential · US · USD</div>
+  </aside>
+  <div class="scrim" id="scrim" onclick="closeNav()"></div>
+
+  <!-- ============ MAIN ============ -->
+  <div class="main">
+    <header class="topbar">
+      <button class="menu-btn icon-btn" aria-label="Open menu" onclick="openNav()">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+      </button>
+      <button class="searchbox" onclick="openPalette()" aria-label="Search — opens command palette">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+        <span class="sb-text">Search residents, units, screens…</span>
+        <span class="kbd">⌘K</span>
+      </button>
+      <div class="topbar-right">
+        <select class="scope-select" id="scopeSel" aria-label="Community scope" onchange="setScope(this.value)">
+          <option value="all">All communities</option>
+          <option value="AUR">Aurora Heights</option>
+          <option value="HAR">Harborview Residences</option>
+          <option value="STU">Metro Student Commons</option>
+        </select>
+        <button class="icon-btn lang" aria-label="Language" onclick="toast('Locale switching (en · pt-BR · es · fr · it · de) mocked in this concept')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.6 2.6 3.9 5.6 3.9 9s-1.3 6.4-3.9 9c-2.6-2.6-3.9-5.6-3.9-9S9.4 5.6 12 3z"/></svg>
+          <span>EN</span>
+        </button>
+        <button class="icon-btn" id="themeBtn" aria-label="Toggle theme" onclick="toggleTheme()">
+          <svg id="icMoon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 13A8.5 8.5 0 1 1 11 3a7 7 0 0 0 10 10z"/></svg>
+          <svg id="icSun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>
+        </button>
+        <button class="userchip" onclick="toast('Profile & session menu mocked in this concept')">
+          <span class="avatar">SO</span><span class="uname">Sam Ortega</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- ============ SCREEN 1 — DASHBOARD ============ -->
+    <section id="scr-dashboard">
+      <div class="page">
+        <div class="page-head">
+          <div class="head-row">
+            <div class="grow">
+              <h1>Good morning, Sam</h1>
+              <div class="page-sub">Meridian Residential · Thursday, Jul 23 2026 · <span id="dashScopeName">3 communities, 632 units</span></div>
+              <span class="scope-pill scopeslot"></span>
+            </div>
+            <div class="head-actions">
+              <button class="btn" onclick="toast('Reports Center is out of scope for this concept screen')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>
+                Reports
+              </button>
+              <button class="btn primary" onclick="openDrawer()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19"/></svg>
+                Record payment
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="approve-strip" role="status">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5l3 2"/></svg>
+          <span><b>Awaiting approval (3)</b> — $12,400 owner distribution · $6,150 vendor bill · lease re-open</span>
+          <span class="spacer"></span>
+          <a href="#" onclick="go('approvals'); return false">View queue →</a>
+        </div>
+
+        <div class="kpis" id="kpis"></div>
+
+        <div class="section-h">
+          <h2>Needs attention</h2>
+          <span class="sh-sub" id="feedCount"></span>
+        </div>
+        <div class="card feed" id="feed"></div>
+
+        <div class="section-h">
+          <h2>Portfolio by community</h2>
+          <span class="sh-sub">click a row to scope the portal</span>
+          <a class="sh-link" href="#" onclick="go('leases'); return false">All leases →</a>
+        </div>
+        <div class="card twrap">
+          <table>
+            <thead><tr>
+              <th>Community</th><th class="num">Units</th><th class="num">Active leases</th>
+              <th>Occupancy</th><th class="num">Scheduled rent</th><th class="num">Open AR</th>
+            </tr></thead>
+            <tbody id="portRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SCREEN 2 — LEASES ============ -->
+    <section id="scr-leases" hidden>
+      <div class="page">
+        <div class="page-head">
+          <div class="head-row">
+            <div class="grow">
+              <h1>Leases</h1>
+              <div class="page-sub" id="leaseSub">571 active leases · 632 units · updated 2 min ago</div>
+              <span class="scope-pill scopeslot"></span>
+            </div>
+            <div class="head-actions">
+              <button class="btn" onclick="toast('CSV export queued — leases_2026-07-23.csv (mocked)')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 21h16"/></svg>
+                Export
+              </button>
+              <button class="btn primary" onclick="openDrawer()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19"/></svg>
+                Record payment
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="table-tools">
+            <div class="tfilter">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+              <input id="leaseSearch" type="search" placeholder="Filter by resident, unit or community…" aria-label="Filter leases" oninput="onLeaseSearch(this.value)">
+            </div>
+            <span class="sh-sub" id="filterNote"></span>
+          </div>
+          <div class="twrap tall">
+            <table>
+              <thead><tr>
+                <th class="sortable" data-k="n" onclick="setSort('n')">Resident<span class="arr"></span></th>
+                <th>Unit</th>
+                <th>Community</th>
+                <th>Status</th>
+                <th class="num sortable" data-k="r" onclick="setSort('r')">Rent<span class="arr"></span></th>
+                <th class="num sortable" data-k="b" onclick="setSort('b')">Balance<span class="arr"></span></th>
+                <th class="sortable" data-k="e" onclick="setSort('e')">Lease end<span class="arr"></span></th>
+              </tr></thead>
+              <tbody id="leaseRows"></tbody>
+            </table>
+          </div>
+          <div class="table-foot">
+            <span id="pageInfo">1–15 of 571</span>
+            <div class="pager">
+              <button class="btn sm" id="prevBtn" onclick="pageBy(-1)">‹ Prev</button>
+              <button class="btn sm" id="nextBtn" onclick="pageBy(1)">Next ›</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SCREEN 3 — LEASE DETAIL ============ -->
+    <section id="scr-lease-detail" hidden>
+      <div class="page">
+        <div class="page-head">
+          <div class="crumbs"><a href="#" onclick="go('leases'); return false">Leases</a> <span class="faint">/</span> agr-AUR-101</div>
+          <div class="head-row">
+            <div class="grow">
+              <h1 style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">Emma Kim — agr-AUR-101
+                <span class="pill ok">Active</span><span class="pill ok">Moved-in</span>
+              </h1>
+              <div class="linkrow">
+                <a href="#" onclick="searchLeases('Emma Kim'); return false" title="Open resident record">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>
+                  Emma Kim <span class="faint">resident</span>
+                </a>
+                <a href="#" onclick="searchLeases('AUR-101'); return false" title="Open unit record">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V8l9-5 9 5v13"/><path d="M9 21v-6h6v6"/></svg>
+                  Unit AUR-101 <span class="faint">Apt 101</span>
+                </a>
+                <a href="#" onclick="setScope('AUR'); go('leases'); return false" title="Scope the portal to Aurora Heights">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/><path d="M10 21v-3h4v3"/></svg>
+                  Aurora Heights <span class="faint">Denver · 208 units</span>
+                </a>
+              </div>
+              <span class="scope-pill scopeslot"></span>
+            </div>
+            <div class="head-actions">
+              <button class="btn" onclick="toast('Renewal offer drafted at +5% — $1,733/mo to Jun 2028 (mocked)')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 3v6h-6"/></svg>
+                Renew
+              </button>
+              <button class="btn primary" onclick="openDrawer('Emma Kim — AUR-101', 1650)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19"/></svg>
+                Record payment
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-grid">
+          <div style="display:flex; flex-direction:column; gap:14px">
+            <div class="card dcard">
+              <h3>Lease terms</h3>
+              <dl class="kv">
+                <dt>Floorplan</dt><dd>Aurora Studio · 42 m²</dd>
+                <dt>Monthly rent</dt><dd>$1,650</dd>
+                <dt>Term</dt><dd>Jun 24 2026 → Jun 24 2027</dd>
+                <dt>Time remaining</dt><dd>336 days <span class="muted" style="font-weight:500">· renewal window opens Mar 26 2027</span></dd>
+                <dt>Deposit held</dt><dd>$2,475 <span class="muted" style="font-weight:500">· trust account TR-01</span></dd>
+                <dt>Bill-to</dt><dd>Emma Kim <span class="muted" style="font-weight:500">· e.kim@example.com</span></dd>
+              </dl>
+            </div>
+
+            <div class="card dcard">
+              <h3>Timeline</h3>
+              <ul class="tl">
+                <li><span class="dot"></span><div class="tl-t">Lease created (draft)</div><div class="tl-d">Jun 10 2026 · by Sam Ortega</div></li>
+                <li><span class="dot"></span><div class="tl-t">Activated — lease executed</div><div class="tl-d">Jun 20 2026 · e-signed via DocuSign, 1/1 signers</div></li>
+                <li><span class="dot"></span><div class="tl-t">Moved in — Unit AUR-101</div><div class="tl-d">Jun 24 2026 · move-in inspection passed, no damage</div></li>
+                <li class="money"><span class="dot"></span><div class="tl-t">Invoice inv-AUR-101-1 issued — $1,650</div><div class="tl-d">Jul 1 2026 · July rent · due Jul 5</div></li>
+                <li class="money"><span class="dot"></span><div class="tl-t">Payment received — $1,650 <span class="pill ok" style="margin-left:5px">Paid</span></div><div class="tl-d">Jul 22 2026 · card ····4417 · receipt emailed</div></li>
+              </ul>
+            </div>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:14px">
+            <div class="card dcard">
+              <h3>Balance</h3>
+              <div class="bal-big">$0</div>
+              <div class="bal-ok-note">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                Paid current through July
+              </div>
+              <div class="mini-rows">
+                <div class="mini-row"><span class="muted">Last payment</span><b>$1,650 · Jul 22</b></div>
+                <div class="mini-row"><span class="muted">Open invoices</span><b>None</b></div>
+                <div class="mini-row"><span class="muted">Deposit held</span><b>$2,475</b></div>
+                <div class="mini-row"><span class="muted">Next charge</span><b>$1,650 · Aug 1</b></div>
+              </div>
+            </div>
+
+            <div class="card dcard">
+              <h3>Compliance &amp; work</h3>
+              <div class="chips">
+                <button class="chip" onclick="toast('Insurance record: Lemonade POL-2026-1004 · $100,000 liability · verified Jun 21 (mocked)')">
+                  <span class="c-ic ok"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v5c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg></span>
+                  <span><span class="c-t">Renters insurance — compliant</span><br><span class="c-d">Lemonade POL-2026-1004 · active to Mar 2027</span></span>
+                </button>
+                <button class="chip" onclick="toast('Work order wo-AUR-101-3 · HVAC filter replacement · low · assigned to Peak Mechanical (mocked)')">
+                  <span class="c-ic warn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4.5 4.5 0 0 0-6 6L3 18l3 3 5.7-5.7a4.5 4.5 0 0 0 6-6l-3 3-2.3-2.3z"/></svg></span>
+                  <span><span class="c-t">1 open work order</span><br><span class="c-d">HVAC filter replacement · low · opened Jul 18</span></span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SCREEN 4 — APPROVALS ============ -->
+    <section id="scr-approvals" hidden>
+      <div class="page">
+        <div class="page-head">
+          <div class="head-row">
+            <div class="grow">
+              <h1>Approvals</h1>
+              <div class="page-sub" id="apprSub">3 pending · money-moving actions park here until a second person signs off</div>
+              <span class="scope-pill scopeslot"></span>
+            </div>
+            <div class="head-actions">
+              <button class="btn" onclick="toast('Full audit trail lives in the action log (mocked)')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h13l3 3v13H4z"/><path d="M8 4v5h7V4"/><path d="M8 14h8M8 17h5"/></svg>
+                Audit log
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="appr-list" id="apprList"></div>
+        <div class="sod-note">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v5c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V6z"/></svg>
+          <span>Segregation of duties is enforced: the person who initiated an action can never approve it, and the AI agent can never approve its own escalations. Every decision is written to the immutable audit log.</span>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- ============ COMMAND PALETTE ============ -->
+<div class="overlay" id="palOverlay" onclick="if(event.target===this) closePalette()">
+  <div class="palette" role="dialog" aria-label="Command palette">
+    <div class="pal-in">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+      <input id="palInput" placeholder="Search residents, units, screens or actions…" autocomplete="off" oninput="renderPalette()">
+      <span class="kbd">esc</span>
+    </div>
+    <div class="pal-res" id="palRes"></div>
+    <div class="pal-foot"><span>↑↓ navigate</span><span>↵ open</span><span>esc close</span></div>
+  </div>
+</div>
+
+<!-- ============ PAYMENT DRAWER ============ -->
+<div class="drawer-scrim" id="drawerScrim" onclick="closeDrawer()"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-label="Record payment">
+  <div class="dr-head">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="stroke:var(--accent)"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19"/></svg>
+    <h2>Record payment</h2>
+    <button class="icon-btn" aria-label="Close" onclick="closeDrawer()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="dr-body">
+    <div class="field">
+      <label for="payWho">Resident / payer</label>
+      <select id="payWho">
+        <option>Emma Kim — AUR-101 · Aurora Heights</option>
+        <option>Sofia Garcia — AUR-103 · balance $410</option>
+        <option>Olivia Muller — HAR-204 · balance $1,203</option>
+        <option>Isabella Haddad — AUR-308 · balance $1,943</option>
+        <option>Noah Okafor — STU-214 · balance $575</option>
+        <option>Summit Mechanical — vendor bill $6,150</option>
+      </select>
+      <div class="hint">Applies against the oldest open invoice first.</div>
+    </div>
+    <div class="field">
+      <label for="payAmt">Amount</label>
+      <div class="amount-wrap">
+        <span class="cur">$</span>
+        <input id="payAmt" inputmode="decimal" value="1,650.00" aria-describedby="amtHint">
+      </div>
+      <div class="hint" id="amtHint">Editable — partial payments are allowed.</div>
+    </div>
+    <div class="field">
+      <label for="payMethod">Method</label>
+      <select id="payMethod">
+        <option>Card ····4417</option>
+        <option>ACH bank transfer</option>
+        <option>Check</option>
+        <option>Cash</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="payMemo">Memo <span style="font-weight:500; color:var(--faint)">(optional)</span></label>
+      <input id="payMemo" placeholder="e.g. July rent">
+    </div>
+    <div class="next-note">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.6" r="0.4"/></svg>
+      <span><b>What happens next:</b> posts a balanced entry to the ledger, closes the invoice, and emails a receipt to the resident. Amounts over <b>$5,000</b> park in the Approvals queue for a second signer — nothing moves until then.</span>
+    </div>
+  </div>
+  <div class="dr-foot">
+    <button class="btn" onclick="closeDrawer()">Cancel</button>
+    <button class="btn primary" onclick="confirmPayment()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+      Confirm payment
+    </button>
+  </div>
+</aside>
+
+<div class="toast" id="toastEl" role="status"></div>
+
+<script>
+"use strict";
+/* ============================== data ============================== */
+var COMM = { AUR:"Aurora Heights", HAR:"Harborview", STU:"Metro Commons" };
+var COMM_FULL = { AUR:"Aurora Heights", HAR:"Harborview Residences", STU:"Metro Student Commons" };
+
+/* n=name u=unit c=community r=rent(monthly $ or nightly) night=short-stay b=balance od=days overdue e=lease end ISO s=status */
+var LEASES = [
+  {n:"Emma Kim",        u:"AUR-101", c:"AUR", r:1650, b:0,    e:"2027-06-24", s:"active"},
+  {n:"James Patel",     u:"AUR-102", c:"AUR", r:2135, b:0,    e:"2027-06-11", s:"active"},
+  {n:"Sofia Garcia",    u:"AUR-103", c:"AUR", r:3020, b:410,  e:"2027-05-29", s:"active"},
+  {n:"Liam Brooks",     u:"AUR-110", c:"AUR", r:1720, b:0,    e:"2027-04-18", s:"active"},
+  {n:"Charlotte Reyes", u:"AUR-115", c:"AUR", r:2240, b:0,    e:"2027-07-09", s:"active"},
+  {n:"Daniel Kovacs",   u:"AUR-201", c:"AUR", r:2980, b:0,    e:"2027-03-22", s:"active"},
+  {n:"Grace Lindqvist", u:"AUR-204", c:"AUR", r:1895, b:0,    e:"2026-09-30", s:"active"},
+  {n:"Henry Adeyemi",   u:"AUR-212", c:"AUR", r:2410, b:120,  e:"2026-11-14", s:"active"},
+  {n:"Mia Fontaine",    u:"AUR-305", c:"AUR", r:3150, b:0,    e:"2027-01-27", s:"active"},
+  {n:"Isabella Haddad", u:"AUR-308", c:"AUR", r:3885, b:1943, e:"2027-02-02", s:"active"},
+  {n:"Jack Sorensen",   u:"AUR-402", c:"AUR", r:2760, b:0,    e:"2027-08-08", s:"active"},
+  {n:"Amelia Vargas",   u:"AUR-407", c:"AUR", r:1980, b:0,    e:"2026-12-05", s:"active"},
+  {n:"Owen McAllister", u:"AUR-410", c:"AUR", r:2315, b:0,    e:"2027-02-19", s:"active"},
+  {n:"Zoe Tanaka",      u:"AUR-503", c:"AUR", r:3420, b:0,    e:"2027-05-03", s:"active"},
+  {n:"Ryan Whitfield",  u:"AUR-508", c:"AUR", r:2540, b:0,    e:"2027-07-31", s:"pend"},
+  {n:"Nora Castellanos",u:"AUR-602", c:"AUR", r:4150, b:0,    e:"2027-10-21", s:"active"},
+  {n:"Michael Chen",    u:"HAR-105", c:"HAR", r:3340, b:0,    e:"2027-01-10", s:"active"},
+  {n:"Priya Raman",     u:"HAR-101", c:"HAR", r:2690, b:0,    e:"2027-04-02", s:"active"},
+  {n:"Tomás Ferreira",  u:"HAR-112", c:"HAR", r:2150, b:0,    e:"2027-06-30", s:"active"},
+  {n:"Hannah Osei",     u:"HAR-203", c:"HAR", r:2880, b:0,    e:"2026-09-12", s:"active"},
+  {n:"Olivia Muller",   u:"HAR-204", c:"HAR", r:2405, b:1203, od:18, e:"2027-03-03", s:"over"},
+  {n:"Leo Marchetti",   u:"HAR-210", c:"HAR", r:3120, b:640,  od:9,  e:"2027-01-05", s:"over"},
+  {n:"Sadie Whitmore",  u:"HAR-215", c:"HAR", r:2470, b:0,    e:"2027-07-26", s:"active"},
+  {n:"Julian Park",     u:"HAR-301", c:"HAR", r:2995, b:0,    e:"2027-02-08", s:"active"},
+  {n:"Lucas Rossi",     u:"HAR-306", c:"HAR", r:415, night:true, b:0, e:null, s:"short"},
+  {n:"Freya Dahl",      u:"HAR-310", c:"HAR", r:435, night:true, b:0, e:null, s:"short"},
+  {n:"Marcus Bell",     u:"HAR-318", c:"HAR", r:2205, b:0,    e:"2026-11-29", s:"active"},
+  {n:"Elena Petrova",   u:"HAR-405", c:"HAR", r:3560, b:0,    e:"2027-03-17", s:"active"},
+  {n:"Caleb Duncan",    u:"HAR-409", c:"HAR", r:2340, b:0,    e:"2027-08-04", s:"pend"},
+  {n:"Ethan Novak",     u:"HAR-412", c:"HAR", r:415, night:true, b:0, e:null, s:"short"},
+  {n:"Talia Benmoshe",  u:"HAR-502", c:"HAR", r:3780, b:0,    e:"2027-05-21", s:"active"},
+  {n:"Ava Nguyen",      u:"STU-101", c:"STU", r:1150, b:0,    e:"2026-10-02", s:"active"},
+  {n:"Dylan Marsh",     u:"STU-108", c:"STU", r:1150, b:0,    e:"2027-07-31", s:"active"},
+  {n:"Keisha Boone",    u:"STU-112", c:"STU", r:1225, b:0,    e:"2027-07-31", s:"active"},
+  {n:"Mateo Alvarez",   u:"STU-120", c:"STU", r:1150, b:290,  od:11, e:"2026-08-15", s:"over"},
+  {n:"Lily Zhang",      u:"STU-203", c:"STU", r:1225, b:0,    e:"2027-07-31", s:"active"},
+  {n:"Andre Thompson",  u:"STU-207", c:"STU", r:1150, b:0,    e:"2026-08-15", s:"active"},
+  {n:"Noah Okafor",     u:"STU-214", c:"STU", r:1150, b:575,  od:32, e:"2026-08-15", s:"over"},
+  {n:"Bella Kowalski",  u:"STU-221", c:"STU", r:1095, b:0,    e:"2027-07-31", s:"active"},
+  {n:"Omar Farouk",     u:"STU-305", c:"STU", r:1150, b:0,    e:"2026-08-15", s:"active"},
+  {n:"Jasmine Lee",     u:"STU-312", c:"STU", r:1225, b:185,  e:"2027-07-31", s:"active"},
+  {n:"Cole Bennett",    u:"STU-318", c:"STU", r:1095, b:0,    e:"2026-08-15", s:"active"},
+  {n:"Ruby Sandoval",   u:"STU-402", c:"STU", r:1150, b:0,    e:"2027-07-31", s:"active"},
+  {n:"Victor Ibarra",   u:"STU-411", c:"STU", r:1225, b:0,    e:"2026-08-15", s:"active"},
+  {n:"Nina Calloway",   u:"STU-419", c:"STU", r:1150, b:0,    e:"2027-08-15", s:"pend"}
+];
+
+var KPI = {
+  all:{name:"3 communities, 632 units", units:632, leases:571,
+       occ:"90.3%", occD:"+1.2 pts vs Jun", occUp:true, occS:[87.4,88.1,88.6,88.2,89.0,89.1,90.3],
+       rent:"$1.14M", rentFull:"$1,144,695", rentD:"+$18.4K vs Jun", rentUp:true, rentS:[1.05,1.07,1.08,1.10,1.11,1.12,1.144],
+       ar:"$93,417", arSub:"54 residents owe", arD:"−$4.2K vs Jun", arUp:false, arS:[112,108,104,101,99,97.6,93.4],
+       dep:"$188,378", depSub:"trust account TR-01", depD:"no change", depS:[181,183,184,186,186,188,188.4],
+       ren:"47", renSub:"12 expire ≤30 days", renD:"+6 vs Jun", renS:[28,31,33,38,40,44,47]},
+  AUR:{name:"Aurora Heights · Denver · 208 units", units:208, leases:196,
+       occ:"94.2%", occD:"+0.8 pts vs Jun", occUp:true, occS:[92.1,92.5,93.0,93.1,93.4,93.4,94.2],
+       rent:"$412,380", rentFull:"$412,380", rentD:"+$6.1K vs Jun", rentUp:true, rentS:[392,396,399,403,406,406,412],
+       ar:"$28,940", arSub:"15 residents owe", arD:"−$1.9K vs Jun", arUp:false, arS:[36,34,33,32,31,30.8,28.9],
+       dep:"$71,205", depSub:"trust account TR-01", depD:"no change", depS:[69,69,70,70,71,71,71.2],
+       ren:"19", renSub:"4 expire ≤30 days", renD:"+2 vs Jun", renS:[11,12,13,15,16,17,19]},
+  HAR:{name:"Harborview Residences · San Diego · 204 units", units:204, leases:178,
+       occ:"87.3%", occD:"+1.6 pts vs Jun", occUp:true, occS:[83.9,84.5,85.0,85.2,85.7,85.7,87.3],
+       rent:"$448,910", rentFull:"$448,910", rentD:"+$9.7K vs Jun", rentUp:true, rentS:[421,427,430,436,439,439,449],
+       ar:"$31,270", arSub:"17 residents owe", arD:"−$1.1K vs Jun", arUp:false, arS:[38,37,36,34,33,32.4,31.3],
+       dep:"$64,880", depSub:"trust account TR-01", depD:"no change", depS:[62,63,63,64,64,65,64.9],
+       ren:"14", renSub:"3 expire ≤30 days", renD:"+2 vs Jun", renS:[8,9,10,11,12,12,14]},
+  STU:{name:"Metro Student Commons · Austin · 220 beds", units:220, leases:197,
+       occ:"89.5%", occD:"+1.1 pts vs Jun", occUp:true, occS:[86.0,86.8,87.3,87.5,88.1,88.4,89.5],
+       rent:"$283,405", rentFull:"$283,405", rentD:"+$2.6K vs Jun", rentUp:true, rentS:[271,274,276,278,280,281,283],
+       ar:"$33,207", arSub:"22 residents owe", arD:"−$1.2K vs Jun", arUp:false, arS:[38,37,36,35.4,34.9,34.4,33.2],
+       dep:"$52,293", depSub:"trust account TR-01", depD:"no change", depS:[50,51,51,52,52,52,52.3],
+       ren:"14", renSub:"5 expire ≤30 days", renD:"+2 vs Jun", renS:[9,10,10,12,12,13,14]}
+};
+
+var PORTFOLIO = [
+  {c:"AUR", city:"Denver",    units:208, leases:196, occ:94.2, rent:"$412,380", ar:"$28,940"},
+  {c:"HAR", city:"San Diego", units:204, leases:178, occ:87.3, rent:"$448,910", ar:"$31,270"},
+  {c:"STU", city:"Austin",    units:220, leases:197, occ:89.5, rent:"$283,405", ar:"$33,207"}
+];
+
+var FEED = [
+  {ic:"wrench", tone:"warn", comm:"AUR", t:"Make-ready stuck 12 days — AUR-117",
+   d:"6 units in turn portfolio-wide · every idle day is lost rent", act:function(){ toast("Make-ready board is out of scope for this concept — turn tasks 3/5 done on AUR-117"); }},
+  {ic:"clock", tone:"warn", comm:"all", t:"3 approvals awaiting a second signer",
+   d:"$12,400 owner distribution · $6,150 vendor bill · lease re-open", act:function(){ go("approvals"); }},
+  {ic:"alert", tone:"bad", comm:"STU", t:"Noah Okafor is 32 days overdue — $575",
+   d:"STU-214 · Metro Commons · collections stage: late notice sent Jul 15", act:function(){ searchLeases("Noah Okafor"); }},
+  {ic:"box", tone:"info", comm:"HAR", t:"18 packages awaiting pickup",
+   d:"3 waiting over 7 days at the Harborview desk · shelf B2–B4", act:function(){ toast("Package room is out of scope for this concept"); }},
+  {ic:"users", tone:"acc", comm:"STU", t:"Waitlist demand — 9 prospects",
+   d:"Metro Commons 4-bed floorplan · demand is outrunning supply", act:function(){ toast("Waitlist queue is out of scope for this concept"); }},
+  {ic:"refresh", tone:"acc", comm:"all", t:"47 renewals due in the next 90 days",
+   d:"12 expire within 30 days · run the renewal sweep to send offers", act:function(){ toast("Renewal sweep is out of scope for this concept — offers computed at +5%"); }}
+];
+
+var APPROVALS = [
+  {id:"exc-311", amt:"$12,400", t:"Owner distribution — Aurora Heights SPE", pay:false,
+   d:"Quarterly draw to the owning entity. Exceeds current distributable NOI headroom ($9,850 after reserves), so it parked instead of posting.",
+   why:"Over distributable NOI", meta:"Initiated by R. Vance (manager) · Jul 21, 4:12 PM · exc-311"},
+  {id:"exc-312", amt:"$6,150", t:"Vendor bill — Summit Mechanical", pay:true,
+   d:"Chiller preventive maintenance at Harborview Residences, PO-2088. Over the $5,000 payout threshold, so payment is held for a second signer.",
+   why:"Over $5,000 threshold", meta:"Initiated by T. Ibarra (staff) · Jul 22, 9:48 AM · exc-312"},
+  {id:"exc-313", amt:"", t:"Re-open closed period — June 2026", pay:false,
+   d:"Accounting requests re-opening June to restate a mis-coded utility recovery at Metro Commons. Owners already received June statements.",
+   why:"Restatement of closed books", meta:"Initiated by K. Whitman (accountant) · Jul 22, 2:05 PM · exc-313"}
+];
+
+var PALETTE = [
+  {g:"People", ic:"user", t:"Emma Kim", d:"Resident · AUR-101 · Aurora Heights · paid current", act:function(){ go("lease-detail"); }},
+  {g:"People", ic:"user", t:"Olivia Muller", d:"Resident · HAR-204 · balance $1,203, 18d overdue", act:function(){ searchLeases("Olivia Muller"); }},
+  {g:"People", ic:"user", t:"Noah Okafor", d:"Resident · STU-214 · balance $575, 32d overdue", act:function(){ searchLeases("Noah Okafor"); }},
+  {g:"People", ic:"user", t:"Sofia Garcia", d:"Resident · AUR-103 · balance $410", act:function(){ searchLeases("Sofia Garcia"); }},
+  {g:"Units", ic:"home", t:"AUR-101", d:"Aurora Heights — Apt 101 · Aurora Studio · occupied", act:function(){ go("lease-detail"); }},
+  {g:"Units", ic:"home", t:"HAR-306", d:"Harborview · short-stay · $415/night · Lucas Rossi", act:function(){ searchLeases("HAR-306"); }},
+  {g:"Units", ic:"home", t:"STU-214", d:"Metro Commons · by-the-bed · Noah Okafor", act:function(){ searchLeases("STU-214"); }},
+  {g:"Screens", ic:"grid", t:"Dashboard", d:"Portfolio overview and needs-attention feed", act:function(){ go("dashboard"); }},
+  {g:"Screens", ic:"doc", t:"Leases", d:"571 active leases across 3 communities", act:function(){ go("leases"); }},
+  {g:"Screens", ic:"check", t:"Approvals", d:"3 items awaiting a second signer", act:function(){ go("approvals"); }},
+  {g:"Actions", ic:"card", t:"Record a payment", d:"Opens the governed payment confirmation", act:function(){ openDrawer(); }}
+];
+
+/* ============================== icons ============================== */
+function ic(name, s){
+  s = s || 16;
+  var paths = {
+    grid:'<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>',
+    doc:'<path d="M6 2.5h8l4 4V21.5H6z"/><path d="M14 2.5v4h4"/><path d="M9 12h6M9 16h6"/>',
+    users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c1.2-3.2 3.6-5 6.5-5s5.3 1.8 6.5 5"/><path d="M16 5a3.5 3.5 0 0 1 0 7"/><path d="M17.5 15.5c2 .8 3.4 2.3 4 4.5"/>',
+    user:'<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
+    refresh:'<path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 3v6h-6"/>',
+    list:'<path d="M9 6h12M9 12h12M9 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
+    wrench:'<path d="M14.7 6.3a4.5 4.5 0 0 0-6 6L3 18l3 3 5.7-5.7a4.5 4.5 0 0 0 6-6l-3 3-2.3-2.3z"/>',
+    sparkle:'<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 16l.9 2.1L22 19l-2.1.9L19 22l-.9-2.1L16 19l2.1-.9z"/>',
+    box:'<path d="M3.5 8L12 3.5 20.5 8v8L12 20.5 3.5 16z"/><path d="M3.5 8L12 12.5 20.5 8"/><path d="M12 12.5V20.5"/>',
+    card:'<rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19"/>',
+    check:'<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5"/>',
+    book:'<path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17.5H6.5A2.5 2.5 0 0 0 4 22z"/><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>',
+    chart:'<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/>',
+    home:'<path d="M3 21V8l9-5 9 5v13"/><path d="M9 21v-6h6v6"/>',
+    clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5l3 2"/>',
+    alert:'<path d="M12 3L2.5 20h19z"/><path d="M12 10v4"/><circle cx="12" cy="17" r="0.4"/>',
+    chev:'<polyline points="9 6 15 12 9 18"/>',
+    up:'<path d="M12 19V5"/><path d="M6 11l6-6 6 6"/>',
+    down:'<path d="M12 5v14"/><path d="M6 13l6 6 6-6"/>',
+    flat:'<path d="M4 12h16"/>',
+    x:'<path d="M6 6l12 12M18 6L6 18"/>'
+  };
+  return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(paths[name]||paths.grid)+'</svg>';
+}
+function spark(vals, w, h){
+  w = w || 72; h = h || 26;
+  var min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
+  var span = (max - min) || 1;
+  var pts = vals.map(function(v,i){
+    var x = (i/(vals.length-1))*(w-4)+2;
+    var y = h-3-((v-min)/span)*(h-8);
+    return x.toFixed(1)+","+y.toFixed(1);
+  }).join(" ");
+  return '<svg class="spark" width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" aria-hidden="true"><polyline points="'+pts+'" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+}
+
+/* ============================== state ============================== */
+var state = { screen:"dashboard", scope:"all", search:"", sortKey:"n", sortDir:1, page:1 };
+var SCOPE_TOTALS = { all:571, AUR:196, HAR:178, STU:197 };
+
+/* ============================== nav ============================== */
+var NAV = [
+  {h:"Overview", items:[
+    {icon:"grid", label:"Dashboard", screen:"dashboard"},
+    {icon:"chart", label:"Reports"}]},
+  {h:"Leasing", items:[
+    {icon:"doc", label:"Leases", screen:"leases"},
+    {icon:"users", label:"Applications", badge:"5"},
+    {icon:"refresh", label:"Renewals", badge:"47"},
+    {icon:"list", label:"Waitlist", badge:"9"}]},
+  {h:"Operations", items:[
+    {icon:"wrench", label:"Maintenance", badge:"11"},
+    {icon:"sparkle", label:"Make-ready", badge:"6"},
+    {icon:"box", label:"Packages", badge:"18"}]},
+  {h:"Finance", items:[
+    {icon:"card", label:"Payments"},
+    {icon:"check", label:"Approvals", screen:"approvals", badge:"3"},
+    {icon:"book", label:"Ledger"}]}
+];
+function renderNav(){
+  var html = "";
+  NAV.forEach(function(g){
+    html += '<div class="nav-h">'+g.h+'</div>';
+    g.items.forEach(function(it){
+      var active = it.screen && (state.screen===it.screen || (state.screen==="lease-detail" && it.screen==="leases"));
+      html += '<button class="nav-item'+(active?" active":"")+'" '+
+        (it.screen ? 'onclick="go(\''+it.screen+'\')"' : 'onclick="toast(\''+it.label+' is not part of this concept mockup\')"')+'>'+
+        ic(it.icon,17)+'<span>'+it.label+'</span>'+
+        (it.badge ? '<span class="nav-badge">'+it.badge+'</span>' : "")+
+        '</button>';
+    });
+  });
+  document.getElementById("nav").innerHTML = html;
+}
+
+/* ============================== screens ============================== */
+function go(screen){
+  state.screen = screen;
+  ["dashboard","leases","lease-detail","approvals"].forEach(function(s){
+    document.getElementById("scr-"+s).hidden = (s!==screen);
+  });
+  renderNav();
+  closeNav(); closePalette();
+  window.scrollTo(0,0);
+}
+function openNav(){ document.getElementById("sidebar").classList.add("open"); document.getElementById("scrim").classList.add("open"); }
+function closeNav(){ document.getElementById("sidebar").classList.remove("open"); document.getElementById("scrim").classList.remove("open"); }
+
+/* ============================== scope ============================== */
+function setScope(v){
+  state.scope = v; state.page = 1;
+  document.getElementById("scopeSel").value = v;
+  renderScopePills(); renderKpis(); renderFeed(); renderPortfolio(); renderLeases();
+}
+function renderScopePills(){
+  var slots = document.querySelectorAll(".scopeslot");
+  for (var i=0;i<slots.length;i++){
+    if (state.scope==="all"){ slots[i].classList.remove("on"); slots[i].innerHTML=""; }
+    else {
+      slots[i].classList.add("on");
+      slots[i].innerHTML = 'Scoped: '+COMM_FULL[state.scope]+
+        ' <button aria-label="Clear community scope" onclick="setScope(\'all\')">'+ic("x",11)+'</button>';
+    }
+  }
+  document.getElementById("dashScopeName").textContent = KPI[state.scope].name;
+}
+
+/* ============================== dashboard ============================== */
+function renderKpis(){
+  var k = KPI[state.scope];
+  function delta(txt, up){
+    var cls = up===true?"up":(up===false?"up":"flat"); /* AR falling is good → green */
+    var icn = up===true?ic("up",11):(up===false?ic("down",11):ic("flat",11));
+    if (txt==="no change"){ cls="flat"; icn=ic("flat",11); }
+    return '<span class="k-delta '+cls+'">'+icn+txt+'</span>';
+  }
+  var tiles = [
+    {l:"Physical occupancy", v:k.occ, sub:k.leases+" active leases · "+k.units+" units", d:delta(k.occD,true), s:k.occS, title:""},
+    {l:"Scheduled rent / mo", v:k.rent, sub:"scheduled charges, current month", d:delta(k.rentD,true), s:k.rentS, title:k.rentFull},
+    {l:"Open AR", v:k.ar, sub:k.arSub, d:delta(k.arD,false), s:k.arS, title:""},
+    {l:"Deposits held", v:k.dep, sub:k.depSub, d:delta(k.depD,null), s:k.depS, title:""},
+    {l:"Renewals due 90d", v:k.ren, sub:k.renSub, d:delta(k.renD,true), s:k.renS, title:""}
+  ];
+  document.getElementById("kpis").innerHTML = tiles.map(function(t){
+    return '<div class="card kpi">'+spark(t.s)+
+      '<div class="k-label">'+t.l+'</div>'+
+      '<div class="k-value"'+(t.title?' title="'+t.title+'"':'')+'>'+t.v+'</div>'+
+      '<div class="k-sub">'+t.sub+'</div>'+t.d+'</div>';
+  }).join("");
+}
+function renderFeed(){
+  var items = FEED.filter(function(f){ return state.scope==="all" || f.comm==="all" || f.comm===state.scope; });
+  document.getElementById("feedCount").textContent = items.length+" open items · ranked by urgency";
+  document.getElementById("feed").innerHTML = items.map(function(f,i){
+    return '<button class="feed-row" data-fi="'+FEED.indexOf(f)+'" onclick="feedAct(this)">'+
+      '<span class="feed-ic '+f.tone+'">'+ic(f.ic,15)+'</span>'+
+      '<span class="feed-body"><span class="feed-t">'+f.t+'</span><br><span class="feed-d">'+f.d+'</span></span>'+
+      '<span class="feed-chev">'+ic("chev",15)+'</span></button>';
+  }).join("");
+}
+function feedAct(el){ FEED[+el.getAttribute("data-fi")].act(); }
+function renderPortfolio(){
+  var rows = PORTFOLIO.filter(function(p){ return state.scope==="all" || p.c===state.scope; });
+  document.getElementById("portRows").innerHTML = rows.map(function(p){
+    return '<tr style="cursor:pointer" onclick="setScope(\''+p.c+'\'); go(\'leases\')">'+
+      '<td><span class="cell-link">'+COMM_FULL[p.c]+'</span> <span class="faint">· '+p.city+'</span></td>'+
+      '<td class="num">'+p.units+'</td><td class="num">'+p.leases+'</td>'+
+      '<td><span class="occ-bar"><i style="width:'+p.occ+'%"></i></span><span style="font-weight:600; font-variant-numeric:tabular-nums">'+p.occ.toFixed(1)+'%</span></td>'+
+      '<td class="num">'+p.rent+'</td><td class="num bal-pos">'+p.ar+'</td></tr>';
+  }).join("");
+}
+
+/* ============================== leases table ============================== */
+var MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function fmtDate(iso){
+  if (!iso) return "—";
+  var p = iso.split("-");
+  return MONTHS[+p[1]-1]+" "+(+p[2])+" "+p[0];
+}
+function money(n){ return "$"+n.toLocaleString("en-US"); }
+function statusPill(l){
+  if (l.s==="over") return '<span class="pill bad">Overdue</span>';
+  if (l.s==="short") return '<span class="pill info">Short-stay</span>';
+  if (l.s==="pend") return '<span class="pill warn">Pending move-in</span>';
+  return '<span class="pill ok">Active</span>';
+}
+function filteredLeases(){
+  var q = state.search.trim().toLowerCase();
+  var rows = LEASES.filter(function(l){
+    if (state.scope!=="all" && l.c!==state.scope) return false;
+    if (!q) return true;
+    return (l.n+" "+l.u+" "+COMM[l.c]).toLowerCase().indexOf(q)>=0;
+  });
+  var k = state.sortKey, dir = state.sortDir;
+  rows.sort(function(a,b){
+    var av, bv;
+    if (k==="n"){ av=a.n.toLowerCase(); bv=b.n.toLowerCase(); return av<bv?-dir:(av>bv?dir:0); }
+    if (k==="r"){ av=a.night?a.r*30.4:a.r; bv=b.night?b.r*30.4:b.r; return (av-bv)*dir; }
+    if (k==="b"){ return (a.b-b.b)*dir; }
+    if (k==="e"){ av=a.e||"9999"; bv=b.e||"9999"; return av<bv?-dir:(av>bv?dir:0); }
+    return 0;
+  });
+  return rows;
+}
+function renderLeases(){
+  var rows = filteredLeases();
+  var per = 15;
+  var pages = Math.max(1, Math.ceil(rows.length/per));
+  if (state.page>pages) state.page = pages;
+  var start = (state.page-1)*per;
+  var pageRows = rows.slice(start, start+per);
+
+  document.getElementById("leaseRows").innerHTML = pageRows.length ? pageRows.map(function(l){
+    var isEmma = l.u==="AUR-101";
+    var rent = l.night ? money(l.r)+'<span class="muted" style="font-weight:500">/night</span>' : money(l.r);
+    var bal = l.b>0
+      ? '<span class="bal-pos">'+money(l.b)+'</span>'+(l.od?' <span class="bal-note">· '+l.od+'d</span>':"")
+      : '<span class="muted">$0</span>';
+    return '<tr>'+
+      '<td><a href="#" class="cell-link" onclick="openRow(\''+l.u+'\'); return false">'+l.n+'</a></td>'+
+      '<td><span class="muted">'+l.u+'</span></td>'+
+      '<td>'+COMM[l.c]+'</td>'+
+      '<td>'+statusPill(l)+'</td>'+
+      '<td class="num">'+rent+'</td>'+
+      '<td class="num">'+bal+'</td>'+
+      '<td>'+(l.e?fmtDate(l.e):'<span class="faint">open-ended</span>')+'</td></tr>';
+  }).join("") : '<tr><td colspan="7" style="text-align:center; padding:34px 14px; color:var(--muted)">No leases match “'+esc(state.search)+'” in this scope.<br><a href="#" onclick="clearLeaseSearch(); return false" style="font-weight:600">Clear filter</a></td></tr>';
+
+  /* header sub + filter note + paging */
+  var scopeTotal = SCOPE_TOTALS[state.scope];
+  var sub = state.scope==="all"
+    ? "571 active leases · 632 units · updated 2 min ago"
+    : SCOPE_TOTALS[state.scope]+" active leases · "+KPI[state.scope].units+" units · "+COMM_FULL[state.scope];
+  document.getElementById("leaseSub").textContent = sub;
+
+  var q = state.search.trim();
+  var totalDisplay = q ? rows.length : scopeTotal;
+  var info;
+  if (!rows.length) info = "0 of "+totalDisplay;
+  else info = (start+1)+"–"+(start+pageRows.length)+" of "+totalDisplay.toLocaleString("en-US");
+  document.getElementById("pageInfo").textContent = info;
+  document.getElementById("prevBtn").disabled = state.page<=1;
+  document.getElementById("nextBtn").disabled = state.page>=pages;
+  document.getElementById("filterNote").textContent = q ? rows.length+" matches" : "";
+
+  /* sort arrows */
+  var ths = document.querySelectorAll("th.sortable");
+  for (var i=0;i<ths.length;i++){
+    var arr = ths[i].querySelector(".arr");
+    arr.textContent = ths[i].getAttribute("data-k")===state.sortKey ? (state.sortDir===1?"↑":"↓") : "";
+  }
+}
+function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function onLeaseSearch(v){ state.search = v; state.page = 1; renderLeases(); }
+function clearLeaseSearch(){ state.search=""; document.getElementById("leaseSearch").value=""; state.page=1; renderLeases(); }
+function setSort(k){
+  if (state.sortKey===k) state.sortDir = -state.sortDir;
+  else { state.sortKey = k; state.sortDir = 1; }
+  state.page = 1; renderLeases();
+}
+function pageBy(d){ state.page += d; renderLeases(); }
+function openRow(unit){
+  if (unit==="AUR-101") go("lease-detail");
+  else toast("This concept mocks one full record — opening agr-AUR-101 shows the lease-detail pattern");
+}
+function searchLeases(q){
+  state.search = q; state.page = 1;
+  document.getElementById("leaseSearch").value = q;
+  go("leases"); renderLeases();
+}
+
+/* ============================== approvals ============================== */
+var apprState = {}; /* id → 'approved' | 'declined' */
+function renderApprovals(){
+  var pending = APPROVALS.filter(function(a){ return !apprState[a.id]; }).length;
+  document.getElementById("apprSub").textContent = pending+" pending · money-moving actions park here until a second person signs off";
+  document.getElementById("apprList").innerHTML = APPROVALS.map(function(a){
+    var st = apprState[a.id];
+    var actions;
+    if (st==="approved") actions = '<span class="pill ok">Approved · executing</span>';
+    else if (st==="declined") actions = '<span class="pill bad">Declined · initiator notified</span>';
+    else {
+      actions = (a.pay ? '<button class="btn sm" onclick="openDrawer(\'Summit Mechanical — vendor bill\', 6150)">'+ic("card",14)+' Review &amp; pay</button>' : "")+
+        '<button class="btn sm danger-ghost" onclick="decideAppr(\''+a.id+'\',\'declined\')">Decline</button>'+
+        '<button class="btn sm primary" onclick="decideAppr(\''+a.id+'\',\'approved\')">'+ic("check",14)+' Approve</button>';
+    }
+    return '<div class="card appr'+(st?" done":"")+'">'+
+      '<div class="appr-head">'+
+        (a.amt?'<span class="appr-amt">'+a.amt+'</span>':'<span class="appr-amt" style="color:var(--muted)">—</span>')+
+        '<span style="flex:1; min-width:220px"><span class="appr-t">'+a.t+'</span>'+
+        '<div class="appr-d">'+a.d+'</div>'+
+        '<span class="why">'+ic("alert",12)+' Escalated: '+a.why+'</span>'+
+        '<div class="appr-meta">'+a.meta+'</div></span>'+
+        '<span class="appr-actions">'+actions+'</span>'+
+      '</div></div>';
+  }).join("");
+}
+function decideAppr(id, decision){
+  apprState[id] = decision;
+  renderApprovals();
+  toast(decision==="approved" ? "Approved — action will execute and be written to the audit log" : "Declined — the initiator has been notified");
+}
+
+/* ============================== palette ============================== */
+var palSel = 0;
+function openPalette(){
+  document.getElementById("palOverlay").classList.add("open");
+  var inp = document.getElementById("palInput");
+  inp.value = ""; palSel = 0; renderPalette();
+  setTimeout(function(){ inp.focus(); }, 10);
+}
+function closePalette(){ document.getElementById("palOverlay").classList.remove("open"); }
+function palMatches(){
+  var q = document.getElementById("palInput").value.trim().toLowerCase();
+  return PALETTE.filter(function(p){ return !q || (p.t+" "+p.d+" "+p.g).toLowerCase().indexOf(q)>=0; });
+}
+function renderPalette(){
+  var items = palMatches();
+  if (palSel >= items.length) palSel = Math.max(0, items.length-1);
+  var html = "", lastG = null;
+  items.forEach(function(p, i){
+    if (p.g!==lastG){ html += '<div class="pal-g">'+p.g+'</div>'; lastG = p.g; }
+    html += '<button class="pal-item'+(i===palSel?" sel":"")+'" data-pi="'+i+'" onclick="palGo('+i+')" onmousemove="palSel='+i+'; paintPalSel()">'+
+      '<span class="p-ic">'+ic(p.ic,15)+'</span>'+
+      '<span><span class="p-t">'+p.t+'</span><br><span class="p-d">'+p.d+'</span></span></button>';
+  });
+  document.getElementById("palRes").innerHTML = items.length ? html :
+    '<div class="pal-empty">Nothing matches “'+esc(document.getElementById("palInput").value)+'” — try a resident, unit or screen name.</div>';
+}
+function paintPalSel(){
+  var els = document.querySelectorAll(".pal-item");
+  for (var i=0;i<els.length;i++) els[i].classList.toggle("sel", +els[i].getAttribute("data-pi")===palSel);
+}
+function palGo(i){
+  var items = palMatches();
+  if (!items.length) return;
+  closePalette();
+  items[i===undefined?palSel:i].act();
+}
+
+/* ============================== payment drawer ============================== */
+function openDrawer(who, amount){
+  var sel = document.getElementById("payWho");
+  if (who){
+    var found = false;
+    for (var i=0;i<sel.options.length;i++){
+      if (sel.options[i].text.indexOf(who.split(" — ")[0])>=0){ sel.selectedIndex = i; found = true; break; }
+    }
+    if (!found) sel.selectedIndex = 0;
+  } else sel.selectedIndex = 0;
+  document.getElementById("payAmt").value = (amount||1650).toLocaleString("en-US", {minimumFractionDigits:2});
+  document.getElementById("payMemo").value = "";
+  document.getElementById("drawer").classList.add("open");
+  document.getElementById("drawerScrim").classList.add("open");
+  setTimeout(function(){ document.getElementById("payAmt").focus(); }, 120);
+}
+function closeDrawer(){
+  document.getElementById("drawer").classList.remove("open");
+  document.getElementById("drawerScrim").classList.remove("open");
+}
+function confirmPayment(){
+  var amt = parseFloat(document.getElementById("payAmt").value.replace(/[^0-9.]/g,"")) || 0;
+  var who = document.getElementById("payWho").value.split(" — ")[0];
+  var method = document.getElementById("payMethod").value;
+  closeDrawer();
+  if (amt > 5000){
+    toast("Parked for approval — $"+amt.toLocaleString("en-US")+" is over the $5,000 threshold. It’s now in the Approvals queue.", "warn");
+  } else {
+    toast("Payment recorded — $"+amt.toLocaleString("en-US")+" from "+who+" via "+method+". Receipt queued.");
+  }
+}
+
+/* ============================== theme / toast / keys ============================== */
+function toggleTheme(){
+  var root = document.documentElement;
+  var dark = root.getAttribute("data-theme")==="dark";
+  root.setAttribute("data-theme", dark?"light":"dark");
+  document.getElementById("icMoon").style.display = dark?"":"none";
+  document.getElementById("icSun").style.display = dark?"none":"";
+}
+var toastTimer = null;
+function toast(msg, kind){
+  var el = document.getElementById("toastEl");
+  el.textContent = msg;
+  el.className = "toast show"+(kind==="warn"?" warn":"");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ el.classList.remove("show"); }, 3600);
+}
+document.addEventListener("keydown", function(e){
+  if ((e.metaKey||e.ctrlKey) && (e.key==="k"||e.key==="K")){ e.preventDefault(); openPalette(); return; }
+  var palOpen = document.getElementById("palOverlay").classList.contains("open");
+  if (e.key==="Escape"){
+    if (palOpen) closePalette();
+    else if (document.getElementById("drawer").classList.contains("open")) closeDrawer();
+    else closeNav();
+    return;
+  }
+  if (palOpen){
+    var items = palMatches();
+    if (e.key==="ArrowDown"){ e.preventDefault(); palSel = Math.min(items.length-1, palSel+1); paintPalSel(); }
+    else if (e.key==="ArrowUp"){ e.preventDefault(); palSel = Math.max(0, palSel-1); paintPalSel(); }
+    else if (e.key==="Enter"){ e.preventDefault(); palGo(); }
+  }
+});
+
+/* ============================== boot ============================== */
+renderNav(); renderScopePills(); renderKpis(); renderFeed(); renderPortfolio(); renderLeases(); renderApprovals();
+</script>
+</body>
+</html>

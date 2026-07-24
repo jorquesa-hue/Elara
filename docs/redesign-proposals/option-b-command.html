@@ -1,0 +1,1325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Option B — Command Hub · Elara portal redesign concept</title>
+<style>
+  :root{
+    --bg:#f7f7f9; --card:#ffffff; --line:#e5e5ec; --line-soft:#efeff4;
+    --text:#191922; --muted:#666672; --faint:#8d8d99;
+    --accent:#5352c9; --accent-hover:#4645b4; --accent-soft:#ededfb; --accent-line:#c9c9f0;
+    --green-t:#0f6b3f; --green-b:#e1f4e8;
+    --red-t:#b3261e;  --red-b:#fdecea;
+    --amber-t:#8a5800; --amber-b:#fcf1da; --amber-strip:#fdf6e7; --amber-line:#eed9a8;
+    --blue-t:#0d5a9e; --blue-b:#e4f0fb;
+    --shadow:0 1px 2px rgba(20,20,40,.05), 0 4px 14px rgba(20,20,40,.06);
+    --shadow-lg:0 8px 40px rgba(20,20,40,.18);
+    --r:10px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{-webkit-text-size-adjust:100%;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    font-size:15px; line-height:1.45; color:var(--text); background:var(--bg);
+  }
+  button{font:inherit; color:inherit; background:none; border:none; cursor:pointer;}
+  input,select{font:inherit; color:inherit;}
+  a{color:var(--accent); text-decoration:none;}
+  a:hover{text-decoration:underline;}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:4px;}
+  svg{flex:none; display:block;}
+  .num{font-variant-numeric:tabular-nums; white-space:nowrap;}
+
+  /* ---------- fixed chrome ---------- */
+  .chrome{position:sticky; top:0; z-index:60;}
+  .optbanner{
+    background:#191922; color:#f4f4f8; font-size:12.5px; letter-spacing:.02em;
+    text-align:center; padding:6px 12px; font-weight:600;
+  }
+  .optbanner b{color:#b9b8f5; font-weight:700;}
+  .topbar{
+    background:var(--card); border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:14px; padding:10px 20px;
+  }
+  .brand{display:flex; align-items:center; gap:9px; font-weight:700; font-size:17px; letter-spacing:-.01em;}
+  .brand .mark{width:26px; height:26px; border-radius:7px; background:var(--accent); display:flex; align-items:center; justify-content:center; color:#fff;}
+  .gsearch{
+    flex:1; max-width:640px; margin:0 auto;
+    display:flex; align-items:center; gap:9px;
+    background:var(--bg); border:1px solid var(--line); border-radius:9px;
+    padding:8px 13px; color:var(--muted); cursor:pointer; text-align:left; font-size:14.5px;
+  }
+  .gsearch:hover{border-color:var(--accent-line); background:#fff;}
+  .gsearch .kbd{margin-left:auto;}
+  .kbd{
+    font-size:11.5px; color:var(--muted); border:1px solid var(--line); border-bottom-width:2px;
+    border-radius:5px; padding:1px 6px; background:#fff; white-space:nowrap;
+  }
+  .topright{display:flex; align-items:center; gap:10px;}
+  .scopesel{
+    border:1px solid var(--line); border-radius:8px; background:var(--card);
+    padding:7px 8px; font-size:13.5px; color:var(--text); max-width:180px; cursor:pointer;
+  }
+  .avatar{
+    width:32px; height:32px; border-radius:50%; background:var(--accent-soft); color:var(--accent);
+    font-size:12.5px; font-weight:700; display:flex; align-items:center; justify-content:center;
+    border:1px solid var(--accent-line);
+  }
+  .uname{font-size:13px; color:var(--muted); line-height:1.25;}
+  .uname b{display:block; color:var(--text); font-weight:600;}
+
+  /* ---------- module bar ---------- */
+  .modulebar{
+    background:var(--card); border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:2px; padding:0 14px; overflow-x:auto; scrollbar-width:none;
+  }
+  .modulebar::-webkit-scrollbar{display:none;}
+  .mod{
+    display:flex; align-items:center; gap:7px; padding:10px 13px; font-size:14px; font-weight:500;
+    color:var(--muted); border-bottom:2px solid transparent; margin-bottom:-1px; white-space:nowrap;
+  }
+  .mod:hover{color:var(--text);}
+  .mod.on{color:var(--accent); border-bottom-color:var(--accent); font-weight:600;}
+  .mod .badge{
+    background:var(--amber-b); color:var(--amber-t); font-size:11.5px; font-weight:700;
+    border-radius:99px; padding:0 7px; line-height:18px;
+  }
+
+  /* ---------- layout ---------- */
+  main{max-width:1200px; margin:0 auto; padding:26px 22px 80px;}
+  .screen{display:none;}
+  .screen.on{display:block; animation:fadein .16s ease;}
+  @keyframes fadein{from{opacity:0; transform:translateY(3px);} to{opacity:1; transform:none;}}
+  .pagehead{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:6px;}
+  h1{font-size:24px; letter-spacing:-.02em; font-weight:700;}
+  h2{font-size:16px; font-weight:650;}
+  .sub{color:var(--muted); font-size:14px; margin-top:3px;}
+  .scopepill{
+    display:none; align-items:center; gap:7px; margin:10px 0 2px;
+    background:var(--accent-soft); border:1px solid var(--accent-line); color:var(--accent);
+    font-size:13px; font-weight:600; border-radius:99px; padding:4px 6px 4px 12px; width:fit-content;
+  }
+  .scopepill.show{display:inline-flex;}
+  .scopepill button{display:flex; padding:2px; border-radius:50%; color:var(--accent);}
+  .scopepill button:hover{background:#dddcf7;}
+
+  /* ---------- buttons ---------- */
+  .btn{
+    display:inline-flex; align-items:center; gap:7px; border-radius:8px; font-size:14px; font-weight:600;
+    padding:8px 14px; border:1px solid var(--line); background:var(--card); color:var(--text);
+    white-space:nowrap;
+  }
+  .btn:hover{border-color:#cfcfda; background:#fbfbfd;}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
+  .btn.primary:hover{background:var(--accent-hover); border-color:var(--accent-hover);}
+  .btn.small{padding:5px 11px; font-size:13px; border-radius:7px;}
+  .btn.ghost{border-color:transparent; color:var(--accent); background:none;}
+  .btn.ghost:hover{background:var(--accent-soft);}
+  .btn.danger-ghost{border-color:transparent; color:var(--red-t);}
+  .btn.danger-ghost:hover{background:var(--red-b);}
+
+  /* ---------- pills ---------- */
+  .pill{
+    display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:700;
+    border-radius:99px; padding:2px 9px; letter-spacing:.01em; white-space:nowrap;
+  }
+  .pill::before{content:""; width:6px; height:6px; border-radius:50%; background:currentColor;}
+  .p-active{color:var(--green-t); background:var(--green-b);}
+  .p-over{color:var(--red-t); background:var(--red-b);}
+  .p-pend{color:var(--amber-t); background:var(--amber-b);}
+  .p-short{color:var(--blue-t); background:var(--blue-b);}
+  .p-paid{color:var(--green-t); background:var(--green-b);}
+
+  /* ---------- KPI strip ---------- */
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin:18px 0 22px;}
+  .kpi{background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:14px 16px; box-shadow:var(--shadow);}
+  .kpi-label{font-size:12.5px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.05em;}
+  .kpi-value{font-size:26px; font-weight:700; letter-spacing:-.02em; margin-top:5px; display:flex; align-items:flex-end; gap:10px;}
+  .kpi-value .spark{color:#b4b3ec; margin-bottom:5px;}
+  .kpi-delta{font-size:12.5px; font-weight:600; margin-top:4px; display:flex; align-items:center; gap:4px;}
+  .kpi-delta.good{color:var(--green-t);}
+  .kpi-delta.flat{color:var(--faint);}
+  .kpi-sub{font-size:12.5px; color:var(--faint); margin-top:2px;}
+
+  /* ---------- work queue cards ---------- */
+  .queue{display:grid; grid-template-columns:repeat(2,1fr); gap:14px;}
+  .qcard{
+    background:var(--card); border:1px solid var(--line); border-radius:var(--r);
+    box-shadow:var(--shadow); padding:16px 18px; display:flex; flex-direction:column; gap:12px;
+  }
+  .qcard.amber{border-color:var(--amber-line); background:linear-gradient(#fffdf8,#fffdf8);}
+  .qcard.span2{grid-column:span 2;}
+  .qhead{display:flex; align-items:center; gap:10px;}
+  .qhead .qicon{
+    width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center;
+    background:var(--accent-soft); color:var(--accent);
+  }
+  .qcard.amber .qicon{background:var(--amber-b); color:var(--amber-t);}
+  .qhead h2{flex:1;}
+  .qhead .qlink{font-size:13.5px; font-weight:600; white-space:nowrap;}
+  .qrow{
+    display:flex; align-items:center; gap:12px; padding:9px 0; border-top:1px solid var(--line-soft);
+    font-size:14px;
+  }
+  .qrow:last-child{padding-bottom:0;}
+  .qrow .who{flex:1; min-width:0;}
+  .qrow .who b{font-weight:600;}
+  .qrow .who .meta{display:block; font-size:12.5px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .qrow .amt{font-weight:700; text-align:right;}
+  .qrow .amt.red{color:var(--red-t);}
+  .qnote{font-size:13px; color:var(--muted);}
+  .qnote .bad{color:var(--red-t); font-weight:600;}
+
+  /* ---------- tables ---------- */
+  .toolrow{display:flex; align-items:center; gap:10px; margin:16px 0 12px; flex-wrap:wrap;}
+  .tsearch{
+    display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--line);
+    border-radius:8px; padding:7px 11px; flex:1; min-width:200px; max-width:360px; color:var(--muted);
+  }
+  .tsearch input{border:none; outline:none; background:none; flex:1; font-size:14px; color:var(--text); min-width:0;}
+  .tablecard{background:var(--card); border:1px solid var(--line); border-radius:var(--r); box-shadow:var(--shadow); overflow:hidden;}
+  .tablewrap{overflow:auto; max-height:min(560px, calc(100vh - 320px));}
+  table{border-collapse:collapse; width:100%; min-width:820px;}
+  thead th{
+    position:sticky; top:0; z-index:2; background:#fbfbfd; border-bottom:1px solid var(--line);
+    font-size:12.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);
+    text-align:left; padding:10px 14px; font-weight:650; white-space:nowrap;
+  }
+  thead th.sortable{cursor:pointer; user-select:none;}
+  thead th.sortable:hover{color:var(--text);}
+  thead th .arr{display:inline-block; margin-left:4px; color:var(--accent); font-size:11px; vertical-align:1px;}
+  tbody td{padding:10px 14px; border-bottom:1px solid var(--line-soft); font-size:14px; white-space:nowrap;}
+  tbody tr:hover td{background:#f8f8fc;}
+  tbody tr{cursor:pointer;}
+  td.r, th.r{text-align:right;}
+  td .res{font-weight:600; color:var(--text);}
+  tr.linked .res{color:var(--accent);}
+  td .late{font-size:11.5px; color:var(--red-t); font-weight:700; margin-left:6px;}
+  td .balpos{color:var(--red-t); font-weight:700;}
+  td .balzero{color:var(--faint);}
+  .pager{
+    display:flex; align-items:center; gap:10px; padding:10px 14px; border-top:1px solid var(--line);
+    font-size:13.5px; color:var(--muted); flex-wrap:wrap;
+  }
+  .pager .range{margin-right:auto;}
+  .emptystate{padding:44px 20px; text-align:center; color:var(--muted); font-size:14px;}
+  .emptystate b{display:block; color:var(--text); font-size:15px; margin-bottom:4px;}
+
+  /* ---------- amber approvals strip ---------- */
+  .apstrip{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    background:var(--amber-strip); border:1px solid var(--amber-line); border-radius:9px;
+    padding:9px 14px; margin:14px 0 0; font-size:13.5px; color:var(--amber-t);
+  }
+  .apstrip b{font-weight:700;}
+  .apstrip .items{color:#6e4a05;}
+  .apstrip a{margin-left:auto; font-weight:700; color:var(--amber-t); text-decoration:underline;}
+
+  /* ---------- lease detail ---------- */
+  .backlink{display:inline-flex; align-items:center; gap:6px; font-size:13.5px; font-weight:600; color:var(--muted); margin-bottom:10px;}
+  .backlink:hover{color:var(--accent); text-decoration:none;}
+  .detailgrid{display:grid; grid-template-columns:1.5fr 1fr; gap:14px; margin-top:16px;}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:var(--r); box-shadow:var(--shadow); padding:16px 18px;}
+  .card h2{margin-bottom:12px;}
+  .kv{display:grid; grid-template-columns:130px 1fr; gap:8px 14px; font-size:14px;}
+  .kv dt{color:var(--muted);}
+  .kv dd{font-weight:550;}
+  .stack{display:flex; flex-direction:column; gap:14px;}
+  .timeline{list-style:none; position:relative; padding-left:22px;}
+  .timeline::before{content:""; position:absolute; left:6px; top:6px; bottom:6px; width:2px; background:var(--line);}
+  .timeline li{position:relative; padding:0 0 14px;}
+  .timeline li:last-child{padding-bottom:0;}
+  .timeline li::before{
+    content:""; position:absolute; left:-21px; top:4px; width:12px; height:12px; border-radius:50%;
+    background:var(--card); border:3px solid var(--accent-line);
+  }
+  .timeline li.money::before{border-color:var(--accent);}
+  .timeline .t{font-weight:600; font-size:14px;}
+  .timeline .d{font-size:12.5px; color:var(--muted);}
+  .balbig{font-size:30px; font-weight:700; letter-spacing:-.02em;}
+  .chips{display:flex; flex-wrap:wrap; gap:8px;}
+  .chip{
+    display:inline-flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:9px;
+    padding:8px 12px; font-size:13.5px; background:#fbfbfd;
+  }
+  .chip .cico{color:var(--accent);}
+  .chip b{font-weight:650;}
+  .chip .cm{color:var(--muted);}
+  .invrow{display:flex; align-items:center; gap:12px; padding:10px 0; border-top:1px solid var(--line-soft); font-size:14px;}
+  .invrow .grow{flex:1; min-width:0;}
+  .invrow .meta{font-size:12.5px; color:var(--muted);}
+
+  /* ---------- approvals screen ---------- */
+  .apcard{
+    background:var(--card); border:1px solid var(--line); border-left:4px solid var(--amber-line);
+    border-radius:var(--r); box-shadow:var(--shadow); padding:16px 18px; margin-top:14px;
+    display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap;
+  }
+  .apcard.approved{border-left-color:#7fc79c; opacity:.75;}
+  .apcard .apbody{flex:1; min-width:230px;}
+  .apcard .apbody h2{margin-bottom:2px;}
+  .apcard .apmeta{font-size:13px; color:var(--muted); margin-top:2px;}
+  .apcard .apwhy{
+    display:inline-flex; align-items:center; gap:6px; margin-top:9px; font-size:12.5px; font-weight:600;
+    color:var(--amber-t); background:var(--amber-b); border-radius:6px; padding:3px 9px;
+  }
+  .apcard.approved .apwhy{color:var(--green-t); background:var(--green-b);}
+  .apcard .apamt{font-size:21px; font-weight:700; letter-spacing:-.01em; padding-top:2px;}
+  .apcard .apacts{display:flex; gap:8px; align-items:center; padding-top:2px; flex-wrap:wrap;}
+
+  /* ---------- drawer ---------- */
+  .scrim{position:fixed; inset:0; background:rgba(20,20,35,.38); z-index:80; opacity:0; pointer-events:none; transition:opacity .18s;}
+  .scrim.show{opacity:1; pointer-events:auto;}
+  .drawer{
+    position:fixed; top:0; right:0; bottom:0; width:min(430px, 100vw); background:var(--card); z-index:90;
+    box-shadow:var(--shadow-lg); transform:translateX(102%); transition:transform .22s ease;
+    display:flex; flex-direction:column;
+  }
+  .drawer.show{transform:none;}
+  .dhead{display:flex; align-items:center; gap:10px; padding:16px 20px; border-bottom:1px solid var(--line);}
+  .dhead h2{flex:1; font-size:17px;}
+  .dclose{color:var(--muted); padding:5px; border-radius:6px; display:flex;}
+  .dclose:hover{background:var(--bg); color:var(--text);}
+  .dbody{flex:1; overflow:auto; padding:18px 20px; display:flex; flex-direction:column; gap:16px;}
+  .dwho{display:flex; align-items:center; gap:11px; background:#fbfbfd; border:1px solid var(--line); border-radius:9px; padding:11px 13px;}
+  .dwho .avatar{width:36px; height:36px;}
+  .dwho .n{font-weight:650; font-size:14.5px;}
+  .dwho .m{font-size:12.5px; color:var(--muted);}
+  .field{display:flex; flex-direction:column; gap:5px;}
+  .field label{font-size:13px; font-weight:650; color:var(--text);}
+  .field .hint{font-size:12px; color:var(--faint);}
+  .field input, .field select{
+    border:1px solid var(--line); border-radius:8px; padding:9px 12px; font-size:15px; background:#fff; width:100%;
+  }
+  .field input:focus, .field select:focus{outline:2px solid var(--accent); outline-offset:0; border-color:var(--accent);}
+  .amtwrap{position:relative;}
+  .amtwrap .cur{position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--muted); font-weight:600;}
+  .amtwrap input{padding-left:26px; font-weight:700; font-size:17px; text-align:right; font-variant-numeric:tabular-nums;}
+  .dnote{
+    display:flex; gap:9px; background:var(--accent-soft); border:1px solid var(--accent-line);
+    border-radius:9px; padding:11px 13px; font-size:13px; color:#3d3c96; line-height:1.5;
+  }
+  .dnote.warn{background:var(--amber-strip); border-color:var(--amber-line); color:var(--amber-t);}
+  .dfoot{display:flex; gap:10px; padding:14px 20px; border-top:1px solid var(--line); background:#fbfbfd;}
+  .dfoot .btn{flex:1; justify-content:center; padding:10px;}
+
+  /* ---------- palette ---------- */
+  .palwrap{position:fixed; inset:0; z-index:100; background:rgba(20,20,35,.42); display:none; padding:11vh 16px 0;}
+  .palwrap.show{display:block;}
+  .palette{
+    max-width:600px; margin:0 auto; background:var(--card); border-radius:14px; box-shadow:var(--shadow-lg);
+    overflow:hidden; border:1px solid var(--line);
+  }
+  .palin{display:flex; align-items:center; gap:11px; padding:14px 17px; border-bottom:1px solid var(--line); color:var(--muted);}
+  .palin input{border:none; outline:none; flex:1; font-size:16.5px; background:none; color:var(--text); min-width:0;}
+  .palres{max-height:52vh; overflow:auto; padding:8px 0 10px;}
+  .palgroup{font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--faint); padding:10px 17px 4px;}
+  .palitem{
+    display:flex; align-items:center; gap:11px; width:100%; text-align:left; padding:8px 17px; font-size:14.5px;
+  }
+  .palitem:hover, .palitem.sel{background:var(--accent-soft);}
+  .palitem .pico{color:var(--muted); width:28px; height:28px; border-radius:7px; background:var(--bg); display:flex; align-items:center; justify-content:center;}
+  .palitem .pt{flex:1; min-width:0;}
+  .palitem .pt b{font-weight:600;}
+  .palitem .pt .pm{display:block; font-size:12.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .palitem .num{color:var(--muted); font-size:13px;}
+  .palempty{padding:26px 17px; color:var(--muted); font-size:14px; text-align:center;}
+  .palfoot{display:flex; gap:14px; padding:9px 17px; border-top:1px solid var(--line); font-size:12px; color:var(--faint); background:#fbfbfd;}
+
+  /* ---------- toast ---------- */
+  .toast{
+    position:fixed; left:50%; bottom:26px; transform:translate(-50%, 20px); z-index:120;
+    background:#22222e; color:#f4f4f8; font-size:14px; font-weight:550; border-radius:9px;
+    padding:11px 18px; box-shadow:var(--shadow-lg); opacity:0; pointer-events:none;
+    transition:opacity .2s, transform .2s; display:flex; align-items:center; gap:9px; max-width:calc(100vw - 32px);
+  }
+  .toast.show{opacity:1; transform:translate(-50%, 0);}
+  .toast .tico{color:#8fe0b0;}
+
+  /* ---------- responsive ---------- */
+  @media (max-width:860px){
+    .queue{grid-template-columns:1fr;}
+    .qcard.span2{grid-column:auto;}
+    .detailgrid{grid-template-columns:1fr;}
+  }
+  @media (max-width:720px){
+    .topbar{flex-wrap:wrap; gap:8px; padding:9px 12px;}
+    .brand span{display:none;}
+    .gsearch{order:3; flex-basis:100%; max-width:none; margin:0;}
+    .gsearch .kbd{display:none;}
+    .uname{display:none;}
+    .topright{margin-left:auto;}
+    main{padding:18px 12px 70px;}
+    h1{font-size:21px;}
+    .kv{grid-template-columns:110px 1fr;}
+    .apcard .apacts{width:100%;}
+  }
+</style>
+</head>
+<body>
+
+<div class="chrome">
+  <div class="optbanner"><b>OPTION B — Command Hub</b> &nbsp;·&nbsp; Elara portal redesign concept</div>
+
+  <!-- top bar -->
+  <header class="topbar">
+    <div class="brand" aria-label="Elara">
+      <span class="mark">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 4l9 7"/><path d="M6 10v9h12v-9"/></svg>
+      </span>
+      <span>Elara</span>
+    </div>
+
+    <button class="gsearch" id="gsearchBtn" aria-label="Search residents, units, screens">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <span>Search residents, units, screens…</span>
+      <span class="kbd">⌘K</span>
+    </button>
+
+    <div class="topright">
+      <select class="scopesel" id="scopeSel" aria-label="Community scope">
+        <option value="all">All communities</option>
+        <option value="aur">Aurora Heights</option>
+        <option value="har">Harborview Residences</option>
+        <option value="stu">Metro Student Commons</option>
+      </select>
+      <div class="uname"><b>Dana Meyer</b>Portfolio manager</div>
+      <div class="avatar" aria-hidden="true">DM</div>
+    </div>
+  </header>
+
+  <!-- module bar -->
+  <nav class="modulebar" aria-label="Modules">
+    <button class="mod on" data-mod="home" data-go="home">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 4l9 7"/><path d="M6 10v9h12v-9"/></svg>
+      Home
+    </button>
+    <button class="mod" data-mod="leasing" data-go="leases">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/></svg>
+      Leasing
+    </button>
+    <button class="mod" data-mod="ops" data-toast="Operations module — make-ready board, work orders and packages live here (not wired in this concept)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.2 5.2L4 17v3h3l5.5-5.5a4 4 0 0 0 5.2-5.2L15 12l-3-3z"/></svg>
+      Operations
+    </button>
+    <button class="mod" data-mod="money" data-go="approvals">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M15 9.5c0-1.4-1.3-2-3-2s-3 .7-3 2 1.2 1.8 3 2.2 3 1 3 2.3-1.3 2-3 2-3-.6-3-2"/></svg>
+      Money
+      <span class="badge" id="moneyBadge">3</span>
+    </button>
+    <button class="mod" data-mod="reports" data-toast="Reports module — catalog + report builder (not wired in this concept)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V9M10 20V4M16 20v-8M21 20H3"/></svg>
+      Reports
+    </button>
+    <button class="mod" data-mod="setup" data-toast="Setup module — users, roles, communities, branding (not wired in this concept)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2.1-1.3L14 3h-4l-.5 2.6a7 7 0 0 0-2.1 1.3l-2.3-1-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2.1 1.3L10 21h4l.5-2.6a7 7 0 0 0 2.1-1.3l2.3 1 2-3.4-2-1.5c.07-.4.1-.8.1-1.2z"/></svg>
+      Setup
+    </button>
+    <button class="mod" data-mod="more" data-toast="More modules — Insurance, Utilities, Waitlist, Owners…" aria-label="More modules">…</button>
+  </nav>
+</div>
+
+<main>
+
+  <!-- ============ SCREEN 1 · HOME ============ -->
+  <section class="screen on" id="scr-home">
+    <div class="pagehead">
+      <div>
+        <h1 id="greeting">Good morning, Dana</h1>
+        <div class="sub">Thursday, July 23, 2026 · Meridian Residential · <span id="homeScopeLine">3 communities · 632 units</span></div>
+        <div class="scopepill" id="pill-home">
+          <span>Scoped: <span class="scopename"></span></span>
+          <button aria-label="Clear community scope" onclick="setScope('all')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+      </div>
+      <button class="btn" onclick="openPalette()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        Find a record
+      </button>
+    </div>
+
+    <!-- KPI strip -->
+    <div class="kpis">
+      <div class="kpi">
+        <div class="kpi-label">Physical occupancy</div>
+        <div class="kpi-value"><span id="kOcc">90.3%</span>
+          <span class="spark" aria-hidden="true"><svg width="58" height="18" viewBox="0 0 58 18"><polyline points="1,14 10,13 19,12.5 28,13 37,10 47,8 57,5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+        </div>
+        <div class="kpi-delta good" id="kOccD">▲ +1.2 pts vs Jun</div>
+        <div class="kpi-sub" id="kOccSub">571 of 632 units occupied</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Scheduled rent / mo</div>
+        <div class="kpi-value"><span class="num" id="kRent" title="$1,144,695">$1.14M</span></div>
+        <div class="kpi-delta good" id="kRentD">▲ +$18,240 vs Jun</div>
+        <div class="kpi-sub" id="kRentSub">571 active leases</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Open receivables</div>
+        <div class="kpi-value"><span class="num" id="kAr">$93,417</span></div>
+        <div class="kpi-delta good" id="kArD">▼ −$4,180 vs Jun</div>
+        <div class="kpi-sub" id="kArSub">54 residents with a balance</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Deposits held</div>
+        <div class="kpi-value"><span class="num" id="kDep">$188,378</span></div>
+        <div class="kpi-delta flat" id="kDepD">— no change</div>
+        <div class="kpi-sub">In segregated trust accounts</div>
+      </div>
+    </div>
+
+    <!-- WORK QUEUE -->
+    <div class="queue">
+
+      <div class="qcard amber span2">
+        <div class="qhead">
+          <span class="qicon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.5 19.5h19z"/><path d="M12 10v4M12 17.2v.1"/></svg>
+          </span>
+          <h2><span id="apCountHome">3</span> approvals waiting on you</h2>
+          <a href="#" class="qlink" onclick="go('approvals');return false;">View queue →</a>
+        </div>
+        <div id="homeApprovals">
+          <div class="qrow" data-ap="dist">
+            <div class="who"><b>Owner distribution — $12,400</b><span class="meta">Aurora Heights SPE · over the $5,000 policy threshold · initiated by M. Torres, Jul 22</span></div>
+            <span class="amt num">$12,400</span>
+            <button class="btn small primary" onclick="approveItem('dist', this)">Approve</button>
+            <button class="btn small ghost" onclick="go('approvals')">View</button>
+          </div>
+          <div class="qrow" data-ap="bill">
+            <div class="who"><b>Vendor bill — Peak HVAC Services</b><span class="meta">Harborview · bill BILL-2093 · over threshold · initiated by A. Chen, Jul 22</span></div>
+            <span class="amt num">$6,150</span>
+            <button class="btn small primary" onclick="approveItem('bill', this)">Approve</button>
+            <button class="btn small ghost" onclick="go('approvals')">View</button>
+          </div>
+          <div class="qrow" data-ap="reopen">
+            <div class="who"><b>Re-open closed period — June 2026</b><span class="meta">Books restatement · requested by A. Chen, Jul 21 · owners already received June statements</span></div>
+            <span class="amt num">—</span>
+            <button class="btn small primary" onclick="approveItem('reopen', this)">Approve</button>
+            <button class="btn small ghost" onclick="go('approvals')">View</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="qcard">
+        <div class="qhead">
+          <span class="qicon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3 2.8-4.5 5.5-4.5s4.9 1.5 5.5 4.5"/><path d="M16 8h5M16 12h5M18 16h3"/></svg>
+          </span>
+          <h2 id="arCardTitle">54 residents owe $93,417</h2>
+          <a href="#" class="qlink" onclick="go('leases');return false;">View all →</a>
+        </div>
+        <div id="debtorRows"></div>
+        <div class="qnote">Collections sweep ran 6:00 AM — 12 reminders sent, no new late fees.</div>
+      </div>
+
+      <div class="qcard">
+        <div class="qhead">
+          <span class="qicon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.2 5.2L4 17v3h3l5.5-5.5a4 4 0 0 0 5.2-5.2L15 12l-3-3z"/></svg>
+          </span>
+          <h2>6 units in make-ready</h2>
+          <a href="#" class="qlink" onclick="toast('Make-ready board — part of the Operations module');return false;">Open board →</a>
+        </div>
+        <div class="qrow">
+          <div class="who"><b>AUR-114 — Aurora Heights</b><span class="meta">Paint + repair still open · vacated Jul 11</span></div>
+          <span class="amt red">stuck 12 days</span>
+        </div>
+        <div class="qnote">Other 5 on track · average 4.2 days in turn. Every idle day ≈ <span class="num">$71</span> of lost rent.</div>
+      </div>
+
+      <div class="qcard">
+        <div class="qhead">
+          <span class="qicon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>
+          </span>
+          <h2>18 packages awaiting pickup</h2>
+          <a href="#" class="qlink" onclick="toast('Package log — part of the Operations module');return false;">Package log →</a>
+        </div>
+        <div class="qrow">
+          <div class="who"><b>3 over 7 days</b><span class="meta">Taking shelf space at Aurora Heights front desk</span></div>
+          <button class="btn small" onclick="toast('Pickup reminders queued for 3 residents')">Send reminders</button>
+        </div>
+        <div class="qnote">15 within normal window · longest wait 11 days (B. Carver, HAR-301).</div>
+      </div>
+
+      <div class="qcard">
+        <div class="qhead">
+          <span class="qicon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v5h-5"/></svg>
+          </span>
+          <h2>47 renewals due in 90 days</h2>
+          <a href="#" class="qlink" onclick="go('leases');return false;">Renewal worklist →</a>
+        </div>
+        <div class="qrow">
+          <div class="who"><b>Noah Okafor · STU-214</b><span class="meta">Metro Student Commons · ends Aug 15 · offer not sent</span></div>
+          <span class="amt num">23 days</span>
+        </div>
+        <div class="qrow">
+          <div class="who"><b>Ava Nguyen · STU-101</b><span class="meta">Metro Student Commons · ends Oct 2 · offer drafted at +4%</span></div>
+          <span class="amt num">71 days</span>
+        </div>
+        <div class="qnote"><span class="num">$104,350</span>/mo of rent expiring in the window · 9 prospects on the waitlist.</div>
+      </div>
+
+      <div class="qcard">
+        <div class="qhead">
+          <span class="qicon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          </span>
+          <h2>Today at a glance</h2>
+        </div>
+        <div class="qrow"><div class="who"><b>2 move-ins</b><span class="meta">HAR-119 (1:00 PM) · STU-240 (3:30 PM)</span></div></div>
+        <div class="qrow"><div class="who"><b>3 tours scheduled</b><span class="meta">Aurora Heights 10:00 · Harborview 11:30 &amp; 4:00</span></div></div>
+        <div class="qrow"><div class="who"><b>1 insurance policy expiring</b><span class="meta">R. Okonkwo, AUR-312 — lapses Aug 4 · reminder sent</span></div></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ SCREEN 2 · LEASES ============ -->
+  <section class="screen" id="scr-leases">
+    <div class="pagehead">
+      <div>
+        <h1>Leases</h1>
+        <div class="sub" id="leaseSub">571 active leases · $1,144,695 scheduled rent per month</div>
+        <div class="scopepill" id="pill-leases">
+          <span>Scoped: <span class="scopename"></span></span>
+          <button aria-label="Clear community scope" onclick="setScope('all')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+      </div>
+      <button class="btn primary" onclick="openDrawer('emma')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+        Record payment
+      </button>
+    </div>
+
+    <div class="apstrip">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.5 19.5h19z"/><path d="M12 10v4M12 17.2v.1"/></svg>
+      <b>Awaiting approval (<span class="apMoneyCount">2</span>)</b>
+      <span class="items apMoneyItems">$12,400 owner distribution · $6,150 vendor bill</span>
+      <a href="#" onclick="go('approvals');return false;">View</a>
+    </div>
+
+    <div class="toolrow">
+      <div class="tsearch">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="tblSearch" type="search" placeholder="Filter by resident, unit or community…" aria-label="Filter leases">
+      </div>
+      <button class="btn small" onclick="toast('Filters — status, balance, lease end (not wired in this concept)')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+        Filters
+      </button>
+      <button class="btn small" onclick="toast('Export started — leases.csv will download')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5"/><path d="M4 20h16"/></svg>
+        Export
+      </button>
+    </div>
+
+    <div class="tablecard">
+      <div class="tablewrap">
+        <table aria-label="Active leases">
+          <thead>
+            <tr>
+              <th class="sortable" id="thRes" onclick="toggleSort()">Resident<span class="arr" id="sortArr">▲</span></th>
+              <th>Unit</th>
+              <th>Community</th>
+              <th>Status</th>
+              <th class="r">Rent</th>
+              <th class="r">Balance</th>
+              <th>Lease end</th>
+            </tr>
+          </thead>
+          <tbody id="tblBody"></tbody>
+        </table>
+        <div class="emptystate" id="tblEmpty" style="display:none"><b>No leases match “<span id="emptyq"></span>”</b>Try a resident name, unit code, or clear the community scope.</div>
+      </div>
+      <div class="pager">
+        <span class="range num" id="pgRange">1–15 of 571</span>
+        <button class="btn small" id="pgPrev" onclick="pageMove(-1)">‹ Prev</button>
+        <button class="btn small" id="pgNext" onclick="pageMove(1)">Next ›</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN 3 · LEASE DETAIL ============ -->
+  <section class="screen" id="scr-detail">
+    <a class="backlink" href="#" onclick="go('leases');return false;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+      Leases
+    </a>
+    <div class="pagehead">
+      <div>
+        <h1>Emma Kim · <span class="num">AUR-101</span></h1>
+        <div class="sub">Lease <span class="num">agr-AUR-101</span> &nbsp;·&nbsp; <span class="pill p-active">Active</span> &nbsp;<span class="pill p-active">Moved in</span></div>
+      </div>
+      <div style="display:flex; gap:9px; flex-wrap:wrap;">
+        <button class="btn" onclick="toast('Message thread with Emma Kim opens in the Inbox')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg>
+          Message
+        </button>
+        <button class="btn primary" onclick="openDrawer('emma')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+          Record payment
+        </button>
+      </div>
+    </div>
+
+    <div class="apstrip">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.5 19.5h19z"/><path d="M12 10v4M12 17.2v.1"/></svg>
+      <b>Awaiting approval (<span class="apMoneyCount">2</span>)</b>
+      <span class="items apMoneyItems">$12,400 owner distribution · $6,150 vendor bill</span>
+      <a href="#" onclick="go('approvals');return false;">View</a>
+    </div>
+
+    <div class="detailgrid">
+      <div class="stack">
+        <div class="card">
+          <h2>Lease overview</h2>
+          <dl class="kv">
+            <dt>Resident</dt><dd><a href="#" onclick="openPaletteWith('Emma Kim');return false;">Emma Kim</a> <span style="color:var(--faint)">· emma.kim@mail.com</span></dd>
+            <dt>Unit</dt><dd><a href="#" onclick="fakeNavUnit();return false;">Aurora Heights — Apt 101</a></dd>
+            <dt>Community</dt><dd><a href="#" onclick="fakeNavCommunity();return false;">Aurora Heights</a> <span style="color:var(--faint)">· Denver, CO</span></dd>
+            <dt>Floorplan</dt><dd>Aurora Studio · 1 bed · 1 bath</dd>
+            <dt>Rent</dt><dd class="num">$1,650 / month</dd>
+            <dt>Term</dt><dd>Jun 24, 2026 → Jun 24, 2027 <span style="color:var(--faint)">· 11 months remaining</span></dd>
+            <dt>Deposit held</dt><dd class="num">$2,475 <span style="color:var(--faint); font-variant-numeric:normal;">· trust account TR-AUR</span></dd>
+          </dl>
+        </div>
+
+        <div class="card">
+          <h2>Timeline</h2>
+          <ul class="timeline">
+            <li><div class="t">Lease created</div><div class="d">Jun 10, 2026 · drafted by L. Park</div></li>
+            <li><div class="t">Lease activated</div><div class="d">Jun 20, 2026 · signed via DocuSign, countersigned</div></li>
+            <li><div class="t">Moved in</div><div class="d">Jun 24, 2026 · move-in inspection passed, keys issued</div></li>
+            <li class="money"><div class="t">Invoice issued — <span class="num">$1,650</span></div><div class="d">Jul 1, 2026 · <span class="num">inv-AUR-101-1</span> · July rent</div></li>
+            <li class="money"><div class="t">Payment received — <span class="num">$1,650</span></div><div class="d">Jul 22, 2026 · card ending 4417 · receipt emailed</div></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="card">
+          <h2>Balance</h2>
+          <div class="balbig num">$0.00</div>
+          <div class="sub" style="margin-top:2px;">Paid in full · last payment <span class="num">$1,650</span> on Jul 22, 2026</div>
+          <div style="margin-top:12px;">
+            <div class="invrow" style="border-top:1px solid var(--line-soft);">
+              <div class="grow"><b class="num">inv-AUR-101-1</b><div class="meta">July rent · issued Jul 1, 2026 · paid by card</div></div>
+              <span class="num" style="font-weight:700;">$1,650</span>
+              <span class="pill p-paid">Paid</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>On this lease</h2>
+          <div class="chips">
+            <button class="chip" onclick="toast('Insurance policy POL-2026-1004 — Lemonade, $100,000 liability')">
+              <span class="cico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.5 3 8.2 7 10 4-1.8 7-5.5 7-10V6z"/><path d="m9.5 12 2 2 3.5-4"/></svg></span>
+              <span><b>Renters insurance</b> <span class="cm">Lemonade · POL-2026-1004 · active to Mar 2027</span></span>
+            </button>
+            <button class="chip" onclick="toast('Work order WO-3121 — HVAC filter replacement, scheduled Jul 25')">
+              <span class="cico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.2 5.2L4 17v3h3l5.5-5.5a4 4 0 0 0 5.2-5.2L15 12l-3-3z"/></svg></span>
+              <span><b>1 open work order</b> <span class="cm">HVAC filter replacement · low priority</span></span>
+            </button>
+            <button class="chip" onclick="toast('Renewal window opens Mar 26, 2027 — offer will compute at +5%')">
+              <span class="cico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v5h-5"/></svg></span>
+              <span><b>Renewal</b> <span class="cm">due Jun 2027 · not yet in window</span></span>
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>People</h2>
+          <div class="invrow" style="border-top:none; padding-top:0;">
+            <div class="avatar" style="width:34px;height:34px;">EK</div>
+            <div class="grow"><b>Emma Kim</b><div class="meta">Resident · financially responsible</div></div>
+            <a href="#" onclick="openPaletteWith('Emma Kim');return false;" style="font-size:13px; font-weight:600;">Profile</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN 4 · APPROVALS ============ -->
+  <section class="screen" id="scr-approvals">
+    <div class="pagehead">
+      <div>
+        <h1>Approvals</h1>
+        <div class="sub"><span id="apCountQueue">3</span> items parked by policy · a different teammate than the initiator must sign off</div>
+        <div class="scopepill" id="pill-approvals">
+          <span>Scoped: <span class="scopename"></span></span>
+          <button aria-label="Clear community scope" onclick="setScope('all')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+      </div>
+      <button class="btn" onclick="toast('Approval history — 41 items decided in the last 90 days')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        History
+      </button>
+    </div>
+
+    <div class="apcard" id="ap-dist">
+      <div class="apbody">
+        <h2>Owner distribution — Aurora Heights SPE</h2>
+        <div class="apmeta">Equity draw from operating cash · Q2 distribution · initiated by <b>M. Torres</b>, Jul 22 · you are an eligible approver</div>
+        <span class="apwhy">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.5 3 8.2 7 10 4-1.8 7-5.5 7-10V6z"/></svg>
+          <span class="apwhytext">Escalated — over the $5,000 distribution threshold</span>
+        </span>
+      </div>
+      <div class="apamt num">$12,400</div>
+      <div class="apacts">
+        <button class="btn primary small" onclick="approveItem('dist', this)">Approve</button>
+        <button class="btn small danger-ghost" onclick="toast('Denied — M. Torres will be notified with your note')">Deny</button>
+        <button class="btn small ghost" onclick="toast('Distributable now: $14,910 (NOI − reserves − prior draws) — this draw fits')">Details</button>
+      </div>
+    </div>
+
+    <div class="apcard" id="ap-bill">
+      <div class="apbody">
+        <h2>Vendor bill — Peak HVAC Services</h2>
+        <div class="apmeta">Bill <span class="num">BILL-2093</span> · Harborview chiller compressor repair · initiated by <b>A. Chen</b>, Jul 22</div>
+        <span class="apwhy">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.5 3 8.2 7 10 4-1.8 7-5.5 7-10V6z"/></svg>
+          <span class="apwhytext">Escalated — payout over the $5,000 threshold</span>
+        </span>
+      </div>
+      <div class="apamt num">$6,150</div>
+      <div class="apacts">
+        <button class="btn primary small" onclick="approveItem('bill', this)">Approve</button>
+        <button class="btn small danger-ghost" onclick="toast('Denied — A. Chen will be notified with your note')">Deny</button>
+        <button class="btn small" onclick="openDrawer('bill')">Review &amp; pay…</button>
+      </div>
+    </div>
+
+    <div class="apcard" id="ap-reopen">
+      <div class="apbody">
+        <h2>Re-open closed period — June 2026</h2>
+        <div class="apmeta">Books restatement · a mis-coded utility bill needs re-posting · requested by <b>A. Chen</b>, Jul 21</div>
+        <span class="apwhy">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.5 19.5h19z"/><path d="M12 10v4M12 17.2v.1"/></svg>
+          <span class="apwhytext">Escalated — owners already received June statements</span>
+        </span>
+      </div>
+      <div class="apamt num">—</div>
+      <div class="apacts">
+        <button class="btn primary small" onclick="approveItem('reopen', this)">Approve</button>
+        <button class="btn small danger-ghost" onclick="toast('Denied — A. Chen will be notified with your note')">Deny</button>
+        <button class="btn small ghost" onclick="toast('June 2026 closed Jul 5 by D. Meyer — 214 journal lines posted')">Details</button>
+      </div>
+    </div>
+
+  </section>
+</main>
+
+<!-- ============ PAYMENT DRAWER ============ -->
+<div class="scrim" id="scrim" onclick="closeDrawer()"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+  <div class="dhead">
+    <h2 id="drawerTitle">Record payment</h2>
+    <button class="dclose" onclick="closeDrawer()" aria-label="Close">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg>
+    </button>
+  </div>
+  <div class="dbody">
+    <div class="dwho">
+      <div class="avatar" id="dAvatar">EK</div>
+      <div><div class="n" id="dWho">Emma Kim</div><div class="m" id="dWhoMeta">Unit AUR-101 · Aurora Heights · lease agr-AUR-101</div></div>
+    </div>
+    <div class="field">
+      <label for="dAmount">Amount</label>
+      <div class="amtwrap"><span class="cur">$</span><input id="dAmount" inputmode="decimal" value="1,650.00" aria-describedby="dAmountHint"></div>
+      <span class="hint" id="dAmountHint">Applied to <span class="num" id="dApplyTo">inv-AUR-101-1 · July rent</span></span>
+    </div>
+    <div class="field">
+      <label for="dMethod">Method</label>
+      <select id="dMethod">
+        <option>Card on file — Visa ····4417</option>
+        <option>ACH bank transfer</option>
+        <option>Check</option>
+        <option>Cash</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="dRef">Reference <span style="font-weight:400;color:var(--faint)">(optional)</span></label>
+      <input id="dRef" placeholder="Check number or bank reference">
+    </div>
+    <div class="dnote" id="dNote">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.1"/></svg>
+      <span id="dNoteText">Posts to the ledger immediately and clears the open invoice. A receipt is emailed to the resident. Payments over $5,000 park for a second approver.</span>
+    </div>
+  </div>
+  <div class="dfoot">
+    <button class="btn" onclick="closeDrawer()">Cancel</button>
+    <button class="btn primary" id="dConfirm" onclick="confirmDrawer()">Confirm payment</button>
+  </div>
+</aside>
+
+<!-- ============ COMMAND PALETTE ============ -->
+<div class="palwrap" id="palwrap">
+  <div class="palette" role="dialog" aria-modal="true" aria-label="Global search">
+    <div class="palin">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="palInput" placeholder="Search residents, units, screens…" autocomplete="off">
+      <span class="kbd">esc</span>
+    </div>
+    <div class="palres" id="palRes"></div>
+    <div class="palfoot"><span>↵ open</span><span>esc close</span><span>⌘K anywhere</span></div>
+  </div>
+</div>
+
+<!-- toast -->
+<div class="toast" id="toastEl">
+  <span class="tico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4L19 7"/></svg></span>
+  <span id="toastText"></span>
+</div>
+
+<script>
+/* ================= data ================= */
+var COMM = { aur:"Aurora Heights", har:"Harborview", stu:"Metro Commons" };
+var COMM_FULL = { aur:"Aurora Heights", har:"Harborview Residences", stu:"Metro Student Commons" };
+
+/* st: active | over | pend | short ; late = days overdue */
+var RES = [
+ {n:"Emma Kim",u:"AUR-101",c:"aur",rent:1650,bal:0,end:"Jun 24, 2027",st:"active",wired:true},
+ {n:"James Patel",u:"AUR-102",c:"aur",rent:2135,bal:0,end:"Jun 11, 2027",st:"active"},
+ {n:"Sofia Garcia",u:"AUR-103",c:"aur",rent:3020,bal:410,end:"May 29, 2027",st:"active"},
+ {n:"Michael Chen",u:"HAR-105",c:"har",rent:3340,bal:0,end:"Jan 10, 2027",st:"active"},
+ {n:"Olivia Muller",u:"HAR-204",c:"har",rent:2405,bal:1203,late:18,end:"Mar 3, 2027",st:"over"},
+ {n:"Lucas Rossi",u:"HAR-306",c:"har",rent:"night",bal:0,end:"—",st:"short"},
+ {n:"Ava Nguyen",u:"STU-101",c:"stu",rent:1150,bal:0,end:"Oct 2, 2026",st:"active"},
+ {n:"Noah Okafor",u:"STU-214",c:"stu",rent:1150,bal:575,late:32,end:"Aug 15, 2026",st:"over"},
+ {n:"Isabella Haddad",u:"AUR-308",c:"aur",rent:3885,bal:1943,end:"Feb 2, 2027",st:"active"},
+ {n:"Ethan Novak",u:"HAR-412",c:"har",rent:"night",bal:0,end:"—",st:"short"},
+ {n:"Grace Lin",u:"AUR-104",c:"aur",rent:1720,bal:0,end:"Jul 8, 2027",st:"active"},
+ {n:"Daniel Brooks",u:"AUR-107",c:"aur",rent:2280,bal:0,end:"Sep 30, 2026",st:"active"},
+ {n:"Priya Sharma",u:"AUR-110",c:"aur",rent:1985,bal:0,end:"Apr 18, 2027",st:"active"},
+ {n:"Marcus Webb",u:"AUR-115",c:"aur",rent:2440,bal:0,end:"Nov 12, 2026",st:"active"},
+ {n:"Chloe Fontaine",u:"AUR-201",c:"aur",rent:3150,bal:0,end:"Dec 5, 2026",st:"active"},
+ {n:"Tom Alvarez",u:"AUR-205",c:"aur",rent:1650,bal:320,end:"Jan 22, 2027",st:"active"},
+ {n:"Hana Sato",u:"AUR-212",c:"aur",rent:2135,bal:0,end:"Aug 3, 2027",st:"active"},
+ {n:"Leo Andersson",u:"AUR-301",c:"aur",rent:3885,bal:0,end:"Feb 14, 2027",st:"active"},
+ {n:"Ruth Okonkwo",u:"AUR-312",c:"aur",rent:2760,bal:0,end:"May 6, 2027",st:"active"},
+ {n:"Victor Haas",u:"AUR-315",c:"aur",rent:1815,bal:0,end:"Mar 27, 2027",st:"pend"},
+ {n:"Wes Turner",u:"AUR-118",c:"aur",rent:2280,bal:0,end:"Oct 14, 2026",st:"active"},
+ {n:"Rosa Delgado",u:"AUR-224",c:"aur",rent:1985,bal:0,end:"Dec 22, 2026",st:"active"},
+ {n:"Nora Bishop",u:"HAR-102",c:"har",rent:2890,bal:0,end:"Feb 9, 2027",st:"active"},
+ {n:"Omar Farouk",u:"HAR-210",c:"har",rent:3120,bal:0,end:"Jul 1, 2027",st:"active"},
+ {n:"Julia Steiner",u:"HAR-215",c:"har",rent:2405,bal:0,end:"Oct 20, 2026",st:"active"},
+ {n:"Ben Carver",u:"HAR-301",c:"har",rent:2650,bal:780,end:"Dec 18, 2026",st:"active"},
+ {n:"Mei Tanaka",u:"HAR-310",c:"har",rent:3340,bal:0,end:"Apr 2, 2027",st:"active"},
+ {n:"Sam Whitfield",u:"HAR-408",c:"har",rent:"night",bal:0,end:"—",st:"short"},
+ {n:"Anya Petrova",u:"HAR-415",c:"har",rent:2960,bal:0,end:"Sep 9, 2026",st:"active"},
+ {n:"Diego Morales",u:"HAR-118",c:"har",rent:2230,bal:0,end:"Nov 30, 2026",st:"active"},
+ {n:"Freya Dahl",u:"HAR-222",c:"har",rent:2515,bal:0,end:"Jan 5, 2027",st:"active"},
+ {n:"Caleb Wright",u:"HAR-327",c:"har",rent:3105,bal:0,end:"Jun 2, 2027",st:"active"},
+ {n:"Zoe Martin",u:"STU-102",c:"stu",rent:1150,bal:0,end:"May 20, 2027",st:"active"},
+ {n:"Liam Doyle",u:"STU-118",c:"stu",rent:1150,bal:0,end:"May 20, 2027",st:"active"},
+ {n:"Aisha Bello",u:"STU-127",c:"stu",rent:1150,bal:245,end:"Aug 15, 2026",st:"active"},
+ {n:"Jack Thompson",u:"STU-133",c:"stu",rent:1150,bal:0,end:"May 20, 2027",st:"active"},
+ {n:"Mia Kowalski",u:"STU-207",c:"stu",rent:1150,bal:0,end:"May 20, 2027",st:"active"},
+ {n:"Owen Reilly",u:"STU-221",c:"stu",rent:1150,bal:640,late:12,end:"Aug 15, 2026",st:"over"},
+ {n:"Layla Hassan",u:"STU-233",c:"stu",rent:1150,bal:0,end:"May 20, 2027",st:"active"},
+ {n:"Finn Murphy",u:"STU-240",c:"stu",rent:1150,bal:0,end:"May 20, 2027",st:"pend"},
+ {n:"Grace Park",u:"STU-305",c:"stu",rent:1150,bal:0,end:"May 20, 2027",st:"active"},
+ {n:"Hugo Silva",u:"STU-311",c:"stu",rent:1150,bal:0,end:"May 20, 2027",st:"active"},
+ {n:"Ella Novak",u:"STU-318",c:"stu",rent:1150,bal:0,end:"May 20, 2027",st:"active"},
+ {n:"Tariq Aziz",u:"STU-324",c:"stu",rent:1150,bal:0,end:"May 20, 2027",st:"active"},
+ {n:"Ivy Chen",u:"STU-330",c:"stu",rent:1150,bal:0,end:"May 20, 2027",st:"active"}
+];
+
+var SCOPES = {
+ all:{label:"All communities", occ:"90.3%", occd:"▲ +1.2 pts vs Jun", occsub:"571 of 632 units occupied",
+      rent:"$1.14M", rentFull:"$1,144,695", rentd:"▲ +$18,240 vs Jun", rentsub:"571 active leases",
+      ar:"$93,417", ard:"▼ −$4,180 vs Jun", arn:54, dep:"$188,378", total:571,
+      home:"3 communities · 632 units", lsub:"571 active leases · $1,144,695 scheduled rent per month"},
+ aur:{label:"Aurora Heights", occ:"94.2%", occd:"▲ +0.8 pts vs Jun", occsub:"196 of 208 units occupied",
+      rent:"$412K", rentFull:"$412,450", rentd:"▲ +$6,900 vs Jun", rentsub:"196 active leases",
+      ar:"$28,410", ard:"▼ −$1,120 vs Jun", arn:14, dep:"$71,240", total:196,
+      home:"Aurora Heights · Denver · 208 units", lsub:"196 active leases · $412,450 scheduled rent per month"},
+ har:{label:"Harborview Residences", occ:"88.7%", occd:"▲ +1.9 pts vs Jun", occsub:"181 of 204 units occupied",
+      rent:"$438K", rentFull:"$438,120", rentd:"▲ +$8,110 vs Jun", rentsub:"181 active leases",
+      ar:"$31,205", ard:"▼ −$2,010 vs Jun", arn:18, dep:"$64,930", total:181,
+      home:"Harborview Residences · San Diego · 204 units", lsub:"181 active leases · $438,120 scheduled rent per month"},
+ stu:{label:"Metro Student Commons", occ:"88.2%", occd:"▲ +0.9 pts vs Jun", occsub:"194 of 220 units occupied",
+      rent:"$294K", rentFull:"$294,125", rentd:"▲ +$3,230 vs Jun", rentsub:"194 active leases",
+      ar:"$33,802", ard:"▼ −$1,050 vs Jun", arn:22, dep:"$52,208", total:194,
+      home:"Metro Student Commons · Austin · 220 by-the-bed units", lsub:"194 active leases · $294,125 scheduled rent per month"}
+};
+
+var SCREENS_IDX = [
+ {t:"Home", m:"Work queue & portfolio KPIs", go:"home"},
+ {t:"Leases", m:"571 active leases", go:"leases"},
+ {t:"Approvals", m:"3 items waiting", go:"approvals"},
+ {t:"Lease agr-AUR-101", m:"Emma Kim · AUR-101", go:"detail"}
+];
+
+/* ================= state ================= */
+var scope = "all";
+var page = 1;
+var PER = 15;
+var sortDir = "asc";
+var q = "";
+var approved = {};   /* id -> true */
+
+/* ================= helpers ================= */
+function $(id){ return document.getElementById(id); }
+function fmt(n){ return "$" + n.toLocaleString("en-US"); }
+function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+
+function toast(msg){
+  $("toastText").textContent = msg;
+  var t = $("toastEl");
+  t.classList.add("show");
+  clearTimeout(t._h);
+  t._h = setTimeout(function(){ t.classList.remove("show"); }, 2600);
+}
+
+/* ================= navigation ================= */
+function go(name){
+  var ids = {home:"scr-home", leases:"scr-leases", detail:"scr-detail", approvals:"scr-approvals"};
+  document.querySelectorAll(".screen").forEach(function(s){ s.classList.remove("on"); });
+  $(ids[name]).classList.add("on");
+  var modMap = {home:"home", leases:"leasing", detail:"leasing", approvals:"money"};
+  document.querySelectorAll(".mod").forEach(function(m){
+    m.classList.toggle("on", m.getAttribute("data-mod") === modMap[name]);
+  });
+  window.scrollTo(0,0);
+}
+document.querySelectorAll(".mod").forEach(function(m){
+  m.addEventListener("click", function(){
+    var g = m.getAttribute("data-go");
+    if(g){ go(g); } else { toast(m.getAttribute("data-toast")); }
+  });
+});
+
+/* ================= scope ================= */
+function setScope(s){
+  scope = s;
+  $("scopeSel").value = s;
+  page = 1;
+  applyScope();
+}
+$("scopeSel").addEventListener("change", function(){ setScope(this.value); });
+
+function applyScope(){
+  var d = SCOPES[scope];
+  $("kOcc").textContent = d.occ;      $("kOccD").textContent = d.occd;    $("kOccSub").textContent = d.occsub;
+  $("kRent").textContent = d.rent;    $("kRent").title = d.rentFull;      $("kRentD").textContent = d.rentd;  $("kRentSub").textContent = d.rentsub;
+  $("kAr").textContent = d.ar;        $("kArSub").textContent = d.arn + " residents with a balance"; $("kArD").textContent = d.ard;
+  $("kDep").textContent = d.dep;
+  $("homeScopeLine").textContent = d.home;
+  $("leaseSub").textContent = d.lsub;
+  $("arCardTitle").textContent = d.arn + " residents owe " + d.ar;
+  /* scoped pills */
+  document.querySelectorAll(".scopepill").forEach(function(p){
+    p.classList.toggle("show", scope !== "all");
+    var n = p.querySelector(".scopename");
+    if(n){ n.textContent = d.label; }
+  });
+  renderDebtors();
+  renderTable();
+}
+
+/* ================= debtors card (home) ================= */
+function renderDebtors(){
+  var rows = RES.filter(function(r){ return r.bal > 0 && (scope === "all" || r.c === scope); })
+    .sort(function(a,b){ return b.bal - a.bal; }).slice(0,3);
+  var h = "";
+  rows.forEach(function(r){
+    h += '<div class="qrow">'
+      +  '<div class="who"><b>' + esc(r.n) + ' · ' + r.u + '</b>'
+      +  '<span class="meta">' + COMM[r.c] + (r.late ? ' · overdue ' + r.late + ' days' : ' · balance carried') + '</span></div>'
+      +  '<span class="amt red num">' + fmt(r.bal) + '</span>'
+      +  '<button class="btn small ghost" onclick="toast(\'Reminder sent to ' + esc(r.n) + '\')">Remind</button>'
+      +  '</div>';
+  });
+  if(!rows.length){ h = '<div class="qnote" style="padding:8px 0;">No open balances in this scope — collections are clean.</div>'; }
+  $("debtorRows").innerHTML = h;
+}
+
+/* ================= leases table ================= */
+function filtered(){
+  var rows = RES.filter(function(r){ return scope === "all" || r.c === scope; });
+  if(q){
+    var s = q.toLowerCase();
+    rows = rows.filter(function(r){
+      return r.n.toLowerCase().indexOf(s) >= 0 || r.u.toLowerCase().indexOf(s) >= 0 || COMM[r.c].toLowerCase().indexOf(s) >= 0;
+    });
+  }
+  rows = rows.slice().sort(function(a,b){
+    var c = a.n.localeCompare(b.n);
+    return sortDir === "asc" ? c : -c;
+  });
+  return rows;
+}
+
+function pillFor(r){
+  if(r.st === "over")  return '<span class="pill p-over">Overdue</span>';
+  if(r.st === "pend")  return '<span class="pill p-pend">Pending</span>';
+  if(r.st === "short") return '<span class="pill p-short">Short-stay</span>';
+  return '<span class="pill p-active">Active</span>';
+}
+
+function renderTable(){
+  var rows = filtered();
+  var maxPage = Math.max(1, Math.ceil(rows.length / PER));
+  if(page > maxPage){ page = maxPage; }
+  var slice = rows.slice((page-1)*PER, page*PER);
+  var h = "";
+  slice.forEach(function(r){
+    var rentCell = (r.rent === "night") ? '$415<span style="color:var(--faint)">/night</span>' : fmt(r.rent);
+    var balCell = r.bal > 0
+      ? '<span class="balpos num">' + fmt(r.bal) + '</span>' + (r.late ? '<span class="late">' + r.late + 'd</span>' : '')
+      : '<span class="balzero num">$0</span>';
+    h += '<tr' + (r.wired ? ' class="linked"' : '') + ' onclick="rowOpen(\'' + r.u + '\')" title="Open lease">'
+      +  '<td><span class="res">' + esc(r.n) + '</span></td>'
+      +  '<td class="num">' + r.u + '</td>'
+      +  '<td>' + COMM[r.c] + '</td>'
+      +  '<td>' + pillFor(r) + '</td>'
+      +  '<td class="r num">' + rentCell + '</td>'
+      +  '<td class="r">' + balCell + '</td>'
+      +  '<td class="num">' + r.end + '</td>'
+      +  '</tr>';
+  });
+  $("tblBody").innerHTML = h;
+  $("tblEmpty").style.display = slice.length ? "none" : "block";
+  $("emptyq").textContent = q;
+  /* pager: fake big total when unfiltered, honest count when searching */
+  var total = q ? rows.length : SCOPES[scope].total;
+  var start = rows.length ? (page-1)*PER + 1 : 0;
+  var end = (page-1)*PER + slice.length;
+  $("pgRange").textContent = start + "–" + end + " of " + total.toLocaleString("en-US");
+  $("pgPrev").disabled = page <= 1;
+  $("pgNext").disabled = page >= maxPage;
+  $("pgPrev").style.opacity = page <= 1 ? .45 : 1;
+  $("pgNext").style.opacity = page >= maxPage ? .45 : 1;
+}
+
+function pageMove(d){
+  page += d;
+  renderTable();
+}
+
+function toggleSort(){
+  sortDir = (sortDir === "asc") ? "desc" : "asc";
+  $("sortArr").textContent = (sortDir === "asc") ? "▲" : "▼";
+  page = 1;
+  renderTable();
+}
+
+$("tblSearch").addEventListener("input", function(){
+  q = this.value.trim();
+  page = 1;
+  renderTable();
+});
+
+function rowOpen(unit){
+  if(unit === "AUR-101"){ go("detail"); }
+  else { toast("Lease detail — agr-AUR-101 (Emma Kim) is the wired example in this concept"); go("detail"); }
+}
+
+/* detail fake-navigation links */
+function fakeNavUnit(){
+  q = "AUR-101"; $("tblSearch").value = q; page = 1; renderTable(); go("leases");
+}
+function fakeNavCommunity(){
+  setScope("aur"); go("leases");
+  toast("Scoped to Aurora Heights");
+}
+
+/* ================= approvals ================= */
+var AP_LABELS = { dist:"$12,400 owner distribution", bill:"$6,150 vendor bill", reopen:"lease-period re-open" };
+
+function approveItem(id, btn){
+  if(approved[id]){ return; }
+  approved[id] = true;
+  /* queue card state */
+  var card = $("ap-" + id);
+  if(card){
+    card.classList.add("approved");
+    var why = card.querySelector(".apwhytext");
+    if(why){ why.textContent = "Approved by you · just now"; }
+    card.querySelectorAll(".apacts .btn").forEach(function(b){ b.remove(); });
+    var done = document.createElement("span");
+    done.className = "pill p-active";
+    done.textContent = "Approved";
+    card.querySelector(".apacts").appendChild(done);
+  }
+  /* home row */
+  var row = document.querySelector('.qrow[data-ap="' + id + '"]');
+  if(row){
+    row.querySelectorAll("button").forEach(function(b){ b.remove(); });
+    var p = document.createElement("span");
+    p.className = "pill p-active";
+    p.textContent = "Approved";
+    row.appendChild(p);
+  }
+  refreshApCounts();
+  toast(id === "reopen" ? "June 2026 re-opened — restatement is audited under your name"
+       : AP_LABELS[id].replace(/^\$[\d,]+ /,"").replace(/^\w/,function(c){return c.toUpperCase();}) + " approved — posting to the ledger");
+}
+
+function refreshApCounts(){
+  var left = ["dist","bill","reopen"].filter(function(k){ return !approved[k]; });
+  var moneyLeft = ["dist","bill"].filter(function(k){ return !approved[k]; });
+  $("moneyBadge").textContent = left.length;
+  $("moneyBadge").style.display = left.length ? "" : "none";
+  $("apCountHome").textContent = left.length;
+  $("apCountQueue").textContent = left.length;
+  document.querySelectorAll(".apMoneyCount").forEach(function(e){ e.textContent = moneyLeft.length; });
+  var items = moneyLeft.map(function(k){ return AP_LABELS[k]; }).join(" · ") || "queue is clear";
+  document.querySelectorAll(".apMoneyItems").forEach(function(e){ e.textContent = items; });
+}
+
+/* ================= drawer ================= */
+var drawerMode = "emma";
+function openDrawer(mode){
+  drawerMode = mode;
+  if(mode === "bill"){
+    $("drawerTitle").textContent = "Pay vendor bill";
+    $("dAvatar").textContent = "PH";
+    $("dWho").textContent = "Peak HVAC Services";
+    $("dWhoMeta").textContent = "Bill BILL-2093 · Harborview · chiller compressor repair";
+    $("dAmount").value = "6,150.00";
+    $("dApplyTo").textContent = "BILL-2093 · accounts payable";
+    $("dMethod").innerHTML = "<option>ACH bank transfer — operating account</option><option>Check</option>";
+    $("dNote").classList.add("warn");
+    $("dNoteText").textContent = "This payout is over the $5,000 policy threshold. Confirming parks it for a second approver — nothing moves until they sign off.";
+    $("dConfirm").textContent = "Submit for approval";
+  } else {
+    $("drawerTitle").textContent = "Record payment";
+    $("dAvatar").textContent = "EK";
+    $("dWho").textContent = "Emma Kim";
+    $("dWhoMeta").textContent = "Unit AUR-101 · Aurora Heights · lease agr-AUR-101";
+    $("dAmount").value = "1,650.00";
+    $("dApplyTo").textContent = "inv-AUR-101-1 · July rent";
+    $("dMethod").innerHTML = "<option>Card on file — Visa ····4417</option><option>ACH bank transfer</option><option>Check</option><option>Cash</option>";
+    $("dNote").classList.remove("warn");
+    $("dNoteText").textContent = "Posts to the ledger immediately and clears the open invoice. A receipt is emailed to the resident. Payments over $5,000 park for a second approver.";
+    $("dConfirm").textContent = "Confirm payment";
+  }
+  $("scrim").classList.add("show");
+  $("drawer").classList.add("show");
+  setTimeout(function(){ $("dAmount").focus(); $("dAmount").select(); }, 220);
+}
+function closeDrawer(){
+  $("scrim").classList.remove("show");
+  $("drawer").classList.remove("show");
+}
+function confirmDrawer(){
+  closeDrawer();
+  if(drawerMode === "bill"){
+    toast("Parked for approval — a second approver must sign off on $" + $("dAmount").value);
+  } else {
+    toast("Payment of $" + $("dAmount").value + " recorded — receipt emailed to Emma Kim");
+  }
+}
+
+/* ================= palette ================= */
+var palOpen = false;
+function openPalette(){ openPaletteWith(""); }
+function openPaletteWith(prefill){
+  palOpen = true;
+  $("palwrap").classList.add("show");
+  var inp = $("palInput");
+  inp.value = prefill || "";
+  renderPal();
+  setTimeout(function(){ inp.focus(); }, 30);
+}
+function closePalette(){
+  palOpen = false;
+  $("palwrap").classList.remove("show");
+}
+$("palwrap").addEventListener("click", function(e){ if(e.target === this){ closePalette(); } });
+$("gsearchBtn").addEventListener("click", openPalette);
+$("palInput").addEventListener("input", renderPal);
+$("palInput").addEventListener("keydown", function(e){
+  if(e.key === "Enter"){
+    var first = document.querySelector(".palitem");
+    if(first){ first.click(); }
+  }
+});
+
+function palIcon(kind){
+  if(kind === "person"){ return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.8-3.5 3.6-5.2 7-5.2s6.2 1.7 7 5.2"/></svg>'; }
+  if(kind === "unit"){ return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 4l9 7"/><path d="M6 10v9h12v-9"/></svg>'; }
+  return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9h16M9 9v11"/></svg>';
+}
+
+function renderPal(){
+  var s = $("palInput").value.trim().toLowerCase();
+  var people = RES.filter(function(r){ return !s || r.n.toLowerCase().indexOf(s) >= 0; }).slice(0,5);
+  var units = RES.filter(function(r){ return s && r.u.toLowerCase().indexOf(s) >= 0; }).slice(0,4);
+  var screens = SCREENS_IDX.filter(function(x){ return !s || x.t.toLowerCase().indexOf(s) >= 0 || x.m.toLowerCase().indexOf(s) >= 0; });
+  var h = "";
+  if(people.length){
+    h += '<div class="palgroup">Residents</div>';
+    people.forEach(function(r){
+      var bal = r.bal > 0 ? '<span class="num" style="color:var(--red-t);font-weight:700;">' + fmt(r.bal) + '</span>' : '<span class="num">$0</span>';
+      h += '<button class="palitem" onclick="palGoPerson(\'' + esc(r.n) + '\',\'' + r.u + '\')">'
+        +  '<span class="pico">' + palIcon("person") + '</span>'
+        +  '<span class="pt"><b>' + esc(r.n) + '</b><span class="pm">' + r.u + ' · ' + COMM[r.c] + ' · lease ends ' + r.end + '</span></span>'
+        +  bal + '</button>';
+    });
+  }
+  if(units.length){
+    h += '<div class="palgroup">Units</div>';
+    units.forEach(function(r){
+      h += '<button class="palitem" onclick="palGoUnit(\'' + r.u + '\')">'
+        +  '<span class="pico">' + palIcon("unit") + '</span>'
+        +  '<span class="pt"><b>' + r.u + '</b><span class="pm">' + COMM[r.c] + ' · occupied by ' + esc(r.n) + '</span></span>'
+        +  '</button>';
+    });
+  }
+  if(screens.length){
+    h += '<div class="palgroup">Screens</div>';
+    screens.forEach(function(x){
+      h += '<button class="palitem" onclick="closePalette();go(\'' + x.go + '\')">'
+        +  '<span class="pico">' + palIcon("screen") + '</span>'
+        +  '<span class="pt"><b>' + x.t + '</b><span class="pm">' + x.m + '</span></span>'
+        +  '</button>';
+    });
+  }
+  if(!h){ h = '<div class="palempty">No matches for “' + esc($("palInput").value) + '” — try a resident, unit, or screen name.</div>'; }
+  $("palRes").innerHTML = h;
+}
+
+function palGoPerson(name, unit){
+  closePalette();
+  if(unit === "AUR-101"){ go("detail"); return; }
+  $("tblSearch").value = name; q = name; page = 1; renderTable(); go("leases");
+}
+function palGoUnit(unit){
+  closePalette();
+  if(unit === "AUR-101"){ go("detail"); return; }
+  $("tblSearch").value = unit; q = unit; page = 1; renderTable(); go("leases");
+}
+
+/* ================= global keys ================= */
+document.addEventListener("keydown", function(e){
+  if((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k"){
+    e.preventDefault();
+    if(palOpen){ closePalette(); } else { openPalette(); }
+  }
+  if(e.key === "Escape"){
+    if(palOpen){ closePalette(); }
+    else if($("drawer").classList.contains("show")){ closeDrawer(); }
+  }
+});
+
+/* ================= boot ================= */
+applyScope();
+refreshApCounts();
+</script>
+</body>
+</html>
