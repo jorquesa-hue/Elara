@@ -4410,7 +4410,9 @@ export class App {
       }
       // The portfolio (non-property, non-sample) site carries a directory of its
       // community sites — the landing page links out to each property's site.
-      if (!propertyId && !listing.sampleData) {
+      // Suppress it while previewing a template (?template=) or in demo mode so the
+      // design preview always shows the content-rich page, not a bare directory.
+      if (!propertyId && !listing.sampleData && !preview && !demo) {
         const directory = this.siteDirectory(tenant);
         if (directory.length) listing.directory = directory;
       }

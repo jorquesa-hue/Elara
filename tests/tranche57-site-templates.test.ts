@@ -23,9 +23,9 @@ function seededApp() {
 const D = (app: App, method: string, path: string, token: string | null, body?: Record<string, unknown>) =>
   app.dispatch({ method, path, ...(token ? { bearer: `Bearer ${token}` } : {}), body: body ?? {} });
 
-test('exactly 20 templates with unique ids', () => {
-  assert.equal(SITE_TEMPLATES.length, 20);
-  assert.equal(new Set(SITE_TEMPLATES.map((t) => t.id)).size, 20);
+test('exactly 30 templates with unique ids', () => {
+  assert.equal(SITE_TEMPLATES.length, 30);
+  assert.equal(new Set(SITE_TEMPLATES.map((t) => t.id)).size, 30);
   assert.ok(isKnownTemplate(DEFAULT_TEMPLATE_ID));
 });
 
@@ -44,9 +44,28 @@ test('registry integrity: every template has a full valid palette + valid enums'
 });
 
 test('the templates genuinely vary: multiple hero styles, card styles and fonts in use', () => {
-  assert.ok(new Set(SITE_TEMPLATES.map((t) => t.hero)).size === 5, 'all 5 hero styles used');
+  assert.ok(new Set(SITE_TEMPLATES.map((t) => t.hero)).size === 6, 'all 6 hero styles used');
   assert.ok(new Set(SITE_TEMPLATES.map((t) => t.cards)).size === 3, 'all 3 card styles used');
   assert.ok(new Set(SITE_TEMPLATES.map((t) => t.font)).size >= 5, 'font variety');
+});
+
+test('premium templates resolve to a serif/sans pairing (serif headings, sans body)', () => {
+  const th = resolveTheme('belmont');
+  assert.equal(th.hero, 'fullbleed');
+  assert.ok(th.heading, 'has a heading (display) font');
+  assert.match(th.heading!.family, /Cormorant/);
+  assert.equal(th.font.displayOnly, false); // body sans applies to the whole page
+  assert.match(th.font.family, /Inter/);
+  // An explicit font override drops the pairing (the operator's choice wins).
+  const overridden = resolveTheme('belmont', { font: 'space' });
+  assert.equal(overridden.heading, undefined);
+  assert.match(overridden.font.family, /Space Grotesk/);
+});
+
+test('at least 10 templates use font pairings and the fullbleed hero exists', () => {
+  const paired = SITE_TEMPLATES.filter((t) => t.pairing);
+  assert.ok(paired.length >= 10, `${paired.length} paired templates`);
+  assert.ok(SITE_TEMPLATES.some((t) => t.hero === 'fullbleed'), 'a fullbleed template exists');
 });
 
 test('resolveTheme falls back to the default for unknown/missing template ids', () => {
@@ -79,14 +98,14 @@ test('sanitize keeps a known template + valid options, drops junk', () => {
   assert.equal(bad.template, undefined);
 });
 
-test('GET /site-templates returns the 20-design gallery (masterdata.read)', () => {
+test('GET /site-templates returns the 30-design gallery (masterdata.read)', () => {
   const app = seededApp();
   const res = D(app, 'GET', '/site-templates', 'mgr');
   assert.equal(res.status, 200);
   const tps = (res.body as { templates: Array<{ id: string; swatch: string[] }> }).templates;
-  assert.equal(tps.length, 20);
+  assert.equal(tps.length, 30);
   assert.equal(tps[0]!.swatch.length, 5);
-  assert.equal(templateGallery().length, 20);
+  assert.equal(templateGallery().length, 30);
 });
 
 test('the public site config carries the resolved theme for the picked template', () => {

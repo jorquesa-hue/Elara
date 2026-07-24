@@ -79,6 +79,17 @@ ${SEO_PLACEHOLDER}
   body[data-hero="editorial"] header.hero{ border-top:3px solid var(--text); border-bottom:1px solid var(--line); padding:34px 0 26px; }
   body[data-hero="editorial"] h1{ font-size:clamp(40px,6vw,60px); line-height:1.05; margin:18px 0 10px; }
   body[data-hero="editorial"] .brand strong{ text-transform:uppercase; letter-spacing:.14em; font-size:13px; }
+  /* fullbleed — an immersive full-width property photo hero with the title +
+     search anchored to the bottom over a dark gradient scrim (real-estate hero). */
+  body[data-hero="fullbleed"] header.hero{ min-height:76vh; display:flex; flex-direction:column; justify-content:flex-end; background:var(--heroimg,var(--herobg)); background-size:cover; background-position:center; border-radius:calc(var(--radius) + 6px); padding:46px 36px 32px; margin-top:14px; position:relative; overflow:hidden; }
+  body[data-hero="fullbleed"] header.hero::before{ content:""; position:absolute; inset:0; background:linear-gradient(180deg,rgba(8,10,14,.12) 28%,rgba(8,10,14,.74)); border-radius:inherit; }
+  body[data-hero="fullbleed"] header.hero > *{ position:relative; }
+  body[data-hero="fullbleed"] h1{ font-size:clamp(40px,6.5vw,68px); line-height:1.04; color:#fff; margin:0 0 8px; max-width:18ch; }
+  body[data-hero="fullbleed"] .lede, body[data-hero="fullbleed"] .brand{ color:#fff; }
+  body[data-hero="fullbleed"] .lede{ opacity:.94; max-width:54ch; }
+  body[data-hero="fullbleed"] .brand strong{ letter-spacing:.02em; }
+  body[data-hero="fullbleed"] .searchbar{ margin-top:22px; background:rgba(255,255,255,.94); }
+  @media (max-width:640px){ body[data-hero="fullbleed"] header.hero{ min-height:64vh; padding:32px 20px 24px; } }
   .card .body{ padding:15px; flex:1; display:flex; flex-direction:column; gap:8px; }
   .card h3{ margin:0; font-size:16.5px; }
   .headline{ color:var(--muted); font-size:13.5px; margin:-3px 0 0; }
@@ -232,6 +243,9 @@ ${SEO_PLACEHOLDER}
       rs.setProperty("--herobg", th.heroBg||"linear-gradient(135deg,var(--accent),var(--accent2))");
       if(th.font && th.font.import){ var lk=document.createElement("link"); lk.rel="stylesheet"; lk.href=th.font.import; document.head.appendChild(lk); }
       if(th.font){ if(th.font.displayOnly){ rs.setProperty("--font-display", th.font.family); document.body.classList.add("font-display"); } else { rs.setProperty("--font-body", th.font.family); document.body.classList.add("font-all"); } }
+      // A serif/sans PAIRING: the body uses th.font (a sans, via font-all above) and
+      // the headings use th.heading (a display serif) loaded here.
+      if(th.heading){ if(th.heading.import){ var hl2=document.createElement("link"); hl2.rel="stylesheet"; hl2.href=th.heading.import; document.head.appendChild(hl2); } rs.setProperty("--font-display", th.heading.family); document.body.classList.add("font-display"); }
       document.body.setAttribute("data-hero", th.hero||"classic");
       document.body.setAttribute("data-cards", th.cards||"grid");
       if(content.heroPhotoDataUrl){ rs.setProperty("--heroimg", "url("+JSON.stringify(content.heroPhotoDataUrl)+")"); }

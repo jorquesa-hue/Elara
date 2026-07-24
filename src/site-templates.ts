@@ -9,13 +9,67 @@
 
 export type FontKey = 'system' | 'inter' | 'space' | 'playfair' | 'fraunces' | 'libre';
 export type RadiusKey = 'sharp' | 'soft' | 'round';
-export type HeroStyle = 'classic' | 'banner' | 'split' | 'minimal' | 'editorial';
+export type HeroStyle = 'classic' | 'banner' | 'split' | 'minimal' | 'editorial' | 'fullbleed';
 export type CardStyle = 'grid' | 'list' | 'wide';
 
 export const FONT_KEYS: readonly FontKey[] = ['system', 'inter', 'space', 'playfair', 'fraunces', 'libre'];
 export const RADIUS_KEYS: readonly RadiusKey[] = ['sharp', 'soft', 'round'];
-export const HERO_STYLES: readonly HeroStyle[] = ['classic', 'banner', 'split', 'minimal', 'editorial'];
+export const HERO_STYLES: readonly HeroStyle[] = ['classic', 'banner', 'split', 'minimal', 'editorial', 'fullbleed'];
 export const CARD_STYLES: readonly CardStyle[] = ['grid', 'list', 'wide'];
+
+/** A single font face + its Google Fonts import. */
+interface FontSpec { family: string; import?: string }
+
+/** Curated DISPLAY-serif + BODY-sans pairings — the signature of premium real-
+ *  estate marketing sites (an elegant headline face over a clean, legible body).
+ *  A template referencing a pairing gets serif headings and a sans body without
+ *  the operator configuring anything. */
+export type PairingKey =
+  | 'cormorant' | 'playfair-jost' | 'fraunces-inter' | 'dmserif' | 'syne'
+  | 'marcellus' | 'libre-work' | 'cormorant-work' | 'spectral' | 'bodoni';
+
+export const PAIRINGS: Record<PairingKey, { display: FontSpec; body: FontSpec }> = {
+  cormorant: {
+    display: { family: '"Cormorant Garamond",Georgia,serif', import: 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&display=swap' },
+    body: { family: '"Inter",-apple-system,sans-serif', import: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap' },
+  },
+  'playfair-jost': {
+    display: { family: '"Playfair Display",Georgia,serif', import: 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&display=swap' },
+    body: { family: '"Jost",-apple-system,sans-serif', import: 'https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600&display=swap' },
+  },
+  'fraunces-inter': {
+    display: { family: '"Fraunces",Georgia,serif', import: 'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap' },
+    body: { family: '"Inter",-apple-system,sans-serif', import: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap' },
+  },
+  dmserif: {
+    display: { family: '"DM Serif Display",Georgia,serif', import: 'https://fonts.googleapis.com/css2?family=DM+Serif+Display&display=swap' },
+    body: { family: '"DM Sans",-apple-system,sans-serif', import: 'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap' },
+  },
+  syne: {
+    display: { family: '"Syne",-apple-system,sans-serif', import: 'https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&display=swap' },
+    body: { family: '"Inter",-apple-system,sans-serif', import: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap' },
+  },
+  marcellus: {
+    display: { family: '"Marcellus",Georgia,serif', import: 'https://fonts.googleapis.com/css2?family=Marcellus&display=swap' },
+    body: { family: '"Inter",-apple-system,sans-serif', import: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap' },
+  },
+  'libre-work': {
+    display: { family: '"Libre Baskerville",Georgia,serif', import: 'https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&display=swap' },
+    body: { family: '"Work Sans",-apple-system,sans-serif', import: 'https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600&display=swap' },
+  },
+  'cormorant-work': {
+    display: { family: '"Cormorant Garamond",Georgia,serif', import: 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&display=swap' },
+    body: { family: '"Work Sans",-apple-system,sans-serif', import: 'https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600&display=swap' },
+  },
+  spectral: {
+    display: { family: '"Spectral",Georgia,serif', import: 'https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&display=swap' },
+    body: { family: '"Inter",-apple-system,sans-serif', import: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap' },
+  },
+  bodoni: {
+    display: { family: '"Bodoni Moda",Georgia,serif', import: 'https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,500;6..96,700&display=swap' },
+    body: { family: '"Inter",-apple-system,sans-serif', import: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap' },
+  },
+};
 
 /** Font stacks + optional Google Fonts import. Serif/display faces apply to
  *  headings only (body stays a readable sans); sans faces style the whole page. */
@@ -46,6 +100,9 @@ export interface SiteTemplate {
   hero: HeroStyle;
   cards: CardStyle;
   palette: SitePalette;
+  /** Optional display+body font pairing (overrides `font` unless the operator
+   *  explicitly picks a font). Premium templates use these. */
+  pairing?: PairingKey;
 }
 
 const T = (t: SiteTemplate) => t;
@@ -91,6 +148,28 @@ export const SITE_TEMPLATES: readonly SiteTemplate[] = [
     palette: { bg: '#f6f8fa', card: '#ffffff', line: '#e2e8ef', text: '#1d3557', muted: '#6c7d92', accent: '#1d3557', accent2: '#e63946' } }),
   T({ id: 'zen', name: 'Zen Garden', description: 'Japandi quiet: warm neutrals, ink accents, wide calm cards.', inspiration: 'Japandi guesthouses', font: 'libre', radius: 'sharp', hero: 'minimal', cards: 'wide',
     palette: { bg: '#f4f1ea', card: '#fbf9f4', line: '#e4ded2', text: '#33322e', muted: '#8b877c', accent: '#4a4a45', accent2: '#6e6a5f' } }),
+
+  // ---- Premium real-estate collection (font pairings + immersive heroes) -----
+  T({ id: 'belmont', name: 'Belmont Estates', description: 'Luxury brokerage: ivory & forest green, a full-bleed hero photo, elegant Cormorant headlines over clean sans.', inspiration: "Sotheby's / luxury brokerages", pairing: 'cormorant', font: 'inter', radius: 'sharp', hero: 'fullbleed', cards: 'wide',
+    palette: { bg: '#f7f5f0', card: '#ffffff', line: '#e6e2d8', text: '#1c2b24', muted: '#6f7a72', accent: '#1f3d2f', accent2: '#335643' } }),
+  T({ id: 'sablewood', name: 'Sablewood', description: 'Dark editorial luxe: charcoal & warm brass, oversized serif headlines, an editorial magazine hero.', inspiration: 'The Modern House', pairing: 'playfair-jost', font: 'playfair', radius: 'sharp', hero: 'editorial', cards: 'list',
+    palette: { bg: '#14120f', card: '#1c1a16', line: '#2c2924', text: '#f0ebe1', muted: '#a29a89', accent: '#c8a568', accent2: '#a8894f' } }),
+  T({ id: 'saltair', name: 'Saltair', description: 'Coastal luxury: soft sand, slate blue and white, a wide full-bleed shoreline hero.', inspiration: 'Hamptons & Nantucket brokerages', pairing: 'marcellus', font: 'libre', radius: 'soft', hero: 'fullbleed', cards: 'wide',
+    palette: { bg: '#f4f6f7', card: '#ffffff', line: '#dfe6ea', text: '#20323d', muted: '#6c8291', accent: '#3f6d86', accent2: '#8a9fab' } }),
+  T({ id: 'archer', name: 'Archer', description: 'Contemporary architectural: off-white and ink, a bold Syne display, generous minimal layout.', inspiration: 'Modern architecture studios', pairing: 'syne', font: 'space', radius: 'sharp', hero: 'minimal', cards: 'wide',
+    palette: { bg: '#fbfbf9', card: '#ffffff', line: '#e7e7e3', text: '#141414', muted: '#6d6d6a', accent: '#141414', accent2: '#8a5a3c' } }),
+  T({ id: 'maison', name: 'Maison', description: 'Parisian boutique: cream & burgundy, a split hero, refined Fraunces headlines.', inspiration: 'Parisian pied-à-terre residences', pairing: 'fraunces-inter', font: 'fraunces', radius: 'soft', hero: 'split', cards: 'grid',
+    palette: { bg: '#f8f4ee', card: '#fffdf9', line: '#e9e0d2', text: '#2a211c', muted: '#867a6c', accent: '#7c2b35', accent2: '#9c4a52' } }),
+  T({ id: 'verdant', name: 'Verdant', description: 'Biophilic wellness: warm white and olive, a photo banner, high-contrast DM Serif display.', inspiration: 'Wellness & garden residences', pairing: 'dmserif', font: 'system', radius: 'round', hero: 'banner', cards: 'grid',
+    palette: { bg: '#f6f5ee', card: '#ffffff', line: '#e6e6d7', text: '#26301f', muted: '#727a63', accent: '#586b3a', accent2: '#7c8f52' } }),
+  T({ id: 'highline', name: 'Highline', description: 'New-York luxury tower: near-black, platinum and electric blue, an editorial hero.', inspiration: 'Manhattan high-rise leasing', pairing: 'bodoni', font: 'inter', radius: 'sharp', hero: 'editorial', cards: 'grid',
+    palette: { bg: '#0c0d10', card: '#15171c', line: '#242730', text: '#eef1f6', muted: '#8b93a3', accent: '#7fa8d6', accent2: '#b8c4d4' } }),
+  T({ id: 'terracotta', name: 'Terracotta', description: 'Mediterranean villa: terracotta, cream and olive, a sun-washed banner and warm serif.', inspiration: 'Tuscan & Mediterranean villas', pairing: 'cormorant-work', font: 'fraunces', radius: 'soft', hero: 'banner', cards: 'wide',
+    palette: { bg: '#faf3ea', card: '#fffbf4', line: '#eaddc9', text: '#43302b', muted: '#98836c', accent: '#b5623a', accent2: '#7d7a45' } }),
+  T({ id: 'aspen', name: 'Aspen', description: 'Mountain-modern luxe: warm stone, deep pine and ember, an immersive full-bleed hero.', inspiration: 'Aspen & alpine estates', pairing: 'spectral', font: 'fraunces', radius: 'soft', hero: 'fullbleed', cards: 'wide',
+    palette: { bg: '#f5f2ec', card: '#fffdf8', line: '#e5ded1', text: '#2b2620', muted: '#847c6d', accent: '#1f3b30', accent2: '#c06a3d' } }),
+  T({ id: 'onyx', name: 'Onyx', description: 'Ultra-minimal luxury: black, white and a single hairline of gold — a quiet full-bleed statement.', inspiration: 'Single-property luxury listings', pairing: 'marcellus', font: 'playfair', radius: 'sharp', hero: 'fullbleed', cards: 'wide',
+    palette: { bg: '#0a0a0b', card: '#141416', line: '#26262a', text: '#f3f2ef', muted: '#9b9a95', accent: '#c9b079', accent2: '#e7e5df' } }),
 ];
 
 const BY_ID = new Map(SITE_TEMPLATES.map((t) => [t.id, t]));
@@ -117,6 +196,9 @@ export interface ResolvedTheme {
   hero: HeroStyle;
   cards: CardStyle;
   font: { family: string; import?: string; displayOnly: boolean };
+  /** Display face for headings, when the template uses a serif/sans pairing.
+   *  The body then uses `font` (a sans) and headings use this. */
+  heading?: { family: string; import?: string };
 }
 
 /** Template + operator adjustments + brand accent → one flat theme. The brand
@@ -129,9 +211,20 @@ export function resolveTheme(templateId?: string, options?: TemplateOptions, bra
     palette.accent = brandColor;
     palette.accent2 = brandColor;
   }
-  const fontKey = options?.font && FONT_KEYS.includes(options.font) ? options.font : tpl.font;
   const radiusKey = options?.radius && RADIUS_KEYS.includes(options.radius) ? options.radius : tpl.radius;
-  const f = FONTS[fontKey];
+  const fontOverride = options?.font && FONT_KEYS.includes(options.font) ? options.font : undefined;
+  // A template's serif/sans pairing wins UNLESS the operator explicitly picks a
+  // font (then that single choice governs, dropping the pairing).
+  let font: { family: string; import?: string; displayOnly: boolean };
+  let heading: { family: string; import?: string } | undefined;
+  if (tpl.pairing && !fontOverride) {
+    const pr = PAIRINGS[tpl.pairing];
+    font = { family: pr.body.family, ...(pr.body.import ? { import: pr.body.import } : {}), displayOnly: false };
+    heading = { family: pr.display.family, ...(pr.display.import ? { import: pr.display.import } : {}) };
+  } else {
+    const f = FONTS[fontOverride ?? tpl.font];
+    font = { family: f.family, ...(f.import ? { import: f.import } : {}), displayOnly: f.displayOnly };
+  }
   return {
     id: tpl.id,
     name: tpl.name,
@@ -140,7 +233,8 @@ export function resolveTheme(templateId?: string, options?: TemplateOptions, bra
     radiusPx: RADIUS_PX[radiusKey],
     hero: options?.hero && HERO_STYLES.includes(options.hero) ? options.hero : tpl.hero,
     cards: options?.cards && CARD_STYLES.includes(options.cards) ? options.cards : tpl.cards,
-    font: { family: f.family, ...(f.import ? { import: f.import } : {}), displayOnly: f.displayOnly },
+    font,
+    ...(heading ? { heading } : {}),
   };
 }
 
