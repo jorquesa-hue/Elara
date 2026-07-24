@@ -12,6 +12,12 @@ export type RadiusKey = 'sharp' | 'soft' | 'round';
 export type HeroStyle = 'classic' | 'banner' | 'split' | 'minimal' | 'editorial' | 'fullbleed';
 export type CardStyle = 'grid' | 'list' | 'wide';
 
+/** A cohesive design personality — a bundle of section/heading/button/card
+ *  treatments the microsite applies together, so each template reads as a
+ *  finished, bespoke design rather than a palette swap. */
+export type FeelKey = 'editorial' | 'boutique' | 'resort' | 'minimal' | 'corporate';
+export const FEEL_KEYS: readonly FeelKey[] = ['editorial', 'boutique', 'resort', 'minimal', 'corporate'];
+
 export const FONT_KEYS: readonly FontKey[] = ['system', 'inter', 'space', 'playfair', 'fraunces', 'libre'];
 export const RADIUS_KEYS: readonly RadiusKey[] = ['sharp', 'soft', 'round'];
 export const HERO_STYLES: readonly HeroStyle[] = ['classic', 'banner', 'split', 'minimal', 'editorial', 'fullbleed'];
@@ -103,9 +109,25 @@ export interface SiteTemplate {
   /** Optional display+body font pairing (overrides `font` unless the operator
    *  explicitly picks a font). Premium templates use these. */
   pairing?: PairingKey;
+  /** The design personality (section/heading/button/card treatment bundle). */
+  feel?: FeelKey;
 }
 
 const T = (t: SiteTemplate) => t;
+
+/** Each template's design personality (kept as a map so the template literals
+ *  stay compact; a template may also set `feel` inline to override). */
+const FEEL_BY_ID: Record<string, FeelKey> = {
+  classic: 'corporate', horizon: 'resort', minima: 'minimal', bluecorp: 'corporate', atlantica: 'resort',
+  tropicalia: 'resort', metropolitan: 'editorial', residence: 'boutique', loftworks: 'minimal', nordic: 'minimal',
+  ipanema: 'resort', vineyard: 'boutique', alpine: 'resort', urbannest: 'resort', skyline: 'editorial',
+  noir: 'boutique', palmcourt: 'resort', hacienda: 'boutique', harborlight: 'corporate', zen: 'minimal',
+  belmont: 'editorial', sablewood: 'editorial', saltair: 'boutique', archer: 'minimal', maison: 'boutique',
+  verdant: 'resort', highline: 'editorial', terracotta: 'resort', aspen: 'boutique', onyx: 'minimal',
+};
+export function feelFor(t: SiteTemplate): FeelKey {
+  return t.feel ?? FEEL_BY_ID[t.id] ?? 'corporate';
+}
 
 export const SITE_TEMPLATES: readonly SiteTemplate[] = [
   T({ id: 'classic', name: 'Elara Classic', description: 'The clean default — light, friendly, rounded cards.', inspiration: 'Modern SaaS booking pages', font: 'system', radius: 'soft', hero: 'classic', cards: 'grid',
@@ -195,6 +217,7 @@ export interface ResolvedTheme {
   radiusPx: number;
   hero: HeroStyle;
   cards: CardStyle;
+  feel: FeelKey;
   font: { family: string; import?: string; displayOnly: boolean };
   /** Display face for headings, when the template uses a serif/sans pairing.
    *  The body then uses `font` (a sans) and headings use this. */
@@ -233,16 +256,17 @@ export function resolveTheme(templateId?: string, options?: TemplateOptions, bra
     radiusPx: RADIUS_PX[radiusKey],
     hero: options?.hero && HERO_STYLES.includes(options.hero) ? options.hero : tpl.hero,
     cards: options?.cards && CARD_STYLES.includes(options.cards) ? options.cards : tpl.cards,
+    feel: feelFor(tpl),
     font,
     ...(heading ? { heading } : {}),
   };
 }
 
 /** The gallery summaries the portal's template picker renders. */
-export function templateGallery(): Array<{ id: string; name: string; description: string; inspiration: string; hero: HeroStyle; cards: CardStyle; font: FontKey; radius: RadiusKey; swatch: string[] }> {
+export function templateGallery(): Array<{ id: string; name: string; description: string; inspiration: string; hero: HeroStyle; cards: CardStyle; feel: FeelKey; font: FontKey; radius: RadiusKey; swatch: string[] }> {
   return SITE_TEMPLATES.map((t) => ({
     id: t.id, name: t.name, description: t.description, inspiration: t.inspiration,
-    hero: t.hero, cards: t.cards, font: t.font, radius: t.radius,
+    hero: t.hero, cards: t.cards, feel: feelFor(t), font: t.font, radius: t.radius,
     swatch: [t.palette.bg, t.palette.card, t.palette.accent, t.palette.accent2, t.palette.text],
   }));
 }

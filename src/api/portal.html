@@ -4069,76 +4069,60 @@
         "This is your portfolio landing page. When you have more than one property, it automatically becomes a directory — a card for each community linking to that property's own site."
       ])
     ]));
-    // --- design: template gallery + adjustments -----------------------------
+    // --- design: pick a finished template -----------------------------------
+    // Each template is a complete, opinionated design (font pairing + palette +
+    // hero + personality tuned together) — you pick one, not a bag of knobs.
     var pickedTemplate = w.template || "classic";
-    var opts = w.templateOptions || {};
     var heroPhotoData = w.heroPhotoDataUrl || "";
-    var adjRadius=null, adjFont=null, adjHero=null, adjCards=null;
     var refreshPreview=function(){};
+    var FEEL_LABEL={ editorial:"Editorial", boutique:"Boutique", resort:"Resort", minimal:"Minimal", corporate:"Corporate" };
     if(templates && templates.length){
       slot.appendChild(h("h2",{},["Design — pick a template"]));
-      slot.appendChild(h("p",{class:"sub"},["20 designs modeled on the best property-marketing sites. Pick one, then fine-tune corners, typography and layout below — your brand color from Settings → Branding is applied automatically."]));
-      var gallery=h("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px"},[]);
+      slot.appendChild(h("p",{class:"sub"},[templates.length+" finished designs modeled on the best real-estate marketing sites. Pick one and see it live below — your logo, brand color and content flow into it automatically."]));
+      var gallery=h("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px"},[]);
       var cardEls={};
       function highlight(){ Object.keys(cardEls).forEach(function(id){ cardEls[id].style.borderColor = id===pickedTemplate ? "var(--accent)" : "var(--border)"; cardEls[id].style.boxShadow = id===pickedTemplate ? "0 0 0 2px var(--accent-soft)" : "none"; }); }
       templates.forEach(function(tp){
-        var sw=h("div",{class:"row",style:"gap:4px;margin:8px 0 6px"}, (tp.swatch||[]).map(function(c){ return h("span",{style:"width:20px;height:20px;border-radius:6px;border:1px solid rgba(0,0,0,.12);background:"+c},[]) ; }));
+        var sw=h("div",{class:"row",style:"gap:0;margin:9px 0 8px;border-radius:8px;overflow:hidden;border:1px solid rgba(0,0,0,.10)"}, (tp.swatch||[]).map(function(c){ return h("span",{style:"flex:1;height:30px;background:"+c},[]) ; }));
         var cardEl=h("div",{class:"panel",style:"cursor:pointer;padding:13px;border:2px solid var(--border)",onclick:function(){ pickedTemplate=tp.id; highlight(); refreshPreview(); }},[
-          h("strong",{style:"font-size:14px"},[tp.name]), sw,
-          h("div",{class:"muted",style:"font-size:12px;line-height:1.35"},[tp.description]),
-          h("div",{class:"muted",style:"font-size:11px;margin-top:6px;opacity:.8"},["Inspired by "+tp.inspiration+" · "+tp.hero+" hero · "+tp.cards+" cards"])
+          h("div",{class:"row",style:"justify-content:space-between;align-items:baseline;gap:6px"},[ h("strong",{style:"font-size:14.5px"},[tp.name]), h("span",{class:"muted",style:"font-size:10.5px;text-transform:uppercase;letter-spacing:.06em"},[FEEL_LABEL[tp.feel]||""]) ]),
+          sw,
+          h("div",{class:"muted",style:"font-size:12px;line-height:1.4"},[tp.description])
         ]);
         cardEls[tp.id]=cardEl; gallery.appendChild(cardEl);
       });
       highlight();
       slot.appendChild(gallery);
-      // Adjustments — every template stays flexible.
-      adjRadius=selectFrom([["","Template default"],["sharp","Sharp corners"],["soft","Soft corners"],["round","Round corners"]], opts.radius||"");
-      adjFont=selectFrom([["","Template default"],["system","System sans"],["inter","Inter"],["space","Space Grotesk"],["playfair","Playfair Display (serif)"],["fraunces","Fraunces (serif)"],["libre","Libre Baskerville (serif)"]], opts.font||"");
-      adjHero=selectFrom([["","Template default"],["classic","Classic hero"],["banner","Photo banner hero"],["split","Split hero"],["minimal","Minimal hero"],["editorial","Editorial hero"],["fullbleed","Full-bleed photo hero"]], opts.hero||"");
-      adjCards=selectFrom([["","Template default"],["grid","Grid cards"],["wide","Wide cards"],["list","List cards"]], opts.cards||"");
+      // Optional hero photo (content, not a design knob).
       var heroPrev=h("div",{class:"row",style:"gap:10px;align-items:center"},[]);
-      function drawHero(){ heroPrev.innerHTML=""; if(heroPhotoData){ var im=document.createElement("img"); im.src=heroPhotoData; im.style.cssText="height:54px;width:120px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"; heroPrev.appendChild(im); var rm=h("button",{class:"btn ghost sm"},[tbtn("Remove")]); rm.addEventListener("click",function(e){e.preventDefault(); heroPhotoData=""; drawHero();}); heroPrev.appendChild(rm); } else heroPrev.appendChild(h("span",{class:"muted",style:"font-size:12.5px"},["No hero photo (banner/split heroes use your colors)"])); }
+      function drawHero(){ heroPrev.innerHTML=""; if(heroPhotoData){ var im=document.createElement("img"); im.src=heroPhotoData; im.style.cssText="height:54px;width:120px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"; heroPrev.appendChild(im); var rm=h("button",{class:"btn ghost sm"},[tbtn("Remove")]); rm.addEventListener("click",function(e){e.preventDefault(); heroPhotoData=""; drawHero();}); heroPrev.appendChild(rm); } else heroPrev.appendChild(h("span",{class:"muted",style:"font-size:12.5px"},["No hero photo yet — photo-led designs fall back to the template's colors"])); }
       drawHero();
       var heroFile=h("input",{type:"file",accept:"image/png,image/jpeg,image/webp"});
       heroFile.addEventListener("change",function(){ var f=heroFile.files&&heroFile.files[0]; if(!f) return; if(f.size>256*1024) return toast("Hero photo too large (max 256 KB)","err"); var rd=new FileReader(); rd.onload=function(){ heroPhotoData=String(rd.result); drawHero(); }; rd.readAsDataURL(f); });
       slot.appendChild(h("div",{class:"panel",style:"margin-top:12px"},[
-        h("strong",{},["Fine-tune the design"]),
-        h("div",{class:"grid",style:"margin-top:10px"},[ field("Corners",adjRadius), field("Typography",adjFont), field("Hero layout",adjHero), field("Unit cards",adjCards), field("Hero photo (≤256 KB)",heroFile) ]),
-        h("div",{style:"margin-top:6px"},[heroPrev])
+        h("strong",{},["Hero photo (optional)"]),
+        h("div",{class:"muted",style:"font-size:12.5px;margin:4px 0 10px"},["A wide banner image for the top of the site (≤256 KB)."]),
+        heroFile, h("div",{style:"margin-top:8px"},[heroPrev])
       ]));
-      // LIVE PREVIEW — the real public site rendered in the selected design
-      // (template + fine-tune), straight from the ?template= preview override.
-      // Nothing is saved until "Save website".
+      // LIVE PREVIEW — the real public site rendered in the selected design.
       var prevTenant=(state.me&&state.me.tenantId)||(state.config&&state.config.tenantId)||"";
-      var prevFrame=h("iframe",{style:"width:100%;height:520px;border:1px solid var(--border);border-radius:12px;background:#fff",title:"Design preview"},[]);
+      var prevFrame=h("iframe",{style:"width:100%;height:560px;border:1px solid var(--border);border-radius:12px;background:#fff",title:"Design preview"},[]);
       var prevOpen=h("a",{target:"_blank",rel:"noopener",style:"font-size:12.5px;font-weight:600;color:var(--accent);text-decoration:none"},["Open full preview ↗"]);
       refreshPreview=function(){
         var q=new URLSearchParams({ template: pickedTemplate, demo: "1" });
         if(scope.propertyId) q.set("property", scope.code);
-        if(adjRadius&&adjRadius.value) q.set("radius",adjRadius.value);
-        if(adjFont&&adjFont.value) q.set("font",adjFont.value);
-        if(adjHero&&adjHero.value) q.set("hero",adjHero.value);
-        if(adjCards&&adjCards.value) q.set("cards",adjCards.value);
         var url="/site/"+encodeURIComponent(prevTenant)+"?"+q.toString();
         prevFrame.src=url; prevOpen.href=url;
       };
-      [adjRadius,adjFont,adjHero,adjCards].forEach(function(s){ s.addEventListener("change",refreshPreview); });
       slot.appendChild(h("div",{class:"panel",style:"margin-top:12px"},[
         h("div",{class:"row",style:"justify-content:space-between;align-items:baseline"},[ h("strong",{},["Live preview"]), prevOpen ]),
-        h("p",{class:"sub",style:"margin:6px 0 10px"},["This is your real site in the selected design — click any template above to see it change. Nothing is applied until you press Save website."]),
+        h("p",{class:"sub",style:"margin:6px 0 10px"},["Your real site in the selected design — click any template above to see it change. Nothing is applied until you press Save website."]),
         prevFrame
       ]));
       refreshPreview();
     }
     function readDesign(body){
       body.template = pickedTemplate;
-      var o={};
-      if(adjRadius && adjRadius.value) o.radius=adjRadius.value;
-      if(adjFont && adjFont.value) o.font=adjFont.value;
-      if(adjHero && adjHero.value) o.hero=adjHero.value;
-      if(adjCards && adjCards.value) o.cards=adjCards.value;
-      if(Object.keys(o).length) body.templateOptions=o;
       if(heroPhotoData) body.heroPhotoDataUrl=heroPhotoData;
       return body;
     }

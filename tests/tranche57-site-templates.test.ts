@@ -68,6 +68,14 @@ test('at least 10 templates use font pairings and the fullbleed hero exists', ()
   assert.ok(SITE_TEMPLATES.some((t) => t.hero === 'fullbleed'), 'a fullbleed template exists');
 });
 
+test('every template resolves a design "feel" and all five feels are used', () => {
+  const feels = new Set(templateGallery().map((t) => t.feel));
+  assert.equal(feels.size, 5, 'all five feels represented');
+  assert.ok(templateGallery().every((t) => typeof t.feel === 'string'), 'every gallery entry carries a feel');
+  assert.ok(resolveTheme('belmont').feel === 'editorial');
+  assert.ok(resolveTheme('noir').feel === 'boutique');
+});
+
 test('resolveTheme falls back to the default for unknown/missing template ids', () => {
   assert.equal(resolveTheme(undefined).id, DEFAULT_TEMPLATE_ID);
   assert.equal(resolveTheme('does-not-exist').id, DEFAULT_TEMPLATE_ID);

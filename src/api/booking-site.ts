@@ -90,6 +90,39 @@ ${SEO_PLACEHOLDER}
   body[data-hero="fullbleed"] .brand strong{ letter-spacing:.02em; }
   body[data-hero="fullbleed"] .searchbar{ margin-top:22px; background:rgba(255,255,255,.94); }
   @media (max-width:640px){ body[data-hero="fullbleed"] header.hero{ min-height:64vh; padding:32px 20px 24px; } }
+  /* ---- design "feel" bundles: a cohesive personality per template ---------- */
+  /* EDITORIAL — magazine luxe: light large headings, an accent overline before
+     each section title, hairline flat cards, square buttons. */
+  body[data-feel="editorial"] h1{ font-weight:500; }
+  body[data-feel="editorial"] section > h2{ font-size:24px; font-weight:500; }
+  body[data-feel="editorial"] section > h2::before{ content:""; display:block; width:46px; height:2px; background:var(--accent); margin:0 0 14px; }
+  body[data-feel="editorial"] .btn{ border-radius:2px; letter-spacing:.02em; }
+  body[data-feel="editorial"] .card{ box-shadow:none !important; }
+  body[data-feel="editorial"] .brand strong{ text-transform:uppercase; letter-spacing:.16em; font-size:12.5px; font-weight:600; }
+  /* BOUTIQUE — hushed hotel: centered section titles with a short rule, outline
+     buttons, quiet cards. */
+  body[data-feel="boutique"] section > h2{ text-align:center; font-weight:500; }
+  body[data-feel="boutique"] section > h2::after{ content:""; display:block; width:38px; height:1px; background:var(--accent); margin:12px auto 2px; }
+  body[data-feel="boutique"] .btn{ background:transparent; border:1px solid var(--accent); color:var(--accent); }
+  body[data-feel="boutique"] header.hero .btn, body[data-feel="boutique"] .overlay .btn, body[data-feel="boutique"] .sheet .btn{ background:linear-gradient(135deg,var(--accent),var(--accent2)); border:0; color:#fff; }
+  body[data-feel="boutique"] .brand strong{ letter-spacing:.06em; }
+  body[data-feel="boutique"] .card{ box-shadow:none; }
+  /* RESORT — warm & photo-led: rounded, soft-shadow cards, generous, pill buttons. */
+  body[data-feel="resort"] .btn{ border-radius:999px; padding-left:22px; padding-right:22px; }
+  body[data-feel="resort"] .card{ border-radius:calc(var(--radius) + 8px); box-shadow:0 10px 30px rgba(20,26,46,.08); }
+  body[data-feel="resort"] .card.clickable:hover{ box-shadow:0 20px 42px rgba(20,26,46,.16); }
+  body[data-feel="resort"] section > h2{ font-size:23px; }
+  /* MINIMAL — architectural: max whitespace, uppercase micro-labels, hairline
+     flat cards, square buttons, no shadows. */
+  body[data-feel="minimal"] section{ margin-top:56px; }
+  body[data-feel="minimal"] section > h2{ text-transform:uppercase; letter-spacing:.14em; font-size:14px; font-weight:600; color:var(--muted); }
+  body[data-feel="minimal"] .btn{ border-radius:0; }
+  body[data-feel="minimal"] .card{ box-shadow:none !important; }
+  body[data-feel="minimal"] .card .body{ padding:16px 4px; }
+  body[data-feel="minimal"] #results .card, body[data-feel="minimal"] #commBody .card{ border-left:0; border-right:0; border-top:0; }
+  /* CORPORATE — tidy furnished-housing: subtle shadow cards, clear hierarchy. */
+  body[data-feel="corporate"] .card{ box-shadow:0 6px 18px rgba(20,26,46,.06); }
+  body[data-feel="corporate"] section > h2{ font-weight:700; }
   .card .body{ padding:15px; flex:1; display:flex; flex-direction:column; gap:8px; }
   .card h3{ margin:0; font-size:16.5px; }
   .headline{ color:var(--muted); font-size:13.5px; margin:-3px 0 0; }
@@ -248,6 +281,7 @@ ${SEO_PLACEHOLDER}
       if(th.heading){ if(th.heading.import){ var hl2=document.createElement("link"); hl2.rel="stylesheet"; hl2.href=th.heading.import; document.head.appendChild(hl2); } rs.setProperty("--font-display", th.heading.family); document.body.classList.add("font-display"); }
       document.body.setAttribute("data-hero", th.hero||"classic");
       document.body.setAttribute("data-cards", th.cards||"grid");
+      document.body.setAttribute("data-feel", th.feel||"corporate");
       if(content.heroPhotoDataUrl){ rs.setProperty("--heroimg", "url("+JSON.stringify(content.heroPhotoDataUrl)+")"); }
       if(th.hero==="split"){ var hv=document.createElement("div"); hv.className="hero-visual"; var hd=document.querySelector("header.hero"); hd.insertBefore(hv, hd.querySelector(".searchbar")); }
       if(cfg.previewTemplate||cfg.sampleData){ var rb=document.createElement("div"); rb.textContent=(cfg.sampleData?"Sample content — publish your own units to replace it. ":"")+(cfg.previewTemplate?("Design preview: "+(th.name||cfg.previewTemplate)+" — not saved. Pick it in your Website settings to apply."):"Design preview."); rb.style.cssText="position:fixed;left:0;right:0;bottom:0;z-index:80;background:#111827;color:#fff;font:600 13px system-ui;padding:9px 16px;text-align:center;opacity:.94"; document.body.appendChild(rb); }
