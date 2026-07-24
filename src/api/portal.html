@@ -124,6 +124,7 @@
   .card:hover { transform: translateY(-2px); border-color: var(--border-strong); box-shadow: var(--shadow); }
   .card .k { color: var(--subtle); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; font-weight: 600; }
   .card .v { font-size: 26px; font-weight: 750; margin-top: 8px; letter-spacing: -.02em; overflow-wrap: anywhere; }
+  .card .cardsub { font-size: 11.5px; color: var(--muted); margin-top: 5px; font-variant-numeric: tabular-nums; }
 
   /* Tables */
   .tablewrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: auto; background: var(--surface); max-height: 68vh; }
@@ -560,6 +561,16 @@
   }
   // The scope URL for the dashboard rollup (a regional picker focuses one community).
   function summaryPath() { return "/reporting/summary" + (state.scopeProperty ? "?propertyId=" + encodeURIComponent(state.scopeProperty) : ""); }
+  // The ONE trusted occupancy card: physical occupancy (occupied ÷ rentable
+  // units), the same definition as the rent roll — never the hotel-nights figure
+  // (that lives only in the Revenue cockpit, for short-stay inventory).
+  function occupancyCard(cards) {
+    api(summaryPath()).then(function (r) {
+      if (r.status !== 200 || !r.body.occupancy) return;
+      var o = r.body.occupancy;
+      card(cards, tt("kpi.occupancy", "Occupancy"), o.physicalOccupancyPct + "%", "", o.occupiedUnits + " / " + o.rentableUnits + " " + tt("kpi.unitsoccupied", "units occupied"));
+    });
+  }
   // The header bar at the top of the main screen: community scope (left) + language (right).
   function topBar() {
     var langs = (state.options && state.options.locales) || [];
@@ -883,13 +894,18 @@
     if (can("revenue.read")) {
       main.appendChild(h("h2", {}, [tt("dash.revenue","Revenue")]));
       var kpis = h("div", { class: "cards" }, []); main.appendChild(kpis);
+      occupancyCard(kpis);
       api("/revenue/summary").then(function (r) {
         if (r.status !== 200) return;
         var k = r.body;
-        card(kpis, tt("kpi.occupancy","Occupancy"), k.occupancyPct + "%");
-        card(kpis, "ADR", fmt(k.adrCents));
-        card(kpis, "RevPAR", fmt(k.revparCents));
         card(kpis, tt("kpi.revenue","Revenue"), fmt(k.revenueCents));
+        // ADR / RevPAR are nightly hotel metrics — only meaningful with short-stay
+        // inventory. Show them only when nightly nights were actually sold, and
+        // label them clearly so they are never read as portfolio-wide figures.
+        if (k.soldRoomNights > 0 && k.adrCents > 0) {
+          card(kpis, tt("kpi.adr_short","ADR (short-stay)"), fmt(k.adrCents), "", tt("kpi.nightly_only","nightly bookings only"));
+          card(kpis, tt("kpi.revpar_short","RevPAR (short-stay)"), fmt(k.revparCents), "", tt("kpi.nightly_only","nightly bookings only"));
+        }
       });
     }
     if (can("crm.read")) {
@@ -909,8 +925,12 @@
     try { return new Intl.NumberFormat(state.config.locale, { style:"currency", currency: sub.currency, currencyDisplay: "narrowSymbol" }).format(sub.totalCents / 100) + " " + t("msg.perMonth"); }
     catch (e) { return (sub.totalCents/100) + " " + sub.currency; }
   }
-  function card(container, k, v, pill) {
-    container.appendChild(h("div", { class: "card" }, [ h("div", { class:"k" }, [k]), h("div", { class:"v" }, [ pill ? h("span",{class:"pill "+pill},[v]) : v ]) ]));
+  function card(container, k, v, pill, sub) {
+    container.appendChild(h("div", { class: "card" }, [
+      h("div", { class:"k" }, [k]),
+      h("div", { class:"v" }, [ pill ? h("span",{class:"pill "+pill},[v]) : v ]),
+      sub ? h("div", { class:"cardsub" }, [sub]) : null
+    ]));
   }
   function prettyBiz(b){ return String(b).replace(/_/g," "); }
 
@@ -1009,7 +1029,7 @@
       card(cards, tt("kpi.units","Units"), String(s.masterDataCounts.units));
       card(cards, tt("kpi.activeleases","Active leases"), String((s.agreements.byStatus || {}).active || 0));
     });
-    if (can("revenue.read")) api("/revenue/summary").then(function (r) { if (r.status === 200) card(cards, tt("kpi.occupancy","Occupancy"), r.body.occupancyPct + "%"); });
+    occupancyCard(cards);
     if (can("package.read")) api("/parcels").then(function (r) { if (r.status === 200) card(cards, tt("kpi.packageswaiting","Packages waiting"), String((r.body.parcels || []).filter(function (p) { return p.status !== "picked_up"; }).length)); });
     attentionFeed(main);
     if (can("maintenance.read")) listPanel(main, {
@@ -1050,7 +1070,7 @@
       card(cards, tt("kpi.activeleases","Active leases"), String((s.agreements.byStatus || {}).active || 0));
       card(cards, tt("kpi.ledger","Ledger"), s.ledger.balanced ? tt("kpi.balanced","Balanced") : tt("kpi.unbalanced","Unbalanced"), s.ledger.balanced ? "ok" : "bad");
     });
-    if (can("revenue.read")) api("/revenue/summary").then(function (r) { if (r.status === 200) card(cards, tt("kpi.occupancy","Occupancy"), r.body.occupancyPct + "%"); });
+    occupancyCard(cards);
     if (can("renewal.read")) api("/renewals").then(function (r) { if (r.status === 200) card(cards, tt("kpi.renewalsdue","Renewals due"), String((r.body.offers || []).length)); });
     if (can("exception.read")) listPanel(main, {
       title: tt("wsh.approvals", "Waiting on you — approvals"), endpoint: "/exceptions", view: "exceptions", moreLabel: "Open approvals →",
@@ -1079,7 +1099,7 @@
       card(cards, tt("kpi.pipelinevalue","Pipeline value"), fmt(k.pipelineValueCents));
       card(cards, tt("kpi.conversion","Conversion"), k.conversionPct + "%");
     });
-    if (can("revenue.read")) api("/revenue/summary").then(function (r) { if (r.status === 200) { card(cards, "ADR", fmt(r.body.adrCents)); card(cards, "RevPAR", fmt(r.body.revparCents)); } });
+    if (can("revenue.read")) api("/revenue/summary").then(function (r) { if (r.status === 200 && r.body.soldRoomNights > 0 && r.body.adrCents > 0) { card(cards, tt("kpi.adr_short","ADR (short-stay)"), fmt(r.body.adrCents), "", tt("kpi.nightly_only","nightly bookings only")); card(cards, tt("kpi.revpar_short","RevPAR (short-stay)"), fmt(r.body.revparCents), "", tt("kpi.nightly_only","nightly bookings only")); } });
     if (can("crm.read")) {
       main.appendChild(h("h2", {}, [tt("wsh.funnel", "The funnel")]));
       var fwrap = h("div", {}, [h("div", { class: "muted" }, ["Loading…"])]); main.appendChild(fwrap);
@@ -1150,7 +1170,7 @@
     if (can("reports.read")) api("/reports/owner_distributions").then(function (r) {
       if (r.status === 200 && r.body.report) { var k = (r.body.report.kpis || [])[0]; if (k) card(cards, k.label, fmtKpi(k)); }
     });
-    if (can("revenue.read")) api("/revenue/summary").then(function (r) { if (r.status === 200) card(cards, tt("kpi.occupancy","Occupancy"), r.body.occupancyPct + "%"); });
+    occupancyCard(cards);
     attentionFeed(main, function (i) { return /noi|occup|distribut|expir|renewal|vacan|revenue/i.test(i.title + " " + i.detail); });
     if (can("reports.read")) reportPanel(main, "owner_statement", tt("wsh.noibycommunity", "NOI by community"), "reports");
     if (can("reports.read")) reportPanel(main, "capital_account", tt("wsh.capitalaccounts", "Capital accounts"), "reports");
@@ -1981,10 +2001,15 @@
       kpiWrap.innerHTML=""; recWrap.innerHTML="";
       if(r.status!==200){ recWrap.appendChild(h("p",{class:"muted"},[(r.body&&r.body.error)||t("msg.denied")])); return; }
       var k=r.body.kpis||{};
-      card(kpiWrap, tt("kpi.occupancy","Occupancy"),(k.occupancyPct==null?0:k.occupancyPct)+"%");
-      card(kpiWrap,"ADR",fmt(k.adrCents||0));
-      card(kpiWrap,"RevPAR",fmt(k.revparCents||0));
-      card(kpiWrap, tt("kpi.revenue","Revenue"),fmt(k.revenueCents||0));
+      if ((k.nightlyStays||0) > 0) {
+        var note = tt("kpi.nightly_only","nightly bookings only");
+        card(kpiWrap, tt("kpi.occ_short","Occupancy (short-stay)"),(k.occupancyPct==null?0:k.occupancyPct)+"%","",(k.unitCount||0)+" "+tt("kpi.nightlyunits","nightly units"));
+        card(kpiWrap, tt("kpi.adr_short","ADR (short-stay)"),fmt(k.adrCents||0),"",note);
+        card(kpiWrap, tt("kpi.revpar_short","RevPAR (short-stay)"),fmt(k.revparCents||0),"",note);
+        card(kpiWrap, tt("kpi.revenue_short","Short-stay revenue"),fmt(k.revenueCents||0),"",note);
+      } else {
+        kpiWrap.appendChild(h("div",{class:"panel muted",style:"grid-column:1/-1"},[tt("revenue.nonightly","No short-stay (nightly) inventory in scope — ADR / RevPAR / nightly occupancy apply only to nightly bookings. The rules below still price any nightly stay you set up.")]));
+      }
       (r.body.insights||[]).forEach(function(i){ recWrap.appendChild(insightCard(i)); });
     });
     // Rule editor + list.

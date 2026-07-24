@@ -1176,9 +1176,12 @@ export function computeInsights(inp: ReportingInput): Insight[] {
   // Occupancy (last 30 days).
   const nights = daysBetween(inp.from, inp.to) || 30;
   const active = inp.holds.filter((h) => h.status === 'active');
-  const sold = sum(active.map((h) => overlapNights(h.start, h.end, inp.from, inp.to)));
-  const avail = nights * Math.max(1, inp.units.length);
-  const occ = pct(sold, avail);
+  // Headline occupancy is PHYSICAL (units occupied today ÷ rentable units) — the
+  // same figure the dashboard KPI and the rent roll report show, so the three
+  // never contradict each other. Room-night calendar occupancy is a distinct
+  // hospitality metric and stays in the occupancy_trend report, not this alert.
+  const rentableUnits = inp.units.filter((u) => u.active).length;
+  const occ = pct(currentAgreementByUnit(inp).size, rentableUnits);
   if (inp.units.length > 0) {
     if (occ < 40) out.push({ severity: 'warning', code: 'occ_low', params: { occ }, title: `Occupancy is ${occ}%`, detail: 'Below a healthy floor — consider lowering rates, promoting availability, or a length-of-stay discount.', metric: { value: occ, kind: 'percent' }, action: 'Review Pricing → weekend/lead-time factors.' });
     else if (occ > 85) out.push({ severity: 'positive', code: 'occ_strong', params: { occ }, title: `Occupancy is strong at ${occ}%`, detail: 'Demand is high — there may be room to raise rates without hurting fill.', metric: { value: occ, kind: 'percent' }, action: 'Consider an occupancy-tier uplift in Pricing.' });

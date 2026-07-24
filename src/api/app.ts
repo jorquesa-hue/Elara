@@ -2840,7 +2840,7 @@ export class App {
       return {
         status: 200,
         body: {
-          kpis: { occupancyPct: s.occupancyPct, adrCents: s.adrCents, revparCents: s.revparCents, revenueCents: s.revenueCents },
+          kpis: { occupancyPct: s.occupancyPct, adrCents: s.adrCents, revparCents: s.revparCents, revenueCents: s.revenueCents, nightlyStays: s.nightlyStays, soldRoomNights: s.soldRoomNights, unitCount: s.unitCount },
           insights: computeRevenueInsights({
             occupancyPct: s.occupancyPct, adrCents: s.adrCents, revparCents: s.revparCents,
             revenueCents: s.revenueCents, unitCount: s.unitCount, rules: this.revenue.listRules(ctx.tenantId),
@@ -4072,6 +4072,19 @@ export class App {
       }
       const md = this.masterData.snapshot(ctx.tenantId);
       const units = scope ? md.units.filter((u) => inScopeUnit(u.id)) : md.units;
+      // PHYSICAL occupancy — occupied units ÷ rentable (active) units, the same
+      // definition the rent roll uses. This is the ONE occupancy number the
+      // dashboards show; the nightly hotel-style occupancy (ADR/RevPAR) is
+      // quarantined to the Revenue cockpit for short-stay inventory only.
+      const today = this.now().slice(0, 10);
+      const occupiedUnits = new Set<string>();
+      for (const a of mine) {
+        if (a.status !== 'active') continue;
+        const uid = a.currentUnitId;
+        if (uid && a.period.start.slice(0, 10) <= today && today < a.period.end.slice(0, 10)) occupiedUnits.add(uid);
+      }
+      const rentable = units.filter((u) => u.active).length;
+      const occupiedCount = [...occupiedUnits].filter((uid) => inScopeUnit(uid)).length;
       return {
         status: 200,
         body: {
@@ -4080,6 +4093,11 @@ export class App {
           ledger: this.trialBalance(ctx.tenantId),
           subscription: meterSubscription(md.units.length, this.plan),
           masterDataCounts: { units: units.length, guests: md.guests.length, users: md.users.length, ratePlans: md.ratePlans.length },
+          occupancy: {
+            occupiedUnits: occupiedCount,
+            rentableUnits: rentable,
+            physicalOccupancyPct: rentable ? Math.round((occupiedCount / rentable) * 1000) / 10 : 0,
+          },
         },
       };
     });
@@ -4589,25 +4607,35 @@ export class App {
   }
 
   /**
-   * Fold tenant state into the headline hospitality KPIs (occupancy / ADR /
-   * RevPAR). Sold room-nights = the summed nights of every agreement's period;
-   * available room-nights = unit count × the span of the booked window; revenue
-   * = collected invoice cash for the tenant. Deterministic and read-only.
+   * The nightly hotel KPIs (occupancy / ADR / RevPAR) for the Revenue cockpit.
+   * These are SHORT-STAY metrics and must be computed over NIGHTLY inventory
+   * ONLY — folding annual leases into a room-night denominator produced the
+   * cents-level ADR the audit flagged (208k lease-nights → ADR $0.38). So: sold
+   * room-nights come from nightly agreements, available room-nights from the
+   * units that actually run nightly × the booked window, and revenue is the cash
+   * collected on those nightly stays. With no nightly inventory every figure is
+   * 0 and the portal hides the cards rather than showing nonsense.
    */
   private revenueSummary(tenantId: string) {
-    const mine = [...this.agreements.values()].filter((e) => e.tenantId === tenantId).map((e) => e.agreement);
+    const all = [...this.agreements.values()].filter((e) => e.tenantId === tenantId).map((e) => e.agreement);
+    const nightly = all.filter((a) => a.kind === 'nightly');
     const nights = (a: Agreement) => Math.max(0, Math.round((Date.parse(a.period.end) - Date.parse(a.period.start)) / 86_400_000));
-    const soldRoomNights = mine.reduce((s, a) => s + nights(a), 0);
+    const soldRoomNights = nightly.reduce((s, a) => s + nights(a), 0);
     let windowNights = 0;
-    if (mine.length) {
-      const start = Math.min(...mine.map((a) => Date.parse(a.period.start)));
-      const end = Math.max(...mine.map((a) => Date.parse(a.period.end)));
+    if (nightly.length) {
+      const start = Math.min(...nightly.map((a) => Date.parse(a.period.start)));
+      const end = Math.max(...nightly.map((a) => Date.parse(a.period.end)));
       windowNights = Math.max(0, Math.round((end - start) / 86_400_000));
     }
+    // Available nights = inventory × the nightly window. ADR is what the audit
+    // cared about (revenue ÷ nightly nights sold); the denominator here only
+    // scales occupancy/RevPAR, which the portal shows solely for short-stay.
     const unitCount = this.masterData.units.list(tenantId).length;
     const availableRoomNights = unitCount * windowNights;
+    // Revenue = cash collected on the nightly stays (not the whole ledger).
+    const nightlyIds = new Set(nightly.map((a) => a.id));
     const revenueCents = this.billing.allInvoices()
-      .filter((i) => i.tenantId === tenantId)
+      .filter((i) => i.tenantId === tenantId && nightlyIds.has(i.agreementId))
       .reduce((s, i) => s + i.paidCents, 0);
     return {
       ...revenueKpis({ availableRoomNights, soldRoomNights, revenueCents }),
@@ -4616,6 +4644,7 @@ export class App {
       revenueCents,
       unitCount,
       windowNights,
+      nightlyStays: nightly.length,
     };
   }
 
