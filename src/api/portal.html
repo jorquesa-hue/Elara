@@ -127,7 +127,7 @@
   .card .cardsub { font-size: 11.5px; color: var(--muted); margin-top: 5px; font-variant-numeric: tabular-nums; }
 
   /* Tables */
-  .tablewrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: auto; background: var(--surface); max-height: 68vh; }
+  .tablewrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: auto; background: var(--surface); max-height: 68vh; min-width: 0; max-width: 100%; }
   .tablewrap thead th { position: sticky; top: 0; background: var(--surface-2); z-index: 2; }
   .tablewrap td.mono, .tablewrap td.num { white-space: nowrap; }
   .tfilter { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 11px; color: var(--text); font: inherit; font-size: 13px; min-width: 220px; }
@@ -263,9 +263,9 @@
 
   /* Split view + inspector (agreements) — from the Pro-Console concept */
   .ag-split { display: flex; gap: 16px; align-items: flex-start; }
-  .ag-list { flex: 3; min-width: 0; }
+  .ag-list { flex: 3; min-width: 0; max-width: 100%; }
   .ag-insp { flex: 2; min-width: 320px; position: sticky; top: 16px; }
-  @media (max-width: 1040px){ .ag-split { flex-direction: column; } .ag-insp { width: 100%; position: static; } }
+  @media (max-width: 1040px){ .ag-split { flex-direction: column; } .ag-list { width: 100%; } .ag-insp { width: 100%; min-width: 0; position: static; } }
   .ag-list tbody tr { cursor: pointer; }
   .ag-list tbody tr.sel { background: var(--accent-soft); }
   .ag-list tbody tr.sel td { border-bottom-color: var(--accent-line); }
@@ -380,9 +380,12 @@
     .mobilebar .burger { width: 38px; height: 38px; flex: none; border: 1px solid var(--border); border-radius: 9px;
       display: flex; align-items: center; justify-content: center; color: var(--text); background: var(--surface); }
     .mobilebar .burger:active { background: var(--surface-2); }
-    .mobilebar .mb-brand { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 15px; min-width: 0; }
+    .mobilebar .mb-brand { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 15px; min-width: 0; flex: 1; }
     .mobilebar .mb-brand img, .mobilebar .mb-brand .mark { height: 26px; width: auto; flex: none; }
     .mobilebar .mb-brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mobilebar .mb-search { margin-left: auto; }
+    /* the in-content search button is redundant on mobile (search lives in the bar) */
+    .cmdk-open { display: none; }
     /* the sidebar becomes an off-canvas drawer */
     aside { position: fixed; top: 0; left: 0; bottom: 0; width: 270px; max-width: 84vw; height: 100vh; z-index: 60;
       transform: translateX(-100%); transition: transform .22s cubic-bezier(.2,.8,.2,1);
@@ -391,7 +394,15 @@
     body.nav-open .nav-scrim { display: block; position: fixed; inset: 0; background: rgba(6,9,16,.5); z-index: 55; }
     main { min-width: 0; }
     .topbar { flex-wrap: wrap; row-gap: 8px; }
-    .cmdk-open .cmdk-lbl { display: none; }
+    /* iOS zooms the page when focusing an input smaller than 16px — force form
+       controls to 16px on mobile (overriding the denser .tfilter/.moneyin sizes)
+       so tapping a field never jumps the viewport. */
+    input, select, textarea, .tfilter input, .moneyin input, .cmdk-in input { font-size: 16px !important; }
+    /* larger, thumb-friendly nav rows in the drawer */
+    nav button.item { padding: 12px 12px; font-size: 15px; }
+    /* keep dense list filters from forcing the page wider than the phone */
+    .tfilter { min-width: 0; }
+    main, main > * { min-width: 0; max-width: 100%; }
   }
   @media (max-width: 560px){
     main { padding-left: 14px; padding-right: 14px; }
@@ -1034,7 +1045,9 @@
     var mobileBar = h("div", { class: "mobilebar" }, [
       h("button", { class: "burger", "aria-label": tt("nav.menu","Menu"), onclick: function(){ document.body.classList.toggle("nav-open"); } },
         [ h("span", { style:"display:inline-flex", html: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>' }) ]),
-      h("div", { class: "mb-brand" }, [ mbMark, h("span", {}, [state.config.displayName]) ])
+      h("div", { class: "mb-brand" }, [ mbMark, h("span", {}, [state.config.displayName]) ]),
+      h("button", { class: "burger mb-search", "aria-label": tt("cmdk.search","Search"), onclick: openPalette },
+        [ h("span", { style:"display:inline-flex", html: '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>' }) ])
     ]);
     document.body.classList.remove("nav-open");
     var root = document.getElementById("root"); root.innerHTML = "";
@@ -4418,7 +4431,7 @@
     var filter = h("input",{class:"tfilter",placeholder:tt("table.filter","Filter this list…"),
       oninput:function(){ q=this.value; page=0; draw(); }});
     draw();
-    return h("div",{},[ h("div",{class:"row",style:"gap:8px;align-items:center;margin:0 0 8px"},[filter, h("span",{style:"flex:1"}), counter, prev, next]), wrap ]);
+    return h("div",{style:"min-width:0;max-width:100%"},[ h("div",{class:"row",style:"gap:8px;align-items:center;margin:0 0 8px"},[filter, h("span",{style:"flex:1"}), counter, prev, next]), wrap ]);
   }
   function clear(el){ el.innerHTML=""; return el; }
   function handleMut(r, refreshView){
