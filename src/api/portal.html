@@ -1406,6 +1406,9 @@
     });
   }
   function pill(text, cls) { return h("span", { class: "pill " + (cls || "") }, [text]); }
+  // Render an enum value (snake_case) as a readable label: "in_progress" → "In
+  // progress", "moved_in" → "Moved in". Sentence case, not Title Case.
+  function humanize(s) { if (s == null) return ""; s = String(s).replace(/[_-]+/g, " ").trim(); return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 
   function viewOperatorHome(main) {
     homeHead(main, tt("ws.operator.home", "Operations today"), tt("wsh.op.sub", "On-site desk") + " · " + state.config.displayName);
@@ -1424,7 +1427,7 @@
       pick: function (b) { return b.workOrders || []; },
       filter: function (w) { return w.status !== "completed" && w.status !== "cancelled"; },
       heads: ["Work order", "Category", "Priority", "Status"],
-      map: function (w) { return h("tr", {}, [ h("td", {}, [w.title || w.id]), h("td", { class: "muted" }, [(w.category || "—").replace(/_/g, " ")]), h("td", {}, [pill(w.priority || "normal", w.priority === "urgent" ? "bad" : (w.priority === "high" ? "draft" : "completed"))]), h("td", {}, [pill(w.status, w.status === "open" ? "draft" : "active")]) ]); },
+      map: function (w) { return h("tr", {}, [ h("td", {}, [w.title || w.id]), h("td", { class: "muted" }, [humanize(w.category) || "—"]), h("td", {}, [pill(humanize(w.priority || "normal"), w.priority === "urgent" ? "bad" : (w.priority === "high" ? "draft" : "completed"))]), h("td", {}, [pill(humanize(w.status), w.status === "open" ? "draft" : "active")]) ]); },
       empty: "No open work orders. 🎉"
     });
     if (can("turn.read")) listPanel(main, {
@@ -1433,7 +1436,7 @@
       filter: function (tn) { return tn.status === "open" || tn.status === "in_progress"; },
       sort: function (a, b) { return (b.days || 0) - (a.days || 0); },
       heads: ["Unit", "Days in turn", "Tasks open", "Status"],
-      map: function (tn) { return h("tr", {}, [ h("td", {}, [tn.unitLabel || tn.unitId || "—"]), h("td", {}, [pill((tn.days || 0) + "d", tn.days >= 7 ? "bad" : (tn.days >= 4 ? "draft" : "active"))]), h("td", { class: "mono" }, [String(tn.openTasks == null ? "—" : tn.openTasks)]), h("td", {}, [pill(tn.status, "draft")]) ]); },
+      map: function (tn) { return h("tr", {}, [ h("td", {}, [tn.unitLabel || tn.unitId || "—"]), h("td", {}, [pill((tn.days || 0) + "d", tn.days >= 7 ? "bad" : (tn.days >= 4 ? "draft" : "active"))]), h("td", { class: "mono" }, [String(tn.openTasks == null ? "—" : tn.openTasks)]), h("td", {}, [pill(humanize(tn.status), "draft")]) ]); },
       empty: "No units in make-ready."
     });
     if (can("package.read")) listPanel(main, {
@@ -1693,7 +1696,7 @@
         card.appendChild(h("div",{class:"insp-sec"},[
           h("div",{class:"ih"},[tt("insp.activity","Recent activity")]),
           h("div",{class:"timeline"}, hist.map(function(e){
-            return h("div",{class:"tl-item"},[ h("div",{class:"tl-line"},[h("div",{class:"tl-dot"})]), h("div",{},[h("div",{class:"tl-ty"},[e.type]), h("div",{class:"tl-at"},[String(e.at||"").replace("T"," ").slice(0,16)])]) ]);
+            return h("div",{class:"tl-item"},[ h("div",{class:"tl-line"},[h("div",{class:"tl-dot"})]), h("div",{},[h("div",{class:"tl-ty"},[humanize(e.type)]), h("div",{class:"tl-at"},[String(e.at||"").replace("T"," ").slice(0,16)])]) ]);
           }))
         ]));
       }
@@ -1720,7 +1723,7 @@
       });
     }
     if (!units.length || !guests.length) {
-      return h("div",{class:"panel muted"},["Add at least one unit and guest in master data to book."]);
+      return h("div",{class:"muted",style:"font-size:12.5px;margin:0 0 14px"},[tt("agreements.booknote","To book a new stay from here, add a unit and a guest under Properties.")]);
     }
     var cells = [];
     if (planSel) cells.push(field(t("field.ratePlan"), planSel));
@@ -2060,7 +2063,7 @@
   }
   function timeline(hist){
     return h("div",{class:"timeline"}, (hist||[]).map(function(e){
-      return h("div",{class:"tl-item"},[ h("div",{class:"tl-line"},[h("div",{class:"tl-dot"})]), h("div",{},[h("div",{class:"tl-ty"},[e.type]), h("div",{class:"tl-at"},[e.at])]) ]);
+      return h("div",{class:"tl-item"},[ h("div",{class:"tl-line"},[h("div",{class:"tl-dot"})]), h("div",{},[h("div",{class:"tl-ty"},[humanize(e.type)]), h("div",{class:"tl-at"},[e.at])]) ]);
     }));
   }
 
@@ -2138,7 +2141,7 @@
       var rows=ps.map(function(p){
         var act=h("div",{},[]);
         if(p.status==="closed") act.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/periods/reopen",{method:"POST",body:{period:p.period}}).then(function(x){ if(x.status===202) toast("Re-open requested — needs approval","ok"); else if(x.status===200){ toast("Re-opened","ok"); periodClosePanel(wrap);} else toast((x.body&&x.body.error)||"err","err"); }); }},[tbtn("Request re-open")]));
-        return h("tr",{},[ h("td",{class:"mono"},[p.period]), h("td",{},[h("span",{class:"pill "+(p.status==="closed"?"terminated":"active")},[p.status])]), h("td",{class:"muted"},[p.closedBy||"—"]), h("td",{},[act]) ]);
+        return h("tr",{},[ h("td",{class:"mono"},[p.period]), h("td",{},[h("span",{class:"pill "+(p.status==="closed"?"terminated":"active")},[humanize(p.status)])]), h("td",{class:"muted"},[p.closedBy||"—"]), h("td",{},[act]) ]);
       });
       wrap.appendChild(h("div",{style:"margin-top:12px"},[tableEl([th(tcol("Period")),th(t("field.status")),th(tcol("Closed by")),th(tcol(""))], rows, 4, "")]));
     });
@@ -2328,7 +2331,7 @@
           if(wo.status==="in_progress") actions.appendChild(woBtn(wo.id,"complete","Complete"));
           if(wo.status!=="completed"&&wo.status!=="cancelled") actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/work-orders/"+wo.id+"/cancel",{method:"POST",body:{reason:"cancelled from portal"}}).then(function(x){handleMut(x,"maintenance");}); }},[tbtn("Cancel")]));
         }
-        return h("tr",{},[ h("td",{},[wo.title]), h("td",{class:"mono"},[wo.spaceId||"—"]), h("td",{},[h("span",{class:"pill "+woPill(wo.status)},[wo.status.replace(/_/g," ")])]), h("td",{},[wo.priority]), h("td",{},[actions]) ]);
+        return h("tr",{},[ h("td",{},[wo.title]), h("td",{class:"mono"},[wo.spaceId||"—"]), h("td",{},[h("span",{class:"pill "+woPill(wo.status)},[humanize(wo.status)])]), h("td",{},[humanize(wo.priority)]), h("td",{},[actions]) ]);
       });
       wrap.appendChild(tableEl([th(tcol("Title")),th(tcol("Space")),th(t("field.status")),th(tcol("Priority")),th(tcol(""))], rows, 5, "No work orders yet."));
     });
@@ -2367,7 +2370,7 @@
       var rows=((r.body||{}).reservations||[]).map(function(rv){
         var actions=h("div",{class:"row"},[]);
         if(rv.status==="reserved" && can("reservation.manage")) actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/reservations/"+rv.id+"/cancel",{method:"POST",body:{}}).then(function(x){handleMut(x,"reservations");}); }},[tbtn("Cancel")]));
-        return h("tr",{},[ h("td",{class:"mono"},[rv.spaceId]), h("td",{class:"mono"},[rv.start]), h("td",{class:"mono"},[rv.end]), h("td",{class:"mono"},[rv.priceCents!=null?fmt(rv.priceCents):"—"]), h("td",{},[h("span",{class:"pill "+(rv.status==="reserved"?"active":"terminated")},[rv.status])]), h("td",{},[actions]) ]);
+        return h("tr",{},[ h("td",{class:"mono"},[rv.spaceId]), h("td",{class:"mono"},[rv.start]), h("td",{class:"mono"},[rv.end]), h("td",{class:"mono"},[rv.priceCents!=null?fmt(rv.priceCents):"—"]), h("td",{},[h("span",{class:"pill "+(rv.status==="reserved"?"active":"terminated")},[humanize(rv.status)])]), h("td",{},[actions]) ]);
       });
       wrap.appendChild(tableEl([th(tcol("Space")),th(tcol("Start")),th(tcol("End")),th(tcol("Price")),th(t("field.status")),th(tcol(""))], rows, 6, "No reservations yet."));
     });
@@ -2394,7 +2397,7 @@
     api("/threads").then(function(r){
       wrap.innerHTML="";
       var rows=((r.body||{}).threads||[]).map(function(tr){
-        return h("tr",{},[ h("td",{},[h("button",{class:"btn ghost sm",onclick:function(){ state.threadId=tr.id; render(); }},[tr.subject])]), h("td",{},[tr.kind]), h("td",{},[h("span",{class:"pill "+(tr.status==="open"?"active":"completed")},[tr.status])]) ]);
+        return h("tr",{},[ h("td",{},[h("button",{class:"btn ghost sm",onclick:function(){ state.threadId=tr.id; render(); }},[tr.subject])]), h("td",{},[humanize(tr.kind)]), h("td",{},[h("span",{class:"pill "+(tr.status==="open"?"active":"completed")},[humanize(tr.status)])]) ]);
       });
       wrap.appendChild(tableEl([th(tcol("Subject")),th(tcol("Kind")),th(t("field.status"))], rows, 3, "No conversations yet."));
     });
@@ -2444,7 +2447,7 @@
           }},["Auto-match"]));
           actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/bank-transactions/"+txn.id+"/ignore",{method:"POST",body:{}}).then(function(x){handleMut(x,"reconcile");}); }},[tbtn("Ignore")]));
         }
-        return h("tr",{},[ h("td",{class:"mono"},[txn.postedAt]), h("td",{class:"mono"},[fmt(txn.amountCents)]), h("td",{},[txn.description]), h("td",{},[h("span",{class:"pill "+(txn.status==="matched"?"active":txn.status==="ignored"?"terminated":"draft")},[txn.status])]), h("td",{},[actions]) ]);
+        return h("tr",{},[ h("td",{class:"mono"},[txn.postedAt]), h("td",{class:"mono"},[fmt(txn.amountCents)]), h("td",{},[txn.description]), h("td",{},[h("span",{class:"pill "+(txn.status==="matched"?"active":txn.status==="ignored"?"terminated":"draft")},[humanize(txn.status)])]), h("td",{},[actions]) ]);
       });
       wrap.appendChild(tableEl([th(tcol("Posted")),th(tcol("Amount")),th(tcol("Description")),th(t("field.status")),th(tcol(""))], rows, 5, "No bank lines yet."));
     });
@@ -2481,7 +2484,7 @@
           actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ var a=act.value||"lock.unlock"; api("/integrations/"+it.id+"/commands",{method:"POST",body:{id:"cmd-"+Date.now(),action:a}}).then(function(x){ if(x.status===201){ toast(t("msg.saved"),"ok"); refreshCommands(cmdWrap);} else toast(x.body.error||"err","err"); }); }},[tbtn("Send")]));
         }
         if(can("integration.manage")) actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/integrations/"+it.id+"/status",{method:"POST",body:{status:it.status==="active"?"disabled":"active"}}).then(function(x){handleMut(x,"integrations");}); }},[it.status==="active"?"Disable":"Enable"]));
-        return h("tr",{},[ h("td",{class:"mono"},[it.provider]), h("td",{},[it.kind.replace(/_/g," ")]), h("td",{class:"mono muted"},[it.secretRef||"—"]), h("td",{},[h("span",{class:"pill "+(it.status==="active"?"active":"terminated")},[it.status])]), h("td",{},[actions]) ]);
+        return h("tr",{},[ h("td",{class:"mono"},[it.provider]), h("td",{},[humanize(it.kind)]), h("td",{class:"mono muted"},[it.secretRef||"—"]), h("td",{},[h("span",{class:"pill "+(it.status==="active"?"active":"terminated")},[humanize(it.status)])]), h("td",{},[actions]) ]);
       });
       wrap.appendChild(tableEl([th(tcol("Provider")),th(tcol("Kind")),th(tcol("Secret ref")),th(t("field.status")),th(tcol(""))], rows, 5, "No integrations connected."));
     });
@@ -2701,7 +2704,7 @@
         }
         var pillCls = a.status==="approved"?"active":(a.status==="denied"||a.status==="withdrawn"?"terminated":"draft");
         var scr = a.screening ? (a.screening.recommendation||"—")+(a.screening.creditScore?(" · "+a.screening.creditScore):"") : "—";
-        return h("tr",{},[ h("td",{},[a.applicantName]), h("td",{class:"muted"},[a.applicantEmail||"—"]), h("td",{},[a.incomeCents?fmt(a.incomeCents):"—"]), h("td",{class:"muted"},[scr]), h("td",{},[h("span",{class:"pill "+pillCls},[a.status])]), h("td",{},[actions]) ]);
+        return h("tr",{},[ h("td",{},[a.applicantName]), h("td",{class:"muted"},[a.applicantEmail||"—"]), h("td",{},[a.incomeCents?fmt(a.incomeCents):"—"]), h("td",{class:"muted"},[scr]), h("td",{},[h("span",{class:"pill "+pillCls},[humanize(a.status)])]), h("td",{},[actions]) ]);
       });
       wrap.appendChild(tableEl([th(tcol("Applicant")),th(tcol("Email")),th(tcol("Income")),th(tcol("Screening")),th(tcol("Status")),th(tcol(""))], rows, 6, "No applications yet."));
     });
@@ -2783,7 +2786,7 @@
         }
         var cls = tr.status==="completed"?"active":(tr.status==="cancelled"||tr.status==="no_show"?"terminated":"draft");
         var whenTxt = (tr.scheduledAt||"").replace("T"," ").slice(0,16);
-        return h("tr",{},[ h("td",{},[tr.prospectName]), h("td",{class:"muted"},[whenTxt]), h("td",{class:"muted"},[tr.unitId||"—"]), h("td",{},[h("span",{class:"pill "+cls},[tr.status])]), h("td",{},[act]) ]);
+        return h("tr",{},[ h("td",{},[tr.prospectName]), h("td",{class:"muted"},[whenTxt]), h("td",{class:"muted"},[tr.unitId||"—"]), h("td",{},[h("span",{class:"pill "+cls},[humanize(tr.status)])]), h("td",{},[act]) ]);
       });
       wrap.appendChild(tableEl([th(tcol("Prospect")),th(tcol("When")),th(tcol("Unit")),th(tcol("Status")),th(tcol(""))], rows, 5, "No tours scheduled."));
     });
@@ -2979,7 +2982,7 @@
         return h("tr",{},[
           h("td",{},[p.recipientName||"—"]), h("td",{},[p.unitLabel||"—"]), h("td",{},[p.carrier]),
           h("td",{},[p.description||"—"]), h("td",{},[p.location||"—"]),
-          h("td",{},[h("span",{class:"pill "+(PKG_PILL[p.status]||"draft")},[p.status.replace("_"," ")])]),
+          h("td",{},[h("span",{class:"pill "+(PKG_PILL[p.status]||"draft")},[humanize(p.status)])]),
           h("td",{},[p.status==="picked_up"?"—":h("span",{class:"pill "+daysCls},[p.daysWaiting+"d"])]),
           h("td",{},[actions])
         ]);
@@ -3028,7 +3031,7 @@
         return h("tr",{},[
           h("td",{},[pos]), h("td",{},[e.prospectName]), h("td",{},[e.floorplanName||"Any"]),
           h("td",{},[(e.desiredMoveIn||"—")]),
-          h("td",{},[h("span",{class:"pill "+(WL_PILL[e.status]||"draft")},[e.status])]),
+          h("td",{},[h("span",{class:"pill "+(WL_PILL[e.status]||"draft")},[humanize(e.status)])]),
           h("td",{},[actions])
         ]);
       });
@@ -3299,7 +3302,7 @@
         if(can("esign.complete") && env.status==="sent"){ (env.signers||[]).filter(function(s){return !s.signedAt && !s.declinedAt;}).forEach(function(s){ actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/signature-envelopes/"+env.id+"/sign",{method:"POST",body:{email:s.email, providerRef:env.providerRef}}).then(function(x){ if(x.status===200){ toast("Signed (webhook): "+s.email,"ok"); refreshEnvelopes(wrap);} else toast((x.body&&x.body.error)||"err","err"); }); }},["Webhook sign: "+s.name.split(" ")[0]])); }); }
         var signed=(env.signers||[]).filter(function(s){return s.signedAt;}).length;
         var pillCls = env.status==="signed"?"active":(env.status==="declined"||env.status==="voided"?"terminated":"draft");
-        return h("tr",{},[ h("td",{},[env.documentName]), h("td",{class:"mono muted"},[env.provider]), h("td",{class:"muted"},[signed+"/"+(env.signers||[]).length+" signed"]), h("td",{},[h("span",{class:"pill "+pillCls},[env.status])]), h("td",{},[actions]) ]);
+        return h("tr",{},[ h("td",{},[env.documentName]), h("td",{class:"mono muted"},[env.provider]), h("td",{class:"muted"},[signed+"/"+(env.signers||[]).length+" signed"]), h("td",{},[h("span",{class:"pill "+pillCls},[humanize(env.status)])]), h("td",{},[actions]) ]);
       });
       wrap.appendChild(tableEl([th(tcol("Document")),th(tcol("Provider")),th(tcol("Signers")),th(t("field.status")),th(tcol(""))], rows, 5, "No envelopes yet."));
     });
@@ -3346,7 +3349,7 @@
           else if(po.status==="received"){ act("Close","close"); }
         }
         var pillCls = po.status==="closed"?"active":(po.status==="cancelled"?"terminated":"draft");
-        return h("tr",{},[ h("td",{class:"mono muted"},[po.id.replace(/^po-/,"")]), h("td",{},[fmt(po.totalCents)]), h("td",{class:"mono muted"},[po.expectedAt||"—"]), h("td",{},[h("span",{class:"pill "+pillCls},[po.status])]), h("td",{},[po.billedCents?fmt(po.billedCents):"—"]), h("td",{},[actions]) ]);
+        return h("tr",{},[ h("td",{class:"mono muted"},[po.id.replace(/^po-/,"")]), h("td",{},[fmt(po.totalCents)]), h("td",{class:"mono muted"},[po.expectedAt||"—"]), h("td",{},[h("span",{class:"pill "+pillCls},[humanize(po.status)])]), h("td",{},[po.billedCents?fmt(po.billedCents):"—"]), h("td",{},[actions]) ]);
       });
       wrap.appendChild(tableEl([th(tcol("PO")),th(tcol("Total")),th(tcol("Expected")),th(t("field.status")),th(tcol("Billed")),th(tcol(""))], rows, 6, "No purchase orders yet."));
     });
