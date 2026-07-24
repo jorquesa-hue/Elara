@@ -4269,6 +4269,31 @@ export class App {
   /** Gather a tenant's PUBLIC (marketing-only) booking-site slice: bookable units,
    *  their calendar holds, past agreement rates (for a per-unit base), the primary
    *  pricing rule. Returns null if the tenant has no bookable inventory. */
+  /** The portfolio DIRECTORY: one card per property/community that has published
+   *  inventory, linking to its own site. Powers the portfolio landing page. */
+  private siteDirectory(tenantId: string): import('../booking-site.ts').SiteCommunity[] {
+    const out: import('../booking-site.ts').SiteCommunity[] = [];
+    for (const p of this.masterData.properties.list(tenantId)) {
+      const inp = this.bookingSiteInput(tenantId, p.id);
+      if (!inp) continue;
+      const listing = siteListing(inp);
+      if (!listing.units.length) continue;
+      const prices = listing.units.map((u) => u.fromCents).filter((c): c is number => c != null);
+      const cover = listing.content.heroPhotoDataUrl
+        ?? listing.units.map((u) => u.details?.photoDataUrl ?? u.details?.photos?.[0]).find((c): c is string => !!c);
+      out.push({
+        code: p.code,
+        name: p.name,
+        unitCount: listing.units.length,
+        fromCents: prices.length ? Math.min(...prices) : null,
+        ...(cover ? { cover } : {}),
+        ...(listing.content.heroSubtitle ? { subtitle: listing.content.heroSubtitle } : {}),
+        ...(listing.content.domain ? { domain: listing.content.domain } : {}),
+      });
+    }
+    return out.sort((a, b) => b.unitCount - a.unitCount || a.name.localeCompare(b.name));
+  }
+
   /** Resolve a property CODE or id to its id (undefined if unknown). */
   private resolvePropertyId(tenantId: string, codeOrId: string | undefined): string | undefined {
     if (!codeOrId) return undefined;
@@ -4382,6 +4407,12 @@ export class App {
         }).templateOptions;
         listing.theme = resolveTheme(preview, opts, effective?.brand?.color);
         listing.previewTemplate = preview;
+      }
+      // The portfolio (non-property, non-sample) site carries a directory of its
+      // community sites — the landing page links out to each property's site.
+      if (!propertyId && !listing.sampleData) {
+        const directory = this.siteDirectory(tenant);
+        if (directory.length) listing.directory = directory;
       }
       return { status: 200, body: listing };
     }

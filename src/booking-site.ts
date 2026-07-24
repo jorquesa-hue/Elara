@@ -51,11 +51,25 @@ export interface BookingSiteInput {
   unitTypes?: readonly SiteUnitType[];
 }
 
+/** One community on the portfolio directory/landing page — a card linking to its
+ *  own property site (its custom domain if it has one, else /site/:tenant/p/:code). */
+export interface SiteCommunity {
+  code: string;
+  name: string;
+  unitCount: number;
+  fromCents: number | null;
+  cover?: string;
+  subtitle?: string;
+  domain?: string;
+}
+
 export interface SiteListing {
   tenantId: string;
   displayName: string;
   currency: string;
   brand: SiteBrand;
+  /** Portfolio directory of community sites (portfolio scope only, ≥1 community). */
+  directory?: SiteCommunity[];
   content: Omit<SiteContent, 'units'>;
   /** The picked template + adjustments + brand accent, flattened for the page. */
   theme: ResolvedTheme;

@@ -153,6 +153,7 @@ ${SEO_PLACEHOLDER}
       <button class="btn" id="searchBtn">Check availability</button>
     </div>
   </header>
+  <section id="commSec" style="display:none"><h2>Our communities</h2><div id="commBody" class="grid"></div></section>
   <section id="planSec" style="display:none"><h2>Floorplans</h2><div id="plans" class="grid"></div></section>
   <section id="unitsSec"><h2 id="unitsTitle" style="display:none">Homes</h2><div id="results" class="grid"></div></section>
   <section id="gallerySec" style="display:none"><h2>Gallery</h2><div id="galleryBody" class="gallery"></div></section>
@@ -244,6 +245,7 @@ ${SEO_PLACEHOLDER}
     document.title = (content.heroTitle || "Book your stay") + " · " + cfg.displayName;
 
     if(content.about){ document.getElementById("aboutSec").style.display=""; document.getElementById("aboutTitle").textContent="About "+cfg.displayName; document.getElementById("aboutBody").textContent = content.about; }
+    renderCommunities(cfg.directory||[]);
     renderFloorplans(cfg.floorplans||[]);
     (cfg.units||[]).forEach(function(u){ detailsById[u.id] = u.details || {}; });
     renderUnits((cfg.units||[]).map(function(u){ return { unitId:u.id, label:u.label, available:true, nightlyCents:u.fromCents, from:true }; }));
@@ -269,6 +271,28 @@ ${SEO_PLACEHOLDER}
     document.getElementById("contactSec").style.display="";
   }
 
+  // The portfolio directory — a card per community linking to its own site (its
+  // custom domain if set, else /site/<tenant>/p/<code>). On a directory page the
+  // individual homes live on each community's page, so the flat unit list, the
+  // floorplans and the availability search are hidden.
+  function renderCommunities(list){
+    if(!list.length) return;
+    var wrap=document.getElementById("commBody"); wrap.innerHTML="";
+    list.forEach(function(c){
+      var href = c.domain ? ("https://"+c.domain) : ("/site/"+TENANT+"/p/"+encodeURIComponent(c.code));
+      var photo = c.cover ? el("div",{class:"photo"},[el("img",{src:c.cover,alt:c.name,loading:"lazy"})]) : el("div",{class:"photo"},["🏙️"]);
+      var kids=[ el("h3",{},[c.name]) ];
+      if(c.subtitle) kids.push(el("p",{class:"headline"},[c.subtitle]));
+      kids.push(el("div",{class:"badges"},[ el("span",{},[c.unitCount+(c.unitCount===1?" home":" homes")+" available"]) ]));
+      kids.push(c.fromCents!=null ? el("div",{class:"price"},[ el("span",{},[money(c.fromCents)]), el("small",{},[" from / night"]) ]) : el("div",{class:"price"},[ el("span",{class:"muted"},["Contact for rates"]) ]));
+      kids.push(el("div",{class:"muted",style:"font-size:12.5px;font-weight:600;color:var(--accent)"},["Explore "+c.name+" →"]));
+      wrap.appendChild(el("a",{class:"card clickable",href:href,style:"text-decoration:none;color:inherit"},[ photo, el("div",{class:"body"}, kids) ]));
+    });
+    document.getElementById("commSec").style.display="";
+    document.getElementById("unitsSec").style.display="none";
+    var ps=document.getElementById("planSec"); if(ps) ps.style.display="none";
+    var sb=document.querySelector(".searchbar"); if(sb) sb.style.display="none";
+  }
   function renderGallery(list){
     if(!list.length) return;
     var g=document.getElementById("galleryBody");

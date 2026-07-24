@@ -102,6 +102,26 @@ test('siteForHost resolves a configured custom domain to tenant + property code'
   assert.equal(app.siteForHost('unmapped.com'), null);
 });
 
+test('the portfolio config carries a community directory; property scope does not', () => {
+  const { app, D } = ownerApp();
+  D('PUT', '/site-content', { content: { heroTitle: 'Portfolio' } });
+  const port = pub(app, '/site/jq/config').body as { directory?: Array<{ code: string; name: string; unitCount: number }> };
+  assert.ok(port.directory && port.directory.length === 2, 'portfolio lists both communities');
+  const curral = port.directory!.find((c) => c.code === 'CURRAL')!;
+  assert.equal(curral.unitCount, 1);
+  assert.equal(curral.name, 'Praia do Curral');
+  // A property-scoped site is a leaf — it has no directory of its own.
+  const leaf = pub(app, '/site/jq/config', { property: 'CURRAL' }).body as { directory?: unknown };
+  assert.equal(leaf.directory, undefined);
+});
+
+test('the directory excludes a property with no published units', () => {
+  const { app, D } = ownerApp();
+  D('POST', '/properties', { code: 'EMPTY', name: 'No units yet' }); // no units assigned
+  const port = pub(app, '/site/jq/config').body as { directory: Array<{ code: string }> };
+  assert.ok(!port.directory.some((c) => c.code === 'EMPTY'));
+});
+
 test('per-property sites survive snapshot → rehydrate', () => {
   const { app, D } = ownerApp();
   D('PUT', '/site-content', { content: { heroTitle: 'Portfolio' } });

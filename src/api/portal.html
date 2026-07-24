@@ -4064,6 +4064,9 @@
       h("div",{class:"row",style:"gap:10px;flex-wrap:wrap;margin-top:6px"},[ domainInput ]),
       h("div",{class:"muted",style:"font-size:12.5px;margin-top:8px;line-height:1.5"},[
         "To go live on your own domain: (1) enter it above and Save; (2) at your DNS provider, point it (CNAME/A record) at this app; (3) add the domain in the hosting dashboard so it gets an SSL certificate. Once it resolves, the domain serves this exact site. Logo, brand color & tagline come from Settings → Branding."
+      ]),
+      scope.propertyId? null : h("div",{class:"muted",style:"font-size:12.5px;margin-top:8px;line-height:1.5;border-top:1px solid var(--border);padding-top:8px"},[
+        "This is your portfolio landing page. When you have more than one property, it automatically becomes a directory — a card for each community linking to that property's own site."
       ])
     ]));
     // --- design: template gallery + adjustments -----------------------------
