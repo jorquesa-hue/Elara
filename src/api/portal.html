@@ -229,6 +229,33 @@
   .radioset label.opt input { width: auto; margin-top: 2px; flex: none; accent-color: var(--accent); }
   .radioset label.opt span { flex: 1; min-width: 0; }
 
+  /* Command palette (Ctrl/⌘-K) */
+  .cmdk-scrim { position: fixed; inset: 0; background: rgba(6,9,16,.5); backdrop-filter: blur(2px);
+    display: flex; align-items: flex-start; justify-content: center; padding: 12vh 20px 20px; z-index: 90;
+    animation: scrimin .12s ease; }
+  .cmdk { background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius);
+    box-shadow: var(--shadow); width: 100%; max-width: 560px; overflow: hidden; animation: modalin .16s cubic-bezier(.2,.8,.2,1); }
+  .cmdk-in { display: flex; align-items: center; gap: 10px; padding: 14px 17px; border-bottom: 1px solid var(--border); }
+  .cmdk-in svg { flex: none; opacity: .6; }
+  .cmdk-in input { width: 100%; background: transparent; border: 0; color: var(--text); font: inherit; font-size: 15.5px; outline: none; padding: 0; }
+  .cmdk-list { max-height: 52vh; overflow: auto; padding: 6px; }
+  .cmdk-empty { padding: 22px 17px; color: var(--muted); font-size: 13.5px; text-align: center; }
+  .cmdk-sec { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--subtle); padding: 10px 11px 5px; }
+  .cmdk-row { display: flex; align-items: center; gap: 11px; padding: 9px 11px; border-radius: var(--radius-sm); cursor: pointer; }
+  .cmdk-row svg { flex: none; width: 17px; height: 17px; opacity: .8; }
+  .cmdk-row .cr-l { flex: 1; min-width: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cmdk-row .cr-ws { font-size: 11.5px; color: var(--subtle); flex: none; }
+  .cmdk-row.sel { background: var(--accent-soft); }
+  .cmdk-row.sel .cr-ws { color: var(--accent); }
+  .cmdk-ft { display: flex; gap: 14px; padding: 9px 15px; border-top: 1px solid var(--border); background: var(--surface-2);
+    font-size: 11px; color: var(--subtle); }
+  .cmdk-ft kbd { font-family: var(--font-ui); background: var(--surface-3); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; font-size: 10.5px; }
+  .cmdk-open { display: inline-flex; align-items: center; gap: 7px; background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--muted); border-radius: 9px; padding: 6px 11px; font-size: 12.5px; cursor: pointer; }
+  .cmdk-open:hover { border-color: var(--border-strong); color: var(--text); }
+  .cmdk-open kbd { font-family: var(--font-ui); background: var(--surface-3); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; font-size: 10.5px; }
+  @media (max-width: 720px){ .cmdk-open .cmdk-lbl { display: none; } }
+
   /* Auth / wizard */
   /* Deployment-durability warning (from GET /health) */
   .healthbar { display: flex; align-items: flex-start; gap: 12px; border-radius: 12px; padding: 13px 15px;
@@ -542,6 +569,7 @@
           if (can("masterdata.read")) api("/properties").then(function (pr) { state.properties = ((pr.body || {}).properties) || []; render(); });
           if (state.config.displayName === state.config.tenantId) return renderSetup(true);
           try { state.workspace = localStorage.getItem(wsKey()) || state.workspace; } catch (e) {}
+          applyHash(); // a deep-link / refreshed URL restores the exact screen
           render();
         });
       });
@@ -616,9 +644,15 @@
     var langs = (state.options && state.options.locales) || [];
     var lang = h("select", { class: "langsel", "aria-label": "Language", onchange: function () { setLocale(lang.value); } },
       langs.map(function (l) { return h("option", { value: l.code, selected: l.code === state.config.locale ? "selected" : null }, [l.name]); }));
+    var isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "");
+    var cmdkBtn = h("button", { class: "cmdk-open", title: tt("cmdk.title", "Search & commands"), onclick: openPalette }, [
+      h("span", { style: "display:inline-flex", html: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>' }),
+      h("span", { class: "cmdk-lbl" }, [tt("cmdk.search", "Search")]),
+      h("kbd", {}, [isMac ? "⌘K" : "Ctrl K"])
+    ]);
     return h("div", { class: "topbar" }, [
       scopeControl() || h("span", {}, []),
-      h("div", { class: "langwrap" }, [ globeIcon(), lang ])
+      h("div", { class: "langwrap", style: "gap:12px" }, [ cmdkBtn, globeIcon(), lang ])
     ]);
   }
 
@@ -955,7 +989,146 @@
     var views = { dashboard: viewDashboard, agreements: viewAgreements, properties: viewProperties, website: viewWebsite, pricing: viewPricing, crm: viewCrm, applications: viewApplications, tours: viewTours, turns: viewTurns, insurance: viewInsurance, utilities: viewUtilities, packages: viewPackages, waitlist: viewWaitlist, distributions: viewDistributions, propbudgets: viewPropertyBudgets, renewals: viewRenewals, esign: viewEsign, purchasing: viewPurchasing, roommates: viewRoommates, import: viewImport, reports: viewReports, ledger: viewLedger, bills: viewBills, maintenance: viewMaintenance, reservations: viewReservations, inbox: viewInbox, reconcile: viewReconcile, integrations: viewIntegrations, exceptions: viewExceptions, people: viewPeople, settings: viewSettings };
     var fn = (state.view === "dashboard") ? (ws.home || viewDashboard) : (views[state.view] || ws.home || viewDashboard);
     fn(main);
+    pushHash();
   }
+
+  // ---- URL routing --------------------------------------------------------
+  // The SPA reflects its screen in location.hash (#/<workspace>/<view>[/<id>])
+  // so refresh, the browser Back button, and shared deep-links all work. render()
+  // pushes the current state to the hash; a user-driven hashchange (Back/paste)
+  // applies the hash back onto state and re-renders.
+  function currentHash() {
+    if (!state.me || !state.config) return location.hash || "";
+    var ws = currentWorkspace();
+    var hh = "#/" + ws.id + "/" + (state.view || "dashboard");
+    if (state.detailId) hh += "/" + encodeURIComponent(state.detailId);
+    return hh;
+  }
+  function pushHash() {
+    // Assigning location.hash adds ONE history entry, so Back/Forward work; the
+    // !== guard means repeated renders of the same screen (data loads, etc.) do
+    // not stack duplicate entries. The hashchange handler ignores our own writes.
+    var hh = currentHash();
+    if (hh && location.hash !== hh) location.hash = hh;
+  }
+  function applyHash() {
+    var raw = (location.hash || "").replace(/^#\/?/, "");
+    if (!raw) return false;
+    var parts = raw.split("/");
+    var wsId = parts[0] ? decodeURIComponent(parts[0]) : "";
+    var view = parts[1] ? decodeURIComponent(parts[1]) : "dashboard";
+    var detail = parts[2] ? decodeURIComponent(parts[2]) : null;
+    if (wsId && availableWorkspaces().some(function (w) { return w.id === wsId; })) state.workspace = wsId;
+    state.view = view || "dashboard"; state.detailId = detail; state.threadId = null;
+    return true;
+  }
+  // Jump to a view, switching workspace if the target lives in another lens.
+  function gotoWorkspaceView(wsId, view) {
+    if (wsId && wsId !== state.workspace) { state.workspace = wsId; try { localStorage.setItem(wsKey(), wsId); } catch (e) {} }
+    state.view = view; state.detailId = null; state.threadId = null;
+    render();
+  }
+  window.addEventListener("hashchange", function () {
+    if (!state.me || !state.config) return;      // not in the app shell (login/setup)
+    if (location.hash === currentHash()) return; // our own push — ignore
+    applyHash(); render();
+  });
+
+  // ---- command palette (⌘K / Ctrl-K) --------------------------------------
+  // One keystroke to reach any screen in any workspace, plus a few quick
+  // actions — the fastest path across a portal that now spans five lenses.
+  var palette = { open: false };
+  function commandItems() {
+    var items = [], seen = {};
+    availableWorkspaces().forEach(function (ws) {
+      ws.sections.concat([setupSection()]).forEach(function (sec) {
+        sec.items.forEach(function (it) {
+          if (!itemVisible(it)) return;
+          var key = ws.id + ":" + it[0];
+          if (seen[key]) return; seen[key] = 1;
+          items.push({ kind: "nav", label: tt(it[4], it[1]), ws: tt(ws.labelKey, ws.label), wsId: ws.id, view: it[0], icon: it[3] });
+        });
+      });
+    });
+    // Quick actions.
+    var actions = [
+      { kind: "action", label: tt("cmdk.act.theme", "Toggle light / dark theme"), icon: "settings", run: toggleTheme },
+      { kind: "action", label: tt("cmdk.act.signout", "Sign out"), icon: "settings", run: logout }
+    ];
+    if (can("masterdata.manage")) actions.unshift({ kind: "action", label: tt("cmdk.act.sample", "Load sample data"), icon: "dashboard", run: function () { gotoWorkspaceView(state.workspace, "dashboard"); toast(tt("cmdk.act.samplehint", "Use “Load sample data” on the dashboard."), ""); } });
+    return items.concat(actions);
+  }
+  function scoreItem(it, q) {
+    if (!q) return 1;
+    var l = it.label.toLowerCase(), w = (it.ws || "").toLowerCase();
+    var i = l.indexOf(q); if (i === 0) return 100; if (i > 0) return 60;
+    if (w.indexOf(q) >= 0) return 40;
+    // subsequence (fuzzy) fallback
+    var qi = 0; for (var k = 0; k < l.length && qi < q.length; k++) if (l[k] === q[qi]) qi++;
+    return qi === q.length ? 20 : 0;
+  }
+  function openPalette() {
+    if (palette.open) return; palette.open = true;
+    var all = commandItems();
+    var input = h("input", { type: "text", placeholder: tt("cmdk.placeholder", "Search screens & actions…"), spellcheck: "false" });
+    var list = h("div", { class: "cmdk-list" }, []);
+    var scrim = h("div", { class: "cmdk-scrim" }, []);
+    var sel = 0, shown = [];
+    function close() { palette.open = false; scrim.remove(); document.removeEventListener("keydown", onKey, true); }
+    function activate(it) { close(); if (it.kind === "nav") gotoWorkspaceView(it.wsId, it.view); else if (it.run) it.run(); }
+    function draw() {
+      var q = input.value.trim().toLowerCase();
+      shown = all.map(function (it) { return { it: it, s: scoreItem(it, q) }; })
+        .filter(function (x) { return x.s > 0; })
+        .sort(function (a, b) { return b.s - a.s; })
+        .slice(0, 40).map(function (x) { return x.it; });
+      if (sel >= shown.length) sel = shown.length ? shown.length - 1 : 0;
+      list.innerHTML = "";
+      if (!shown.length) { list.appendChild(h("div", { class: "cmdk-empty" }, [tt("cmdk.none", "No matches")])); return; }
+      shown.forEach(function (it, i) {
+        var row = h("div", { class: "cmdk-row" + (i === sel ? " sel" : ""), onclick: function () { activate(it); },
+          onmousemove: function () { if (sel !== i) { sel = i; paint(); } } }, [
+          svg(ICONS[it.icon] || ICONS.dashboard),
+          h("span", { class: "cr-l" }, [it.label]),
+          it.kind === "nav" ? h("span", { class: "cr-ws" }, [it.ws]) : h("span", { class: "cr-ws" }, [tt("cmdk.action", "Action")])
+        ]);
+        list.appendChild(row);
+      });
+    }
+    function paint() {
+      Array.prototype.forEach.call(list.children, function (c, i) { c.classList.toggle("sel", i === sel); });
+      var cur = list.children[sel]; if (cur && cur.scrollIntoView) cur.scrollIntoView({ block: "nearest" });
+    }
+    function onKey(e) {
+      if (e.key === "Escape") { e.preventDefault(); close(); }
+      else if (e.key === "ArrowDown") { e.preventDefault(); if (shown.length) { sel = (sel + 1) % shown.length; paint(); } }
+      else if (e.key === "ArrowUp") { e.preventDefault(); if (shown.length) { sel = (sel - 1 + shown.length) % shown.length; paint(); } }
+      else if (e.key === "Enter") { e.preventDefault(); if (shown[sel]) activate(shown[sel]); }
+    }
+    input.addEventListener("input", function () { sel = 0; draw(); });
+    document.addEventListener("keydown", onKey, true);
+    var searchIcon = h("span", { style: "display:inline-flex", html: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>' });
+    scrim.appendChild(h("div", { class: "cmdk", onclick: function (e) { e.stopPropagation(); } }, [
+      h("div", { class: "cmdk-in" }, [ searchIcon, input ]),
+      list,
+      h("div", { class: "cmdk-ft" }, [
+        h("span", {}, [h("kbd", {}, ["↑↓"]), " " + tt("cmdk.navigate", "navigate")]),
+        h("span", {}, [h("kbd", {}, ["↵"]), " " + tt("cmdk.select", "open")]),
+        h("span", {}, [h("kbd", {}, ["esc"]), " " + tt("cmdk.close", "close")])
+      ])
+    ]));
+    scrim.addEventListener("click", close);
+    document.body.appendChild(scrim);
+    draw();
+    setTimeout(function () { input.focus(); }, 20);
+  }
+  // Global shortcut — added once.
+  document.addEventListener("keydown", function (e) {
+    if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+      if (!state.me || !state.config) return;
+      e.preventDefault(); if (palette.open) return; openPalette();
+    }
+  });
 
   // ---- views --------------------------------------------------------------
   function viewDashboard(main) {
