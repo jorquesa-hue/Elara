@@ -404,15 +404,26 @@
     body.nav-open .nav-scrim { display: block; position: fixed; inset: 0; background: rgba(6,9,16,.5); z-index: 55; }
     main { min-width: 0; }
     .topbar { flex-wrap: wrap; row-gap: 8px; }
-    /* Bottom tab bar — one-thumb primary nav */
-    .mobiletabs { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 44;
-      background: var(--surface); border-top: 1px solid var(--border); padding: 4px 4px calc(4px + env(safe-area-inset-bottom, 0px));
+    /* Bottom tab bar — one-thumb primary nav.
+       NOTE: keep the safe-area padding OUT of this rule. iOS Safari's parser
+       drops an entire rule when it hits an env()-in-calc() shorthand it can't
+       digest, which would strip display:flex/position:fixed and collapse the
+       bar into a vertical stack. The safe-area inset lives in its own @supports
+       rule below so the layout declarations here can never be discarded. */
+    .mobiletabs { display: flex; flex-direction: row; position: fixed; left: 0; right: 0; bottom: 0; width: 100%; z-index: 44;
+      background: var(--surface); border-top: 1px solid var(--border); padding: 4px; box-sizing: border-box;
       box-shadow: 0 -2px 14px rgba(0,0,0,.06); }
     .mtab { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 2px;
       background: none; border: 0; color: var(--muted); font-size: 10.5px; font-weight: 600; min-width: 0; cursor: pointer; }
     .mtab svg { width: 21px; height: 21px; opacity: .9; }
     .mtab span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .mtab.on { color: var(--accent); }
+    /* Safe-area inset, isolated so a parser that can't digest env()/max() drops
+       only this rule (the base padding:4px above keeps the bar usable). */
+    @supports (padding: max(0px)) {
+      .mobiletabs { padding-bottom: max(4px, env(safe-area-inset-bottom, 4px)); }
+      main { padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px)); }
+    }
     main { padding-bottom: 78px; }   /* clear the fixed tab bar */
     /* iOS zooms the page when focusing an input smaller than 16px — force form
        controls to 16px on mobile (overriding the denser .tfilter/.moneyin sizes)

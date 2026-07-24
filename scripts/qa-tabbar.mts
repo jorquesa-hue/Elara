@@ -14,8 +14,8 @@ const pm=await (await b.newContext({viewport:{width:390,height:844},deviceScaleF
 pm.on('console',m=>{if(m.type()==='error'&&!/ERR_CONNECTION_RESET|ERR_ABORTED/.test(m.text()))errs.push(m.text());}); pm.on('pageerror',e=>errs.push('PE:'+e.message));
 await pm.goto(`http://127.0.0.1:${port}`); await pm.evaluate(()=>localStorage.setItem('usos.token','o')); await pm.reload();
 await pm.waitForSelector('.mobilebar',{timeout:20000}); await pm.waitForTimeout(700);
-const bar = await pm.evaluate(()=>{ const n=document.querySelector('.mobiletabs') as any; if(!n) return null; const vis=getComputedStyle(n).display!=='none'; const tabs=[...n.querySelectorAll('.mtab')].map(t=>({label:(t.querySelector('span:last-child')as any)?.textContent, on:t.classList.contains('on')})); return {vis,tabs}; });
-console.log('MOBILE tab bar visible:', bar?.vis, '| tabs:', JSON.stringify(bar?.tabs));
+const bar = await pm.evaluate(()=>{ const n=document.querySelector('.mobiletabs') as any; if(!n) return null; const cs=getComputedStyle(n); const r=n.getBoundingClientRect(); const tabs=[...n.querySelectorAll('.mtab')].map(t=>({label:(t.querySelector('span:last-child')as any)?.textContent, on:t.classList.contains('on')})); const btns=[...n.querySelectorAll('.mtab')].map(t=>t.getBoundingClientRect()); const horizontal = btns.length>1 && Math.abs(btns[0].top - btns[1].top) < 2; return {display:cs.display, direction:cs.flexDirection, position:cs.position, atBottom: Math.abs(r.bottom - window.innerHeight) < 2, fullWidth: Math.abs(r.width - window.innerWidth) < 2, horizontal, tabs}; });
+console.log('MOBILE tab bar:', JSON.stringify(bar,null,0));
 await pm.screenshot({path:'/home/user/Elara/tabbar-shots/m-tabbar.png'});
 // tap the 2nd tab → view changes
 const secondLabel = bar?.tabs?.[1]?.label;
