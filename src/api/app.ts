@@ -4215,12 +4215,21 @@ export class App {
     ];
     const amenities = ['In-unit laundry', 'Air conditioning', 'High-speed Wi-Fi', 'Fitness center', 'Rooftop terrace', 'Pet friendly'];
     const units = types.map((t, i) => ({ id: `sample-unit-${i + 1}`, label: `${t.name} — Residence ${i + 1}0${i + 1}`, active: true, typeId: t.id }));
-    const photo = (seed: string) => `https://picsum.photos/seed/${seed}/900/650`;
+    // Curated free-license (Unsplash) real-estate photography for the DESIGN
+    // PREVIEW only — so the template gallery shows real homes, not a gradient.
+    // These are direct CDN URLs; on the live site a visitor's browser loads them
+    // (the microsite falls back to the template gradient for any that don't).
+    const U = (id: string) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=1280&q=70`;
+    const EXTERIOR = ['1512917774080-9991f1c4c750', '1568605114967-8130f3a36994', '1600596542815-ffad4c1539a9', '1545324418-cc1a3fa10c00'];
+    const INTERIOR = ['1560448204-e02f11c3d0e2', '1502672260266-1c1ef2d93688', '1493809842364-78817add7ffb', '1484154218962-a197022b5858', '1600607687939-ce8a6c25118c', '1522708323590-d24dbb6b0267'];
+    const SCENIC = ['1519501025264-65ba15a82390', '1600585154340-be6161a56a0c'];
+    const heroPhoto = U('1600585154340-be6161a56a0c'); // a modern home exterior
     // Representative rich content so the design preview showcases every section.
     // Operator-authored content (spread AFTER) always wins over these defaults.
     const sampleBase = {
       heroSubtitle: 'Thoughtfully designed homes in the heart of the city — book direct, no fees.',
-      galleryPhotos: ['g1', 'g2', 'g3', 'g4', 'g5', 'g6'].map(photo),
+      heroPhotoDataUrl: heroPhoto,
+      galleryPhotos: [INTERIOR[0]!, EXTERIOR[1]!, INTERIOR[4]!, SCENIC[0]!, INTERIOR[3]!, EXTERIOR[2]!].map(U),
       highlights: ['Rooftop pool & terrace', '24/7 concierge', 'Pet friendly', 'In-unit laundry', 'Secure parking', 'EV charging', 'Fitness center', 'High-speed Wi-Fi'],
       location: { address: '1200 Harbor Avenue, Downtown', neighborhood: 'A walkable waterfront district — cafés, parks and transit at your doorstep, ten minutes from the business core.', mapsQuery: 'Downtown Harbor Avenue' },
       policies: [
@@ -4249,7 +4258,7 @@ export class App {
         published: true, headline: `${t.name} home`, description: t.description,
         bedrooms: t.bedrooms, bathrooms: t.bathrooms, maxGuests: t.maxGuests, areaSqm: t.areaSqm,
         amenities: amenities.slice(0, 3 + i),
-        photoDataUrl: photo(`u${i + 1}a`), photos: [photo(`u${i + 1}b`), photo(`u${i + 1}c`)],
+        photoDataUrl: U(INTERIOR[i]!), photos: [U(EXTERIOR[i]!), U(INTERIOR[i + 3]!)],
       }])),
     } as BookingSiteInput['content'];
     return {

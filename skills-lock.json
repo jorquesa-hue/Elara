@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "stock-photo-finder": {
+      "source": "onewave-ai/claude-skills",
+      "sourceType": "github",
+      "skillPath": "stock-photo-finder/SKILL.md",
+      "computedHash": "82381d8454c63f5b69f430e444daf361241b7cf64843208aa08f78d272ddd5e7"
+    }
+  }
+}
