@@ -370,7 +370,35 @@
   .tl-ty { font-weight: 600; font-size: 13.5px; }
   .tl-at { color: var(--subtle); font-size: 12px; }
 
-  @media (max-width: 720px){ .app{ grid-template-columns: 1fr; } aside{ position: static; height: auto; flex-direction: column; overflow: visible; } nav{ overflow: visible; min-height: 0; } }
+  /* Mobile top bar + off-canvas nav drawer (hidden on desktop) */
+  .mobilebar { display: none; }
+  .nav-scrim { display: none; }
+  @media (max-width: 860px){
+    .app { grid-template-columns: 1fr; }
+    .mobilebar { display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 45;
+      background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 14px; }
+    .mobilebar .burger { width: 38px; height: 38px; flex: none; border: 1px solid var(--border); border-radius: 9px;
+      display: flex; align-items: center; justify-content: center; color: var(--text); background: var(--surface); }
+    .mobilebar .burger:active { background: var(--surface-2); }
+    .mobilebar .mb-brand { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 15px; min-width: 0; }
+    .mobilebar .mb-brand img, .mobilebar .mb-brand .mark { height: 26px; width: auto; flex: none; }
+    .mobilebar .mb-brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* the sidebar becomes an off-canvas drawer */
+    aside { position: fixed; top: 0; left: 0; bottom: 0; width: 270px; max-width: 84vw; height: 100vh; z-index: 60;
+      transform: translateX(-100%); transition: transform .22s cubic-bezier(.2,.8,.2,1);
+      box-shadow: 0 16px 54px rgba(0,0,0,.4); }
+    body.nav-open aside { transform: none; }
+    body.nav-open .nav-scrim { display: block; position: fixed; inset: 0; background: rgba(6,9,16,.5); z-index: 55; }
+    main { min-width: 0; }
+    .topbar { flex-wrap: wrap; row-gap: 8px; }
+    .cmdk-open .cmdk-lbl { display: none; }
+  }
+  @media (max-width: 560px){
+    main { padding-left: 14px; padding-right: 14px; }
+    .cards { grid-template-columns: 1fr 1fr; }
+    .kpis { grid-template-columns: 1fr; }
+    .queue { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
@@ -951,11 +979,12 @@
       ? "student" : (WS_BY_ROLE[state.me && state.me.role] || "operator");
     return avail.filter(function (w) { return w.id === want; })[0] || avail[0];
   }
+  function closeNav() { document.body.classList.remove("nav-open"); }
   function setWorkspace(id) {
     state.workspace = id;
     try { localStorage.setItem(wsKey(), id); } catch (e) {}
     state.view = "dashboard"; state.detailId = null; state.threadId = null;
-    render();
+    closeNav(); render();
   }
   function wsSwitcher(ws) {
     var avail = availableWorkspaces();
@@ -987,7 +1016,7 @@
       if (sec.label) children.push(h("div", { class: "grouphead" }, [tt(sec.labelKey, sec.label)]));
       vis.forEach(function (it) {
         children.push(h("button", { class: "item" + (state.view === it[0] ? " active" : ""),
-          onclick: function () { state.view = it[0]; state.detailId = null; state.threadId = null; render(); } },
+          onclick: function () { state.view = it[0]; state.detailId = null; state.threadId = null; closeNav(); render(); } },
           [ svg(ICONS[it[3]] || ICONS.dashboard), tt(it[4], it[1]) ]));
       });
       groups.push(h("div", { class: "navgroup" }, children));
@@ -997,8 +1026,20 @@
     var brandMark = state.config.logoDataUrl
       ? h("img", { src: state.config.logoDataUrl, alt: state.config.displayName, style: "height:30px;width:auto;border-radius:6px" })
       : mark();
+    // Mobile bar (shown < 860px): a hamburger opens the sidebar as an off-canvas
+    // drawer over a scrim. Its own brand mark (a DOM node can't live in two places).
+    var mbMark = state.config.logoDataUrl
+      ? h("img", { src: state.config.logoDataUrl, alt: state.config.displayName })
+      : mark();
+    var mobileBar = h("div", { class: "mobilebar" }, [
+      h("button", { class: "burger", "aria-label": tt("nav.menu","Menu"), onclick: function(){ document.body.classList.toggle("nav-open"); } },
+        [ h("span", { style:"display:inline-flex", html: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>' }) ]),
+      h("div", { class: "mb-brand" }, [ mbMark, h("span", {}, [state.config.displayName]) ])
+    ]);
+    document.body.classList.remove("nav-open");
     var root = document.getElementById("root"); root.innerHTML = "";
     root.appendChild(h("div", { class: "app" }, [
+      mobileBar,
       h("aside", {}, [
         h("div", { class: "brand" }, [ brandMark, h("div",{class:"wm"},[state.config.displayName, h("small",{},["powered by Elara"])]) ]),
         wsSwitcher(ws),
@@ -1009,6 +1050,7 @@
           h("button", { class: "btn ghost sm", title: "Sign out", onclick: logout }, ["Sign out"])
         ])
       ]),
+      h("div", { class: "nav-scrim", onclick: closeNav }, []),
       h("main", { id: "main" }, [])
     ]));
     var main = document.getElementById("main");
