@@ -255,6 +255,11 @@
   .cmdk-open:hover { border-color: var(--border-strong); color: var(--text); }
   .cmdk-open kbd { font-family: var(--font-ui); background: var(--surface-3); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; font-size: 10.5px; }
   @media (max-width: 720px){ .cmdk-open .cmdk-lbl { display: none; } }
+  /* Clickable insight CTA (attention feed = work queue) */
+  .insight-cta { display: inline-flex; align-items: center; margin: 7px 0 0; padding: 3px 9px 3px 0;
+    background: none; border: 0; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+    border-radius: 6px; }
+  .insight-cta:hover { text-decoration: underline; }
 
   /* Auth / wizard */
   /* Deployment-durability warning (from GET /health) */
@@ -3981,10 +3986,37 @@
     var tpl = key && state.cat && state.cat[key];
     return tpl ? interp(tpl, i.params) : fallback;
   }
+  // Each automated insight points at the screen where the operator acts on it, so
+  // the attention feed is a work-queue: click the CTA and land where the fix is.
+  var INSIGHT_VIEW = {
+    ledger_unbalanced: "ledger", bills_overdue: "bills", deposit_exposure: "reports",
+    ar_pastdue: "reports", ar_over30: "reports", ar_over90: "reports", collection_rate: "reports",
+    ins_expiring: "insurance", ins_uninsured: "insurance", leads_stalled: "crm",
+    occ_low: "reports", occ_strong: "reports", operating_loss: "reports", revenue_down: "reports",
+    revenue_up: "reports", units_idle: "reports", pkg_stale: "packages", turns_stuck: "turns",
+    waitlist_demand: "waitlist", wo_urgent: "maintenance"
+  };
+  // The workspace (lens) that surfaces a view in its nav — so a jump also switches
+  // to the right lens and highlights the item. Falls back to the current one.
+  function workspaceForView(view) {
+    var here = availableWorkspaces().filter(function (w) { return w.id === state.workspace; })[0];
+    if (here && here.sections.some(function (s) { return s.items.some(function (it) { return it[0] === view && itemVisible(it); }); })) return state.workspace;
+    var found = availableWorkspaces().filter(function (w) {
+      return w.sections.some(function (s) { return s.items.some(function (it) { return it[0] === view && itemVisible(it); }); });
+    })[0];
+    return found ? found.id : state.workspace;
+  }
   function insightCard(i) {
     var color = i.severity==="critical" ? "#e05a5a" : (i.severity==="warning" ? "#e0894a" : (i.severity==="positive" ? "#3aa76d" : (i.severity==="opportunity" ? "#c98a1e" : "var(--accent)")));
     var label = tt("sev."+i.severity, i.severity.charAt(0).toUpperCase()+i.severity.slice(1));
     var action = insightText(i, "action", i.action);
+    var view = INSIGHT_VIEW[i.code];
+    var reachable = view && VIEW_FNS_HAS(view);
+    var actionEl = null;
+    if (action) {
+      if (reachable) actionEl = h("button", { class: "insight-cta", style: "color:"+color, onclick: function () { gotoWorkspaceView(workspaceForView(view), view); } }, ["→ " + action]);
+      else actionEl = h("div", { style:"font-size:12.5px;margin-top:7px;color:"+color }, ["→ "+action]);
+    }
     return h("div", { class:"panel", style:"border-left:3px solid "+color+";margin:0 0 10px" }, [
       h("div", { style:"display:flex;align-items:center;gap:9px" }, [
         h("span", { style:"font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:"+color }, [label]),
@@ -3992,9 +4024,12 @@
         i.metric ? h("span",{class:"muted",style:"margin-left:auto;font-variant-numeric:tabular-nums"},[fmtMetric(i.metric)]) : null
       ]),
       h("div", { class:"muted", style:"font-size:13px;margin-top:5px" }, [insightText(i, "detail", i.detail)]),
-      action ? h("div", { style:"font-size:12.5px;margin-top:7px;color:"+color }, ["→ "+action]) : null
+      actionEl
     ]);
   }
+  // Is a view routable (registered in render()'s view table)? Guards a jump.
+  var VIEW_KEYS = ["dashboard","agreements","properties","website","pricing","crm","applications","tours","turns","insurance","utilities","packages","waitlist","distributions","propbudgets","renewals","esign","purchasing","roommates","import","reports","ledger","bills","maintenance","reservations","inbox","reconcile","integrations","exceptions","people","settings"];
+  function VIEW_FNS_HAS(view) { return VIEW_KEYS.indexOf(view) >= 0; }
   function fmtMetric(m) { return m.kind==="money"?fmt(m.value):(m.kind==="percent"?m.value+"%":String(m.value)); }
   function fmtKpi(k) { return k.kind==="money"?fmt(k.value):(k.kind==="percent"?k.value+"%":String(k.value)); }
   function fmtVal(v, kind){ return kind==="money"?fmt(Number(v)||0):(kind==="percent"?(v==null?0:v)+"%":String(v==null?0:v)); }
