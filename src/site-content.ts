@@ -62,6 +62,10 @@ export interface SiteContent {
   testimonials?: SiteTestimonial[];
   /** Overrides the SEO meta description (else derived from about/hero). */
   seoDescription?: string;
+  /** The custom domain this site should serve on (e.g. book.acme.com). The
+   *  client points DNS at the app; a request whose Host matches serves this
+   *  site. Marketing/publishing config only. */
+  domain?: string;
   units?: Record<string, UnitSiteDetails>;
 }
 
@@ -102,6 +106,15 @@ function photoList(v: unknown, cap: number): string[] | undefined {
   return out.length ? out : undefined;
 }
 
+/** Normalize a custom-domain input to a bare hostname (strip scheme/path/port,
+ *  lowercase). Returns undefined for anything that isn't a plausible domain. */
+export function normalizeDomain(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  const s = v.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/:\d+$/, '');
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(s)) return undefined;
+  return s.slice(0, 253);
+}
+
 export function assertSitePhoto(url: string): string {
   if (!/^data:image\/(png|jpeg|jpg|svg\+xml|webp|gif);base64,/.test(url) && !/^https:\/\//.test(url)) {
     throw new SiteContentError('photo must be an https URL or a data:image/* base64 URL');
@@ -119,6 +132,7 @@ export function sanitizeSiteContent(input: unknown): SiteContent {
   const heroSubtitle = str(raw['heroSubtitle'], 300); if (heroSubtitle) out.heroSubtitle = heroSubtitle;
   const about = str(raw['about'], MAX_TEXT); if (about) out.about = about;
   const seoDescription = str(raw['seoDescription'], 320); if (seoDescription) out.seoDescription = seoDescription;
+  const domain = normalizeDomain(raw['domain']); if (domain) out.domain = domain;
   for (const k of ['contactEmail', 'contactPhone', 'whatsapp', 'instagram', 'facebook'] as const) {
     const v = str(raw[k]); if (v) out[k] = v;
   }
@@ -215,21 +229,93 @@ export function sanitizeSiteContent(input: unknown): SiteContent {
   return out;
 }
 
-/** Tenant-scoped site content. get() always returns a (possibly empty) object. */
-export class SiteContentStore {
-  private byTenant = new Map<string, SiteContent>();
+/** One published domain and the site it serves within a tenant. */
+export interface SiteDomain { domain: string; propertyId?: string }
 
-  get(tenantId: string): SiteContent {
-    return this.byTenant.get(tenantId) ?? {};
+interface TenantSites { default: SiteContent; properties: Map<string, SiteContent> }
+
+/** Tenant-scoped site content, now with an OPTIONAL per-PROPERTY dimension: a
+ *  tenant has one portfolio-wide "default" site plus an independent site per
+ *  community (keyed by propertyId). get()/set() take an optional propertyId;
+ *  omit it for the default site. get() always returns a (possibly empty) object.
+ *  Persistence rides the existing tenant.site_content jsonb: snapshot() emits a
+ *  versioned container, and hydrate() accepts BOTH the new container and a
+ *  legacy flat SiteContent (loaded as the default site) for back-compat. */
+export class SiteContentStore {
+  private byTenant = new Map<string, TenantSites>();
+
+  private ensure(tenantId: string): TenantSites {
+    let s = this.byTenant.get(tenantId);
+    if (!s) { s = { default: {}, properties: new Map() }; this.byTenant.set(tenantId, s); }
+    return s;
   }
 
-  set(tenantId: string, content: unknown): SiteContent {
+  get(tenantId: string, propertyId?: string): SiteContent {
+    const s = this.byTenant.get(tenantId);
+    if (!s) return {};
+    return propertyId ? (s.properties.get(propertyId) ?? {}) : s.default;
+  }
+
+  set(tenantId: string, content: unknown, propertyId?: string): SiteContent {
     const clean = sanitizeSiteContent(content);
-    this.byTenant.set(tenantId, clean);
+    const s = this.ensure(tenantId);
+    if (propertyId) s.properties.set(propertyId, clean); else s.default = clean;
     return clean;
   }
 
   has(tenantId: string): boolean {
-    return this.byTenant.has(tenantId);
+    const s = this.byTenant.get(tenantId);
+    if (!s) return false;
+    return Object.keys(s.default).length > 0 || s.properties.size > 0;
+  }
+
+  /** Property ids that have their own site content. */
+  propertyIds(tenantId: string): string[] {
+    const s = this.byTenant.get(tenantId);
+    return s ? [...s.properties.keys()] : [];
+  }
+
+  /** Resolve an inbound Host header to the tenant + (optional) property whose
+   *  site it serves. Used to make a client's custom domain serve their site. */
+  resolveDomain(host: unknown): { tenantId: string; propertyId?: string } | undefined {
+    const h = normalizeDomain(host);
+    if (!h) return undefined;
+    for (const [tenantId, s] of this.byTenant) {
+      if (s.default.domain === h) return { tenantId };
+      for (const [propertyId, c] of s.properties) if (c.domain === h) return { tenantId, propertyId };
+    }
+    return undefined;
+  }
+
+  /** Every custom domain configured across this tenant's sites. */
+  domains(tenantId: string): SiteDomain[] {
+    const s = this.byTenant.get(tenantId);
+    if (!s) return [];
+    const out: SiteDomain[] = [];
+    if (s.default.domain) out.push({ domain: s.default.domain });
+    for (const [propertyId, c] of s.properties) if (c.domain) out.push({ domain: c.domain, propertyId });
+    return out;
+  }
+
+  /** The serializable container persisted into tenant.site_content (or undefined
+   *  when the tenant has no content at all). */
+  snapshot(tenantId: string): Record<string, unknown> | undefined {
+    const s = this.byTenant.get(tenantId);
+    if (!s || (Object.keys(s.default).length === 0 && s.properties.size === 0)) return undefined;
+    return { v: 2, default: s.default, properties: Object.fromEntries(s.properties) };
+  }
+
+  /** Load from persistence — accepts the v2 container OR a legacy flat SiteContent. */
+  hydrate(tenantId: string, stored: unknown): void {
+    if (!stored || typeof stored !== 'object') return;
+    const raw = stored as Record<string, unknown>;
+    const s = this.ensure(tenantId);
+    if (raw['v'] === 2 || raw['properties']) {
+      s.default = sanitizeSiteContent(raw['default'] ?? {});
+      const props = (raw['properties'] ?? {}) as Record<string, unknown>;
+      s.properties = new Map(Object.entries(props).map(([k, v]) => [k, sanitizeSiteContent(v)]));
+    } else {
+      s.default = sanitizeSiteContent(raw);
+    }
   }
 }

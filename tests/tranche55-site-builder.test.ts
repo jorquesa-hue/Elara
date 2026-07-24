@@ -109,7 +109,9 @@ test('snapshotWorld carries siteContent and the projection writes site_content',
   const app = seededApp();
   D(app, 'PUT', '/site-content', 'mgr', { content: { heroTitle: 'Persisted title', units: { 'demo-unit-ILH-101': { bedrooms: 2 } } } });
   const world = app.snapshotWorld('jq');
-  assert.equal((world.tenants[0]!.siteContent as { heroTitle: string }).heroTitle, 'Persisted title');
+  // siteContent is now a versioned container ({v, default, properties}); the
+  // portfolio site lives under `default` (a legacy flat blob still loads on read).
+  assert.equal((world.tenants[0]!.siteContent as { default: { heroTitle: string } }).default.heroTitle, 'Persisted title');
   const tenantStmt = projectWorld(world).find((s) => /insert into tenant\b/.test(s.text))!;
   assert.match(tenantStmt.text, /site_content/);
   assert.ok(tenantStmt.values.some((v) => typeof v === 'string' && v.includes('Persisted title')));

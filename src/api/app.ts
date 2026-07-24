@@ -1573,14 +1573,19 @@ export class App {
     // --- website content (the integrated booking-site builder) ------------
     // The operator-authored page: hero/about/contact plus per-unit marketing
     // details and publish switches. Marketing data only — validated + size-capped.
-    this.add('GET', '/site-content', 'masterdata.read', (ctx) => ({ status: 200, body: { content: this.siteContent.get(ctx.tenantId) } }));
+    this.add('GET', '/site-content', 'masterdata.read', (ctx, _p, body) => {
+      const propertyId = this.optString(body, 'propertyId');
+      return { status: 200, body: { content: this.siteContent.get(ctx.tenantId, propertyId || undefined), domains: this.siteContent.domains(ctx.tenantId) } };
+    });
 
     // The 20-template design gallery the Website builder's picker renders.
     this.add('GET', '/site-templates', 'masterdata.read', () => ({ status: 200, body: { templates: templateGallery() } }));
 
     this.add('PUT', '/site-content', 'masterdata.manage', (ctx, _p, body) => {
+      const propertyId = this.optString(body, 'propertyId');
+      if (propertyId && !this.masterData.properties.get(ctx.tenantId, propertyId)) throw new HttpError(404, `unknown property: ${propertyId}`);
       try {
-        return { status: 200, body: { content: this.siteContent.set(ctx.tenantId, body['content'] ?? body) } };
+        return { status: 200, body: { content: this.siteContent.set(ctx.tenantId, body['content'] ?? body, propertyId || undefined) } };
       } catch (e) {
         if (e instanceof SiteContentError) throw new HttpError(400, e.message);
         throw e;
@@ -4264,12 +4269,30 @@ export class App {
   /** Gather a tenant's PUBLIC (marketing-only) booking-site slice: bookable units,
    *  their calendar holds, past agreement rates (for a per-unit base), the primary
    *  pricing rule. Returns null if the tenant has no bookable inventory. */
-  private bookingSiteInput(tenantId: string): BookingSiteInput | null {
-    const units = this.masterData.units.list(tenantId);
+  /** Resolve a property CODE or id to its id (undefined if unknown). */
+  private resolvePropertyId(tenantId: string, codeOrId: string | undefined): string | undefined {
+    if (!codeOrId) return undefined;
+    if (this.masterData.properties.get(tenantId, codeOrId)) return codeOrId;
+    const byCode = this.masterData.properties.list(tenantId).find((p) => p.code === codeOrId);
+    return byCode?.id;
+  }
+
+  /** Gather a booking-site slice. With propertyId set, the site is scoped to ONE
+   *  community: only that property's units, and that property's own site content
+   *  (with the portfolio default site as a fallback for unset fields like brand
+   *  copy). Returns null when the (property) scope has no inventory. */
+  private bookingSiteInput(tenantId: string, propertyId?: string): BookingSiteInput | null {
+    let units = this.masterData.units.list(tenantId);
+    if (propertyId) units = units.filter((u) => u.propertyId === propertyId);
     if (units.length === 0) return null;
-    const entries = [...this.agreements.values()].filter((e) => e.tenantId === tenantId);
+    const unitIds = new Set(units.map((u) => u.id));
+    const entries = [...this.agreements.values()].filter((e) => e.tenantId === tenantId && (!propertyId || unitIds.has(e.agreement.currentUnitId)));
     const agIds = new Set(entries.map((e) => e.agreement.id));
     const cfg = this.config.get(tenantId);
+    // Property site content, falling back to the portfolio default for unset fields.
+    const content = propertyId
+      ? { ...this.siteContent.get(tenantId), ...this.siteContent.get(tenantId, propertyId) }
+      : this.siteContent.get(tenantId);
     return {
       tenantId,
       displayName: cfg.displayName,
@@ -4288,7 +4311,7 @@ export class App {
       agreements: entries.map((e) => ({ unitId: e.agreement.currentUnitId, rateCents: e.agreement.rateCents, start: e.agreement.period.start })),
       rule: this.revenue.listRules(tenantId)[0],
       brand: { color: cfg.brandColor, logoDataUrl: cfg.logoDataUrl, tagline: cfg.tagline, locale: cfg.locale },
-      content: this.siteContent.get(tenantId),
+      content,
     };
   }
 
@@ -4325,7 +4348,10 @@ export class App {
   /** The public booking-website surface (pre-auth). Returns null for an unknown
    *  route so the caller falls through to the normal authenticated router. */
   private bookingSiteRoute(method: string, tenant: string, action: string | undefined, body: Record<string, unknown>): ApiResponse | null {
-    const inp = this.bookingSiteInput(tenant);
+    // ?property=<code|id> scopes config/availability/inquire to one community's
+    // site — the same tenant endpoints power the per-property public pages.
+    const propertyId = this.resolvePropertyId(tenant, this.optString(body, 'property'));
+    const inp = this.bookingSiteInput(tenant, propertyId);
     // config (listing) — GET /site/:tenant/config[?template=<id>&radius=&font=&hero=&cards=]
     // ?template= (+ optional fine-tune params) is a PREVIEW override: the listing
     // is themed with that template + adjustments (brand accent still applied)
@@ -4734,7 +4760,7 @@ export class App {
 
     return {
       // The tenant row now carries its full country-environment config.
-      tenants: [{ id: tenantId, name: cfg.displayName ?? tenantId, displayName: cfg.displayName, locale: cfg.locale, currency: cfg.currency, timezone: cfg.timezone, businessStructure: cfg.businessStructure, country: cfg.country, jurisdiction: cfg.jurisdiction, brandColor: cfg.brandColor, logoDataUrl: cfg.logoDataUrl, tagline: cfg.tagline, ...(this.siteContent.has(tenantId) ? { siteContent: this.siteContent.get(tenantId) as Record<string, unknown> } : {}) }],
+      tenants: [{ id: tenantId, name: cfg.displayName ?? tenantId, displayName: cfg.displayName, locale: cfg.locale, currency: cfg.currency, timezone: cfg.timezone, businessStructure: cfg.businessStructure, country: cfg.country, jurisdiction: cfg.jurisdiction, brandColor: cfg.brandColor, logoDataUrl: cfg.logoDataUrl, tagline: cfg.tagline, ...(this.siteContent.has(tenantId) ? { siteContent: this.siteContent.snapshot(tenantId) } : {}) }],
       units: this.masterData.units.list(tenantId).map((u) => ({ id: u.id, tenantId, label: u.label, code: u.code, active: u.active, ...(u.typeId ? { typeId: u.typeId } : {}), ...(u.propertyId ? { propertyId: u.propertyId } : {}) })),
       properties: this.masterData.properties.list(tenantId).map((pr) => ({
         id: pr.id, tenantId, code: pr.code, name: pr.name,
@@ -4855,7 +4881,7 @@ export class App {
         businessStructure: t.businessStructure ?? 'mixed_portfolio', country: t.country ?? 'US', jurisdiction: t.jurisdiction ?? 'US',
         ...(t.brandColor ? { brandColor: t.brandColor } : {}), ...(t.logoDataUrl ? { logoDataUrl: t.logoDataUrl } : {}), ...(t.tagline ? { tagline: t.tagline } : {}),
       });
-      if (t.siteContent) this.siteContent.set(t.id, t.siteContent);
+      if (t.siteContent) this.siteContent.hydrate(t.id, t.siteContent);
     }
     // Master data (unit code/active/type + guest code/email are all persisted now).
     for (const t of world.unitTypes ?? []) this.masterData.unitTypes.add({
@@ -5048,6 +5074,18 @@ export class App {
   /** Resolve a bearer to its AuthContext (server lifecycle needs the tenant to flush). */
   identify(bearer: string | undefined): AuthContext | null {
     return this.auth.authenticate(bearer);
+  }
+
+  /** Resolve an inbound Host header to the booking site it should serve, so a
+   *  client's custom domain (pointed at this app) renders their site at its root.
+   *  Returns the tenant + optional property CODE (undefined = portfolio site), or
+   *  null when the host isn't a configured custom domain (→ serve the portal). */
+  siteForHost(host: string | undefined): { tenant: string; property?: string } | null {
+    const hit = this.siteContent.resolveDomain(host);
+    if (!hit) return null;
+    if (!hit.propertyId) return { tenant: hit.tenantId };
+    const code = this.masterData.properties.get(hit.tenantId, hit.propertyId)?.code ?? hit.propertyId;
+    return { tenant: hit.tenantId, property: code };
   }
 }
 

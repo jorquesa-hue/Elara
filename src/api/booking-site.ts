@@ -190,10 +190,16 @@ ${SEO_PLACEHOLDER}
 <div class="lightbox" id="lb"><button class="lb-nav lb-close" id="lbClose" aria-label="Close">×</button><button class="lb-nav lb-prev" id="lbPrev">‹</button><img id="lbImg" alt=""/><button class="lb-nav lb-next" id="lbNext">›</button></div>
 
 <script>
-  var TENANT = decodeURIComponent(location.pathname.replace(/^\\/site\\//,"").replace(/\\/.*$/,""));
+  // The server injects window.__ELARA_SITE = {tenant, property} so a custom-domain
+  // root (or a /p/<code> page) knows which site to load; fall back to the URL.
+  var CTX = window.__ELARA_SITE || null;
+  var TENANT = CTX && CTX.tenant ? CTX.tenant : decodeURIComponent(location.pathname.replace(/^\\/site\\//,"").replace(/\\/.*$/,""));
+  var PROPERTY = (CTX && CTX.property) ? CTX.property
+    : (function(){ var m=location.pathname.match(/^\\/site\\/[^/]+\\/p\\/([^/]+)/); return m?decodeURIComponent(m[1]):null; })()
+    || new URLSearchParams(location.search).get("property");
   var cfg = null, detailsById = {}, curUnit = null, carPhotos = [], carIdx = 0, lbList = [], lbIdx = 0;
   function money(cents){ if(cents==null) return "—"; try{ return new Intl.NumberFormat((cfg&&cfg.brand&&cfg.brand.locale)||undefined,{style:"currency",currency:(cfg&&cfg.currency)||"USD"}).format(cents/100); }catch(e){ return (cents/100).toFixed(2)+" "+((cfg&&cfg.currency)||""); } }
-  function api(path, opts){ return fetch("/site/"+TENANT+path, opts).then(function(r){ return r.json().then(function(j){ return {status:r.status, body:j}; }); }); }
+  function api(path, opts){ var u="/site/"+TENANT+path; if(PROPERTY){ u += (u.indexOf("?")<0?"?":"&")+"property="+encodeURIComponent(PROPERTY); } return fetch(u, opts).then(function(r){ return r.json().then(function(j){ return {status:r.status, body:j}; }); }); }
   function toast(m){ var t=document.createElement("div"); t.className="toast"; t.textContent=m; document.body.appendChild(t); setTimeout(function(){ t.remove(); },3200); }
   function el(tag, attrs, kids){ var e=document.createElement(tag); attrs=attrs||{}; Object.keys(attrs).forEach(function(k){ if(k==="html") e.innerHTML=attrs[k]; else if(k.slice(0,2)==="on"&&typeof attrs[k]==="function") e.addEventListener(k.slice(2),attrs[k]); else if(attrs[k]!=null) e.setAttribute(k, attrs[k]); }); (kids||[]).forEach(function(c){ if(c==null) return; e.appendChild(typeof c==="string"?document.createTextNode(c):c); }); return e; }
   function photosOf(d){ d=d||{}; var out=[]; if(d.photoDataUrl) out.push(d.photoDataUrl); (d.photos||[]).forEach(function(p){ if(out.indexOf(p)<0) out.push(p); }); return out; }

@@ -44,6 +44,19 @@ function seoHead(listing: SiteListing): string {
   return tags.join('\n');
 }
 
+// Render the booking microsite for a tenant (optionally scoped to one property),
+// injecting the site context (so a custom-domain root knows which site to load)
+// and best-effort SEO meta from the live listing.
+function renderBookingSite(app: App, tenant: string, propertyCode?: string): string {
+  const ctx = JSON.stringify({ tenant, property: propertyCode ?? null }).replace(/</g, '\\u003c');
+  let head = `<script>window.__ELARA_SITE=${ctx}</script>`;
+  try {
+    const cfg = app.dispatch({ method: 'GET', path: `/site/${encodeURIComponent(tenant)}/config`, body: propertyCode ? { property: propertyCode } : {} });
+    if (cfg.status === 200 && cfg.body) head += '\n' + seoHead(cfg.body as SiteListing);
+  } catch { /* serve the static shell */ }
+  return bookingSiteHtml().replace(SEO_PLACEHOLDER, head);
+}
+
 // Reject oversized bodies before buffering them fully — an unbounded POST is a
 // trivial memory-exhaustion DoS. 1 MiB is generous for this JSON API (the
 // largest legitimate payload is a CSV onboarding preview, still well under it).
@@ -91,7 +104,18 @@ export function createHttpServer(app: App, hooks: HttpHooks = {}): Server {
       const rawUrl = req.url ?? '/';
       const qIdx = rawUrl.indexOf('?');
       const path = qIdx === -1 ? rawUrl : rawUrl.slice(0, qIdx);
-      // Serve the operator portal SPA at the root; everything else is the API.
+      // Serve the operator portal SPA at the root — UNLESS this request arrived on
+      // a client's custom domain pointed at a booking site, in which case the root
+      // renders that guest site (its API calls use absolute /site/... paths that
+      // resolve normally on the same host).
+      if (req.method === 'GET' && (path === '/' || path === '/index.html')) {
+        const hosted = app.siteForHost(req.headers.host);
+        if (hosted) {
+          res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+          res.end(renderBookingSite(app, hosted.tenant, hosted.property));
+          return;
+        }
+      }
       if (req.method === 'GET' && (path === '/' || path === '/index.html' || path === '/portal')) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         res.end(portalHtml());
@@ -116,20 +140,19 @@ export function createHttpServer(app: App, hooks: HttpHooks = {}): Server {
         res.end();
         return;
       }
-      // The public guest-facing booking microsite at /site/<tenant> (exactly two
-      // segments — deeper paths like /site/<tenant>/availability are JSON API).
-      if (req.method === 'GET' && /^\/site\/[^/]+\/?$/.test(path)) {
-        let html = bookingSiteHtml();
-        // Inject real SEO/social meta from the tenant's live listing (best-effort;
-        // a private/unpublished site just serves the static shell). The config
-        // route is public + synchronous, so we can resolve it inline.
-        try {
-          const tenant = decodeURIComponent(path.replace(/^\/site\//, '').replace(/\/.*$/, ''));
-          const cfg = app.dispatch({ method: 'GET', path: `/site/${tenant}/config`, body: {} });
-          if (cfg.status === 200 && cfg.body) html = html.replace(SEO_PLACEHOLDER, seoHead(cfg.body as SiteListing));
-        } catch { /* serve the static shell */ }
+      // The per-property public site at /site/<tenant>/p/<propertyCode>.
+      const propSite = path.match(/^\/site\/([^/]+)\/p\/([^/]+)\/?$/);
+      if (req.method === 'GET' && propSite) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-        res.end(html);
+        res.end(renderBookingSite(app, decodeURIComponent(propSite[1]!), decodeURIComponent(propSite[2]!)));
+        return;
+      }
+      // The portfolio public site at /site/<tenant> (exactly two segments — deeper
+      // paths like /site/<tenant>/availability are JSON API).
+      if (req.method === 'GET' && /^\/site\/[^/]+\/?$/.test(path)) {
+        const tenant = decodeURIComponent(path.replace(/^\/site\//, '').replace(/\/.*$/, ''));
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.end(renderBookingSite(app, tenant));
         return;
       }
       // Query-string params (e.g. ?from=&to=) are surfaced to handlers as the body,
