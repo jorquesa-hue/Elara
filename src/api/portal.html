@@ -410,6 +410,28 @@
     .kpis { grid-template-columns: 1fr; }
     .queue { grid-template-columns: 1fr; }
   }
+  /* Phones: a table you scroll sideways is friction — restyle each row into a
+     stacked "label: value" card so there's no horizontal scroll at all. Each
+     cell's label comes from its column header via data-label (stamped in JS). */
+  @media (max-width: 640px){
+    .tablewrap { max-height: none; overflow: visible; border: 0; background: transparent; border-radius: 0; }
+    .tablewrap table { min-width: 0; display: block; }
+    .tablewrap thead { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+    .tablewrap tbody { display: block; }
+    .tablewrap tbody tr { display: block; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+      padding: 4px 13px; margin-bottom: 10px; box-shadow: var(--shadow); }
+    .tablewrap tbody tr.sel { border-color: var(--accent); box-shadow: var(--ring); }
+    .tablewrap tbody td { display: flex; align-items: center; justify-content: space-between; gap: 14px;
+      padding: 8px 0; border: 0; white-space: normal; text-align: right; min-height: 0; }
+    .tablewrap tbody td + td { border-top: 1px solid var(--border); }
+    .tablewrap tbody td::before { content: attr(data-label); color: var(--muted); font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .04em; text-align: left; flex: none; white-space: nowrap; }
+    .tablewrap tbody td[data-label=""]::before { content: none; }
+    .tablewrap tbody td.empty { justify-content: center; text-align: center; color: var(--muted); }
+    .tablewrap tbody td.empty::before { content: none; }
+    /* an actions cell (buttons) spans the card full-width */
+    .tablewrap tbody td .row, .tablewrap tbody td .btn { flex: 1; }
+  }
 </style>
 </head>
 <body>
@@ -4403,8 +4425,12 @@
     var tbody = h("tbody",{},[]);
     var table = h("table",{},[ h("thead",{},[h("tr",{}, heads)]), tbody ]);
     var wrap = h("div", { class:"tablewrap" }, [table]);
+    // On phones the table restyles into stacked label:value cards (CSS). Stamp
+    // each cell with its column header so the label shows in that layout.
+    var headLabels = heads.map(function(th){ return (th && th.textContent || "").trim(); });
+    function stamp(tr){ var td = tr.children, i = 0; for (; i < td.length; i++){ if (td[i].tagName === "TD" && !td[i].hasAttribute("data-label")) td[i].setAttribute("data-label", headLabels[i] || ""); } return tr; }
     if (rows.length <= 15) {
-      rows.length ? rows.forEach(function(r){ tbody.appendChild(r); })
+      rows.length ? rows.forEach(function(r){ tbody.appendChild(stamp(r)); })
         : tbody.appendChild(h("tr",{},[h("td",{colspan:String(cols),class:"empty"},[emptyText])]));
       return wrap;
     }
@@ -4423,7 +4449,7 @@
       if (page >= pages) page = pages - 1;
       tbody.innerHTML = "";
       var slice = v.slice(page*TABLE_PAGE, (page+1)*TABLE_PAGE);
-      slice.length ? slice.forEach(function(r){ tbody.appendChild(r); })
+      slice.length ? slice.forEach(function(r){ tbody.appendChild(stamp(r)); })
         : tbody.appendChild(h("tr",{},[h("td",{colspan:String(cols),class:"empty"},[emptyText])]));
       counter.textContent = v.length ? (page*TABLE_PAGE+1) + "–" + (page*TABLE_PAGE+slice.length) + " " + tt("table.of","of") + " " + v.length : "0";
       prev.disabled = page<=0; next.disabled = page>=pages-1;
