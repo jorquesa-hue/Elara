@@ -126,7 +126,11 @@
   .card .v { font-size: 26px; font-weight: 750; margin-top: 8px; letter-spacing: -.02em; overflow-wrap: anywhere; }
 
   /* Tables */
-  .tablewrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+  .tablewrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: auto; background: var(--surface); max-height: 68vh; }
+  .tablewrap thead th { position: sticky; top: 0; background: var(--surface-2); z-index: 2; }
+  .tablewrap td.mono, .tablewrap td.num { white-space: nowrap; }
+  .tfilter { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 11px; color: var(--text); font: inherit; font-size: 13px; min-width: 220px; }
+  .tfilter:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 13.5px; }
   th { color: var(--subtle); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; background: var(--surface-2); }
@@ -1207,10 +1211,21 @@
     });
   }
 
+  // Visible proof of the active community scope — views that honor the top-bar
+  // scope render this pill under their title (audit: scope must never be silent).
+  function scopedPill() {
+    if (!state.scopeProperty) return null;
+    var p = (state.properties||[]).find(function(x){ return x.id===state.scopeProperty; });
+    return h("div",{style:"margin:-4px 0 10px"},[ h("span",{class:"pill active",style:"cursor:default"},[
+      tt("scope.scoped","Scoped:")+" "+((p&&p.name)||state.scopeProperty)+" ",
+      h("button",{style:"background:none;border:none;color:inherit;cursor:pointer;font:inherit;padding:0 0 0 4px","aria-label":"Clear scope",onclick:function(){ state.scopeProperty=""; render(); }},["✕"])
+    ]) ]);
+  }
   function viewAgreements(main) {
     if (state.detailId) return viewAgreementDetail(main, state.detailId);
     main.appendChild(h("h1", {}, [t("nav.agreements")]));
     main.appendChild(h("p", { class:"sub" }, [t("agreements.subtitle")]));
+    var sp = scopedPill(); if (sp) main.appendChild(sp);
     var formSlot = h("div", {}, []); main.appendChild(formSlot);
     var tableWrap = h("div", {}, []); main.appendChild(tableWrap);
     if (can("agreement.book")) api("/master-data").then(function(m){ formSlot.appendChild(bookForm(m.body || {})); });
@@ -1247,7 +1262,10 @@
   function refreshAgreements(wrap) {
     api("/agreements").then(function(r){
       wrap.innerHTML="";
-      var rows = (r.body.agreements||[]).map(function(a){
+      var list = (r.body.agreements||[]);
+      // The top-bar community scope is a real filter here, not decoration.
+      if (state.scopeProperty) list = list.filter(function(a){ return a.propertyId === state.scopeProperty; });
+      var rows = list.map(function(a){
         var actions = h("div",{class:"row"},[]);
         actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ state.detailId=a.id; render(); }},[t("action.open")]));
         if (a.status==="draft" && can("agreement.activate")) actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/agreements/"+a.id+"/activate",{method:"POST",body:{}}).then(function(x){handleMut(x,"agreements");}); }},[t("action.activate")]));
@@ -1255,9 +1273,16 @@
           var to = a.kind==="nightly" ? "monthly" : "lease";
           actions.appendChild(h("button",{class:"btn ghost sm",onclick:function(){ api("/agreements/"+a.id+"/convert",{method:"POST",body:{to:to}}).then(function(x){handleMut(x,"agreements");}); }},[t("action.convert")+" → "+t("kind."+to)]));
         }
-        return h("tr",{},[ h("td",{class:"mono"},[a.id]), h("td",{},[t("kind."+a.kind)]), h("td",{},[h("span",{class:"pill "+a.status},[t("status."+a.status)])]), h("td",{class:"mono"},[fmt(a.rateCents)]), h("td",{},[actions]) ]);
+        return h("tr",{},[
+          h("td",{},[a.residentName || h("span",{class:"muted mono"},[a.id])]),
+          h("td",{class:"mono"},[a.unitLabel || "—"]),
+          h("td",{},[a.propertyName || "—"]),
+          h("td",{},[t("kind."+a.kind)]),
+          h("td",{},[h("span",{class:"pill "+a.status},[t("status."+a.status)])]),
+          h("td",{class:"mono"},[fmt(a.rateCents)]),
+          h("td",{},[actions]) ]);
       });
-      wrap.appendChild(tableEl([th(t("field.id")),th(t("field.kind")),th(t("field.status")),th(t("field.rate")),th(tcol(""))], rows, 5, t("dash.noAgreements")));
+      wrap.appendChild(tableEl([th(tcol("Resident")),th(tcol("Unit")),th(tcol("Community")),th(t("field.kind")),th(t("field.status")),th(t("field.rate")),th(tcol(""))], rows, 7, t("dash.noAgreements")));
     });
   }
 
@@ -3455,9 +3480,9 @@
   function viewReports(main) {
     main.appendChild(h("h1", {}, [tt("reports.title","Reports & analytics")]));
     main.appendChild(h("p", { class:"sub" }, [tt("reports.sub","Automated insights, a report catalog with charts, and a build-your-own report studio — save any chart to your dashboard.")]));
+    var rsp = scopedPill(); if (rsp) main.appendChild(rsp);
     if (!state.reportsTab) state.reportsTab = "insights";
     if (!state.reportKey) state.reportKey = "occupancy";
-    if (state.reportProperty == null) state.reportProperty = "";
     var tabs = [["insights",tt("reptab.insights","What needs attention")],["catalog",tt("reptab.catalog","Report catalog")],["build",tt("reptab.build","Build a report")],["dashboard",tt("reptab.dashboard","My dashboard")]];
     var tabBar = h("div", { class:"row", style:"flex-wrap:wrap;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:12px" },
       tabs.map(function(tb){ return h("button",{ class:"btn "+(state.reportsTab===tb[0]?"":"ghost")+" sm", onclick:function(){ state.reportsTab=tb[0]; viewReports(clear(main)); } },[tb[1]]); }));
@@ -3513,8 +3538,8 @@
     api("/properties").then(function(pr){
       var props=((pr.body||{}).properties||[]);
       if(props.length){
-        var sel=h("select",{style:"max-width:220px",onchange:function(){ state.reportProperty=sel.value; renderCatalogReport(repWrap, state.reportKey); }},
-          [h("option",{value:""},[tt("scope.allprops","All properties")])].concat(props.map(function(pp){ var o=h("option",{value:pp.id},[pp.name]); if(state.reportProperty===pp.id) o.selected=true; return o; })));
+        var sel=h("select",{style:"max-width:220px",onchange:function(){ state.scopeProperty=sel.value; render(); }},
+          [h("option",{value:""},[tt("scope.allprops","All properties")])].concat(props.map(function(pp){ var o=h("option",{value:pp.id},[pp.name]); if(state.scopeProperty===pp.id) o.selected=true; return o; })));
         bar.appendChild(h("span",{class:"muted",style:"font-size:12px;font-weight:600;margin-left:8px"},[tt("reports.scope","Scope")]));
         bar.appendChild(sel);
       }
@@ -3638,7 +3663,7 @@
     if(!key) return;
     wrap.innerHTML = "";
     wrap.appendChild(h("div",{class:"muted"},["Loading…"]));
-    var q=[]; if(state.reportProperty) q.push("propertyId="+encodeURIComponent(state.reportProperty));
+    var q=[]; if(state.scopeProperty) q.push("propertyId="+encodeURIComponent(state.scopeProperty));
     if(state.reportFrom) q.push("from="+state.reportFrom); if(state.reportTo) q.push("to="+state.reportTo);
     var qs = q.length?("?"+q.join("&")):"";
     api("/reports/"+key+qs).then(function(r){
@@ -3755,11 +3780,43 @@
 
   // ---- helpers ------------------------------------------------------------
   function th(x){ return h("th",{},[x]); }
+  // The single shared list renderer. Long lists automatically gain a filter box
+  // + pagination (audit: "fix the list layer once and the whole product scales");
+  // every table gets horizontal scroll + a sticky header via .tablewrap CSS.
+  var TABLE_PAGE = 50;
   function tableEl(heads, rows, cols, emptyText) {
-    return h("div", { class:"tablewrap" }, [ h("table",{},[
-      h("thead",{},[h("tr",{}, heads)]),
-      h("tbody",{}, rows.length ? rows : [h("tr",{},[h("td",{colspan:String(cols),class:"empty"},[emptyText])])])
-    ]) ]);
+    var tbody = h("tbody",{},[]);
+    var table = h("table",{},[ h("thead",{},[h("tr",{}, heads)]), tbody ]);
+    var wrap = h("div", { class:"tablewrap" }, [table]);
+    if (rows.length <= 15) {
+      rows.length ? rows.forEach(function(r){ tbody.appendChild(r); })
+        : tbody.appendChild(h("tr",{},[h("td",{colspan:String(cols),class:"empty"},[emptyText])]));
+      return wrap;
+    }
+    var page = 0, q = "";
+    function visible(){
+      if (!q) return rows;
+      var needle = q.toLowerCase();
+      return rows.filter(function(r){ return (r.textContent||"").toLowerCase().indexOf(needle) >= 0; });
+    }
+    var counter = h("span",{class:"muted",style:"font-variant-numeric:tabular-nums;font-size:12px;white-space:nowrap"},[]);
+    var prev = h("button",{class:"btn ghost sm",onclick:function(){ if(page>0){page--;draw();} }},["‹"]);
+    var next = h("button",{class:"btn ghost sm",onclick:function(){ page++; draw(); }},["›"]);
+    function draw(){
+      var v = visible();
+      var pages = Math.max(1, Math.ceil(v.length / TABLE_PAGE));
+      if (page >= pages) page = pages - 1;
+      tbody.innerHTML = "";
+      var slice = v.slice(page*TABLE_PAGE, (page+1)*TABLE_PAGE);
+      slice.length ? slice.forEach(function(r){ tbody.appendChild(r); })
+        : tbody.appendChild(h("tr",{},[h("td",{colspan:String(cols),class:"empty"},[emptyText])]));
+      counter.textContent = v.length ? (page*TABLE_PAGE+1) + "–" + (page*TABLE_PAGE+slice.length) + " " + tt("table.of","of") + " " + v.length : "0";
+      prev.disabled = page<=0; next.disabled = page>=pages-1;
+    }
+    var filter = h("input",{class:"tfilter",placeholder:tt("table.filter","Filter this list…"),
+      oninput:function(){ q=this.value; page=0; draw(); }});
+    draw();
+    return h("div",{},[ h("div",{class:"row",style:"gap:8px;align-items:center;margin:0 0 8px"},[filter, h("span",{style:"flex:1"}), counter, prev, next]), wrap ]);
   }
   function clear(el){ el.innerHTML=""; return el; }
   function handleMut(r, refreshView){

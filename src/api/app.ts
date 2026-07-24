@@ -1668,7 +1668,21 @@ export class App {
             .filter((e) => ctx.partyId === undefined || this.callerLinkedToAgreement(ctx.partyId, e.agreement.id))
             // A property-scoped operator sees only its communities' leases.
             .filter((e) => !scope || scope.includes(this.propertyForAgreement(ctx.tenantId, e.agreement.id) ?? ''))
-            .map((e) => this.agreementSummary(e.agreement)),
+            // The list is a working screen, not just ids: fold in who lives
+            // there and where, so operators can find a lease by person/unit.
+            .map((e) => {
+              const s = this.agreementSummary(e.agreement);
+              const unit = s.unitId ? this.masterData.units.get(ctx.tenantId, s.unitId) : undefined;
+              const propId = this.propertyForAgreement(ctx.tenantId, s.id);
+              const prop = propId ? this.masterData.properties.get(ctx.tenantId, propId) : undefined;
+              return {
+                ...s,
+                residentName: this.residentNameFor(ctx.tenantId, s.id, e.agreement.guestId ?? ''),
+                unitLabel: unit ? unit.code || unit.label : undefined,
+                propertyId: propId,
+                propertyName: prop?.name,
+              };
+            }),
         },
       };
     });
