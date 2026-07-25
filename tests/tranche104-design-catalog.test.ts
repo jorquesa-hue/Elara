@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { templateGallery, FEEL_KEYS, SEGMENT_KEYS, SEGMENT_LABELS, segmentFor, segmentForBusiness, SITE_TEMPLATES } from '../src/site-templates.ts';
+import { templateGallery, FEEL_KEYS, SEGMENT_KEYS, SEGMENT_LABELS, segmentFor, segmentForBusiness, SITE_TEMPLATES, PAIRINGS } from '../src/site-templates.ts';
 import { bookingSiteHtml } from '../src/api/booking-site.ts';
 import { App } from '../src/api/app.ts';
 import { StaticTokenAuthenticator, type AuthContext } from '../src/api/context.ts';
@@ -57,7 +57,7 @@ test('picking a card still drives the saved template + the big live preview', ()
 
 test('every template is filed under exactly one asset segment, all three in use', () => {
   const segs = templateGallery().map((t) => t.segment);
-  assert.equal(segs.length, 30);
+  assert.equal(segs.length, 36);
   for (const s of segs) assert.ok(SEGMENT_KEYS.includes(s), `${s} is a known segment`);
   assert.equal(new Set(segs).size, 3, 'multifamily, student and short-stay all populated');
   for (const key of SEGMENT_KEYS) {
@@ -67,7 +67,7 @@ test('every template is filed under exactly one asset segment, all three in use'
   for (const t of SITE_TEMPLATES) assert.ok(SEGMENT_KEYS.includes(segmentFor(t)), t.id);
   // The gallery carries the human label so the chip row cannot drift from the data.
   assert.equal(templateGallery().find((t) => t.id === 'metropolitan')!.segmentLabel, SEGMENT_LABELS.multifamily);
-  assert.equal(templateGallery().find((t) => t.id === 'urbannest')!.segment, 'student');
+  assert.equal(templateGallery().find((t) => t.id === 'campushive')!.segment, 'student');
   assert.equal(templateGallery().find((t) => t.id === 'atlantica')!.segment, 'shortstay');
 });
 
@@ -132,7 +132,7 @@ test('every gallery template a card is built from resolves a live preview URL', 
   const res = app.dispatch({ method: 'GET', path: '/site-templates', bearer: 'Bearer mgr', body: {} });
   assert.equal(res.status, 200);
   const tps = (res.body as { templates: Array<{ id: string; feel: string; swatch: string[] }> }).templates;
-  assert.equal(tps.length, 30);
+  assert.equal(tps.length, 36);
   for (const tp of tps) {
     // What the thumbnail asks for must actually theme the public site.
     const cfg = app.dispatch({ method: 'GET', path: '/site/jq/config', body: { template: tp.id, demo: '1', chrome: '0' } });
@@ -200,4 +200,42 @@ test('a photo URL that fails falls forward to a real photo before giving up', ()
   assert.ok(SITE.includes('t.style.display="none"'), 'then reveals the gradient');
   assert.ok(SITE.includes('var hstep=0; hpi.onerror=function(){ if(hstep<ALT_STEPS)'), 'the hero retries too');
   assert.ok(SITE.includes('cfg.samplePhotos?"Stock photos'), 'the ribbon is honest about borrowed photos');
+});
+
+test('student designs are a distinct register, not multifamily in another palette', () => {
+  // The operator's complaint: the student examples looked like MF sites. UK/AU
+  // PBSA sells to 18-year-olds — chunky geometric display type, pill buttons,
+  // fat rounded cards, saturated colour. Lock that in so it cannot drift back.
+  const students = SITE_TEMPLATES.filter((t) => segmentFor(t) === 'student');
+  assert.equal(students.length, 6, 'a real choice of student designs');
+  for (const t of students) {
+    assert.equal(t.feel, 'student', `${t.id} carries the student feel`);
+    assert.equal(t.radius, 'round', `${t.id} is round, not sharp/soft`);
+    assert.ok(t.pairing, `${t.id} uses a display pairing`);
+    // …and specifically a chunky geometric face, never a bookish serif.
+    const display = PAIRINGS[t.pairing!].display.family;
+    assert.match(display, /Outfit|Poppins|Archivo/, `${t.id} display face`);
+    assert.doesNotMatch(display, /Georgia|Garamond|Playfair|Bodoni|Baskerville|Marcellus|Fraunces|Spectral|DM Serif/i,
+      `${t.id} is not bookish`);
+  }
+  // No template outside the student segment borrows the student feel.
+  for (const t of SITE_TEMPLATES) {
+    if (segmentFor(t) !== 'student') assert.notEqual(t.feel, 'student', t.id);
+  }
+  // The old stand-ins were general-purpose looks; they are filed where they belong.
+  for (const id of ['minima', 'zen', 'urbannest', 'palmcourt', 'loftworks', 'ipanema']) {
+    assert.notEqual(segmentFor(SITE_TEMPLATES.find((t) => t.id === id)!), 'student', id);
+  }
+});
+
+test('the microsite ships a student feel bundle distinct from the others', () => {
+  assert.ok(SITE.includes('body[data-feel="student"]'), 'a student CSS bundle exists');
+  assert.ok(SITE.includes('body[data-feel="student"] .btn{ border-radius:999px'), 'pill buttons');
+  assert.ok(SITE.includes('body[data-feel="student"] h1{ font-weight:800'), 'chunky headlines');
+  assert.ok(SITE.includes('body[data-feel="student"] .card{ border-radius:24px; border-width:2px'), 'fat cards');
+  // The marker swash must be the heading's own background, not a negative-z
+  // pseudo-element — that would paint behind the page background and vanish.
+  assert.ok(SITE.includes('background-image:linear-gradient(var(--accent2),var(--accent2))'), 'marker swash');
+  assert.ok(!SITE.includes('z-index:-1'), 'no negative-z swash');
+  for (const feel of FEEL_KEYS) assert.ok(SITE.includes(`body[data-feel="${feel}"]`), `${feel} bundle`);
 });

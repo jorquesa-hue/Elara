@@ -23,9 +23,9 @@ function seededApp() {
 const D = (app: App, method: string, path: string, token: string | null, body?: Record<string, unknown>) =>
   app.dispatch({ method, path, ...(token ? { bearer: `Bearer ${token}` } : {}), body: body ?? {} });
 
-test('exactly 30 templates with unique ids', () => {
-  assert.equal(SITE_TEMPLATES.length, 30);
-  assert.equal(new Set(SITE_TEMPLATES.map((t) => t.id)).size, 30);
+test('exactly 36 templates with unique ids', () => {
+  assert.equal(SITE_TEMPLATES.length, 36);
+  assert.equal(new Set(SITE_TEMPLATES.map((t) => t.id)).size, 36);
   assert.ok(isKnownTemplate(DEFAULT_TEMPLATE_ID));
 });
 
@@ -68,12 +68,13 @@ test('at least 10 templates use font pairings and the fullbleed hero exists', ()
   assert.ok(SITE_TEMPLATES.some((t) => t.hero === 'fullbleed'), 'a fullbleed template exists');
 });
 
-test('every template resolves a design "feel" and all five feels are used', () => {
+test('every template resolves a design "feel" and all six feels are used', () => {
   const feels = new Set(templateGallery().map((t) => t.feel));
-  assert.equal(feels.size, 5, 'all five feels represented');
+  assert.equal(feels.size, 6, 'all six feels represented');
   assert.ok(templateGallery().every((t) => typeof t.feel === 'string'), 'every gallery entry carries a feel');
   assert.ok(resolveTheme('belmont').feel === 'editorial');
   assert.ok(resolveTheme('noir').feel === 'boutique');
+  assert.ok(resolveTheme('campushive').feel === 'student');
 });
 
 test('resolveTheme falls back to the default for unknown/missing template ids', () => {
@@ -106,14 +107,14 @@ test('sanitize keeps a known template + valid options, drops junk', () => {
   assert.equal(bad.template, undefined);
 });
 
-test('GET /site-templates returns the 30-design gallery (masterdata.read)', () => {
+test('GET /site-templates returns the 36-design gallery (masterdata.read)', () => {
   const app = seededApp();
   const res = D(app, 'GET', '/site-templates', 'mgr');
   assert.equal(res.status, 200);
   const tps = (res.body as { templates: Array<{ id: string; swatch: string[] }> }).templates;
-  assert.equal(tps.length, 30);
+  assert.equal(tps.length, 36);
   assert.equal(tps[0]!.swatch.length, 5);
-  assert.equal(templateGallery().length, 30);
+  assert.equal(templateGallery().length, 36);
 });
 
 test('the public site config carries the resolved theme for the picked template', () => {

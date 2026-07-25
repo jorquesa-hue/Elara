@@ -120,6 +120,29 @@ ${SEO_PLACEHOLDER}
   body[data-feel="minimal"] .card{ box-shadow:none !important; }
   body[data-feel="minimal"] .card .body{ padding:16px 4px; }
   body[data-feel="minimal"] #results .card, body[data-feel="minimal"] #commBody .card{ border-left:0; border-right:0; border-top:0; }
+  /* STUDENT — the PBSA register (benchmarked against UK/AU student operators):
+     heavy geometric display type, a highlighter swash under section titles, pill
+     buttons, fat rounded cards on a solid offset shadow, colour-blocked hero.
+     Loud and young on purpose — a multifamily look does not sell to an 18-year-old. */
+  body[data-feel="student"] h1{ font-weight:800; letter-spacing:-.03em; line-height:1.02; }
+  body[data-feel="student"] .brand strong{ font-weight:800; letter-spacing:-.01em; font-size:16px; }
+  /* Marker-pen swash under each section title. Painted as the heading's own
+     background image (not a negative-z pseudo-element, which would fall behind
+     the page background) so it always sits behind the glyphs. */
+  body[data-feel="student"] section > h2{ display:inline-block; font-size:29px; font-weight:800; letter-spacing:-.02em; padding:0 5px 1px;
+    background-image:linear-gradient(var(--accent2),var(--accent2)); background-repeat:no-repeat;
+    background-size:100% 10px; background-position:0 calc(100% - 1px); border-radius:3px; }
+  body[data-feel="student"] .btn{ border-radius:999px; font-weight:700; padding:13px 26px; letter-spacing:.01em; }
+  body[data-feel="student"] .searchbar{ border-radius:28px; border-width:2px; padding:18px 20px; }
+  body[data-feel="student"] .card{ border-radius:24px; border-width:2px; box-shadow:0 6px 0 rgba(17,17,34,.07); }
+  body[data-feel="student"] .card.clickable:hover{ transform:translateY(-4px); box-shadow:0 14px 0 rgba(17,17,34,.10); }
+  body[data-feel="student"] .photo{ height:200px; }
+  body[data-feel="student"] .chips span{ border-width:2px; font-weight:600; background:var(--card); }
+  body[data-feel="student"] .pill{ font-size:11.5px; padding:4px 12px; font-weight:800; }
+  body[data-feel="student"] .price{ font-size:24px; font-weight:800; }
+  body[data-feel="student"] .feat .f{ border-width:2px; border-radius:18px; }
+  body[data-feel="student"] .quotes .q{ border-width:2px; border-radius:22px; }
+  body[data-feel="student"] details.faq{ border-width:2px; border-radius:18px; }
   /* CORPORATE — tidy furnished-housing: subtle shadow cards, clear hierarchy. */
   body[data-feel="corporate"] .card{ box-shadow:0 6px 18px rgba(20,26,46,.06); }
   body[data-feel="corporate"] section > h2{ font-weight:700; }

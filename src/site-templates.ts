@@ -15,8 +15,8 @@ export type CardStyle = 'grid' | 'list' | 'wide';
 /** A cohesive design personality — a bundle of section/heading/button/card
  *  treatments the microsite applies together, so each template reads as a
  *  finished, bespoke design rather than a palette swap. */
-export type FeelKey = 'editorial' | 'boutique' | 'resort' | 'minimal' | 'corporate';
-export const FEEL_KEYS: readonly FeelKey[] = ['editorial', 'boutique', 'resort', 'minimal', 'corporate'];
+export type FeelKey = 'editorial' | 'boutique' | 'resort' | 'minimal' | 'corporate' | 'student';
+export const FEEL_KEYS: readonly FeelKey[] = ['editorial', 'boutique', 'resort', 'minimal', 'corporate', 'student'];
 
 export const FONT_KEYS: readonly FontKey[] = ['system', 'inter', 'space', 'playfair', 'fraunces', 'libre'];
 export const RADIUS_KEYS: readonly RadiusKey[] = ['sharp', 'soft', 'round'];
@@ -32,7 +32,8 @@ interface FontSpec { family: string; import?: string }
  *  the operator configuring anything. */
 export type PairingKey =
   | 'cormorant' | 'playfair-jost' | 'fraunces-inter' | 'dmserif' | 'syne'
-  | 'marcellus' | 'libre-work' | 'cormorant-work' | 'spectral' | 'bodoni';
+  | 'marcellus' | 'libre-work' | 'cormorant-work' | 'spectral' | 'bodoni'
+  | 'outfit' | 'poppins' | 'archivo';
 
 export const PAIRINGS: Record<PairingKey, { display: FontSpec; body: FontSpec }> = {
   cormorant: {
@@ -74,6 +75,20 @@ export const PAIRINGS: Record<PairingKey, { display: FontSpec; body: FontSpec }>
   bodoni: {
     display: { family: '"Bodoni Moda",Georgia,serif', import: 'https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,500;6..96,700&display=swap' },
     body: { family: '"Inter",-apple-system,sans-serif', import: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap' },
+  },
+  // Chunky geometric display faces — the student-housing register. Heavy weights,
+  // tight tracking, nothing bookish: these read young and confident at size.
+  outfit: {
+    display: { family: '"Outfit",-apple-system,sans-serif', import: 'https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&display=swap' },
+    body: { family: '"Inter",-apple-system,sans-serif', import: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap' },
+  },
+  poppins: {
+    display: { family: '"Poppins",-apple-system,sans-serif', import: 'https://fonts.googleapis.com/css2?family=Poppins:wght@700;800&display=swap' },
+    body: { family: '"DM Sans",-apple-system,sans-serif', import: 'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap' },
+  },
+  archivo: {
+    display: { family: '"Archivo Black",-apple-system,sans-serif', import: 'https://fonts.googleapis.com/css2?family=Archivo+Black&display=swap' },
+    body: { family: '"Work Sans",-apple-system,sans-serif', import: 'https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600&display=swap' },
   },
 };
 
@@ -146,14 +161,17 @@ const SEGMENT_BY_ID: Record<string, SegmentKey> = {
   classic: 'multifamily', bluecorp: 'multifamily', metropolitan: 'multifamily', skyline: 'multifamily',
   highline: 'multifamily', belmont: 'multifamily', sablewood: 'multifamily', archer: 'multifamily',
   maison: 'multifamily', verdant: 'multifamily', onyx: 'multifamily',
-  // Student housing — co-living, community-led, younger and more playful.
-  urbannest: 'student', loftworks: 'student', ipanema: 'student', palmcourt: 'student',
-  minima: 'student', zen: 'student',
+  minima: 'multifamily', loftworks: 'multifamily', urbannest: 'multifamily',
+  // Student housing — purpose-built for the PBSA market (see the student block in
+  // SITE_TEMPLATES). The general-purpose designs that used to stand in here were
+  // multifamily/short-stay looks in disguise, and are now filed accordingly.
+  campushive: 'student', freshers: 'student', hallmates: 'student',
+  quadnight: 'student', semester: 'student', studyloft: 'student',
   // Short-stay & hotel — nightly stays, resorts, inns, villas, lodges.
   horizon: 'shortstay', atlantica: 'shortstay', tropicalia: 'shortstay', residence: 'shortstay',
   nordic: 'shortstay', vineyard: 'shortstay', alpine: 'shortstay', noir: 'shortstay',
   hacienda: 'shortstay', harborlight: 'shortstay', saltair: 'shortstay', terracotta: 'shortstay',
-  aspen: 'shortstay',
+  aspen: 'shortstay', ipanema: 'shortstay', palmcourt: 'shortstay', zen: 'shortstay',
 };
 export function segmentFor(t: SiteTemplate): SegmentKey {
   return t.segment ?? SEGMENT_BY_ID[t.id] ?? 'multifamily';
@@ -233,6 +251,23 @@ export const SITE_TEMPLATES: readonly SiteTemplate[] = [
     palette: { bg: '#f5f2ec', card: '#fffdf8', line: '#e5ded1', text: '#2b2620', muted: '#847c6d', accent: '#1f3b30', accent2: '#c06a3d' } }),
   T({ id: 'onyx', name: 'Onyx', description: 'Ultra-minimal luxury: black, white and a single hairline of gold — a quiet full-bleed statement.', inspiration: 'Single-property luxury listings', pairing: 'marcellus', font: 'playfair', radius: 'sharp', hero: 'fullbleed', cards: 'wide',
     palette: { bg: '#0a0a0b', card: '#141416', line: '#26262a', text: '#f3f2ef', muted: '#9b9a95', accent: '#c9b079', accent2: '#e7e5df' } }),
+  // --- STUDENT HOUSING -------------------------------------------------------
+  // Benchmarked against UK and Australian PBSA operators. That market sells to
+  // 18-year-olds and their parents, and its sites look nothing like multifamily:
+  // saturated colour blocking, heavy geometric display type, pill buttons, fat
+  // rounded cards, and social/community photography rather than empty interiors.
+  T({ id: 'campushive', name: 'Campus Hive', description: 'Electric violet and acid lime, huge chunky headlines — the loudest, most social of the student set.', inspiration: 'Australian PBSA operators (Melbourne/Sydney towers)', pairing: 'outfit', font: 'inter', radius: 'round', hero: 'banner', cards: 'grid', feel: 'student', segment: 'student',
+    palette: { bg: '#f8f5ff', card: '#ffffff', line: '#e4d9ff', text: '#190f33', muted: '#6a5b93', accent: '#7c3aed', accent2: '#a3e635' } }),
+  T({ id: 'freshers', name: 'Freshers', description: 'Bold navy with a hit of highlighter yellow — confident, friendly, unmistakably first-year.', inspiration: 'Large UK PBSA portfolios', pairing: 'poppins', font: 'inter', radius: 'round', hero: 'banner', cards: 'grid', feel: 'student', segment: 'student',
+    palette: { bg: '#fffdf2', card: '#ffffff', line: '#e6e3d3', text: '#131c47', muted: '#5d6485', accent: '#1b2a6b', accent2: '#ffd21f' } }),
+  T({ id: 'hallmates', name: 'Hallmates', description: 'Vivid teal and coral on white — bright, welcoming and easy to book from a phone.', inspiration: 'UK student-accommodation booking portals', pairing: 'outfit', font: 'inter', radius: 'round', hero: 'classic', cards: 'grid', feel: 'student', segment: 'student',
+    palette: { bg: '#f1fbfa', card: '#ffffff', line: '#cdeae7', text: '#0d2b28', muted: '#4f7a76', accent: '#00b3a4', accent2: '#ff5a5f' } }),
+  T({ id: 'quadnight', name: 'Quad', description: 'Dark mode for night owls: near-black with electric blue and magenta, neon-poster energy.', inspiration: 'Student towers with a nightlife-forward brand', pairing: 'archivo', font: 'space', radius: 'round', hero: 'fullbleed', cards: 'grid', feel: 'student', segment: 'student',
+    palette: { bg: '#0d0f1c', card: '#171b30', line: '#272d4a', text: '#f2f4ff', muted: '#9aa3c8', accent: '#4d7cff', accent2: '#ff3d9a' } }),
+  T({ id: 'semester', name: 'Semester', description: 'Warm cream, tangerine and deep plum — softer and homelier, aimed at parents as much as students.', inspiration: 'Boutique student residences', pairing: 'poppins', font: 'inter', radius: 'round', hero: 'split', cards: 'wide', feel: 'student', segment: 'student',
+    palette: { bg: '#fff7ef', card: '#ffffff', line: '#f0ddc9', text: '#2c1338', muted: '#7a5f7f', accent: '#ff6b35', accent2: '#5b2a86' } }),
+  T({ id: 'studyloft', name: 'Study Loft', description: 'Fresh green and ink with sunny highlights — co-living warmth, study-space calm.', inspiration: 'Co-living and student co-op communities', pairing: 'outfit', font: 'inter', radius: 'round', hero: 'banner', cards: 'grid', feel: 'student', segment: 'student',
+    palette: { bg: '#f4fbf4', card: '#ffffff', line: '#d5ebd6', text: '#12261a', muted: '#4e7357', accent: '#16a34a', accent2: '#facc15' } }),
 ];
 
 const BY_ID = new Map(SITE_TEMPLATES.map((t) => [t.id, t]));
