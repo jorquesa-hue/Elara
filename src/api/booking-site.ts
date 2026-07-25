@@ -290,6 +290,21 @@ ${SEO_PLACEHOLDER}
     if(step<ALT_STEPS){ t.setAttribute("data-alt",String(step+1)); t.src=altPhoto(step, t.getAttribute("alt")||t.src); return; }
     t.style.display="none";
   }
+  // How this site quotes rent. A "from" price is labelled in the period the
+  // operator entered it in — per week for UK/AU student housing, per month for
+  // most multifamily, per night for short stay. A dated availability quote is
+  // always nightly, because that is what the pricing engine computed.
+  var PERIOD_LABEL={ night:"/ night", week:"per week", month:"/ month" };
+  function fromSuffix(u){
+    var p=(u&&u.pricePeriod)||(cfg&&cfg.content&&cfg.content.rentPeriod)||"night";
+    return " "+(PERIOD_LABEL[p]||"/ night");
+  }
+  function planSuffix(f){
+    var p=(f&&f.rentPeriod)||(cfg&&cfg.content&&cfg.content.rentPeriod)||"month";
+    return " "+(PERIOD_LABEL[p]||"/ month");
+  }
+  /** "From" belongs before the amount, not after it — "From £179.00 per week". */
+  function fromPrefix(){ return el("small",{},["From "]); }
   function photosOf(d){ d=d||{}; var out=[]; if(d.photoDataUrl) out.push(d.photoDataUrl); (d.photos||[]).forEach(function(p){ if(out.indexOf(p)<0) out.push(p); }); return out; }
 
   function today(o){ var d=new Date(Date.now()+(o||0)*86400000); return d.toISOString().slice(0,10); }
@@ -377,7 +392,7 @@ ${SEO_PLACEHOLDER}
       var kids=[ el("h3",{},[c.name]) ];
       if(c.subtitle) kids.push(el("p",{class:"headline"},[c.subtitle]));
       kids.push(el("div",{class:"badges"},[ el("span",{},[c.unitCount+(c.unitCount===1?" home":" homes")+" available"]) ]));
-      kids.push(c.fromCents!=null ? el("div",{class:"price"},[ el("span",{},[money(c.fromCents)]), el("small",{},[" from / night"]) ]) : el("div",{class:"price"},[ el("span",{class:"muted"},["Contact for rates"]) ]));
+      kids.push(c.fromCents!=null ? el("div",{class:"price"},[ fromPrefix(), el("span",{},[money(c.fromCents)]), el("small",{},[fromSuffix(c)]) ]) : el("div",{class:"price"},[ el("span",{class:"muted"},["Contact for rates"]) ]));
       kids.push(el("div",{class:"muted",style:"font-size:12.5px;font-weight:600;color:var(--accent)"},["Explore "+c.name+" →"]));
       wrap.appendChild(el("a",{class:"card clickable",href:href,style:"text-decoration:none;color:inherit"},[ photo, el("div",{class:"body"}, kids) ]));
     });
@@ -454,7 +469,7 @@ ${SEO_PLACEHOLDER}
     }
     if(d.description) kids.push(el("p",{class:"desc"},[d.description]));
     kids.push(u.from
-      ? el("div",{class:"price"},[ u.nightlyCents!=null? el("span",{},[money(u.nightlyCents)]) : el("span",{class:"muted"},["Contact for rates"]), el("small",{},[" from / night"]) ])
+      ? el("div",{class:"price"},[ u.nightlyCents!=null? fromPrefix() : null, u.nightlyCents!=null? el("span",{},[money(u.nightlyCents)]) : el("span",{class:"muted"},["Contact for rates"]), u.nightlyCents!=null? el("small",{},[fromSuffix(u)]) : null ])
       : el("div",{class:"price"},[ money(u.nightlyCents), el("small",{},[" / night · "+money(u.totalCents)+" total"]) ]));
     kids.push(el("div",{class:"muted",style:"font-size:12.5px;font-weight:600;color:var(--accent)"},["View details →"]));
     return el("div",{class:"card clickable",onclick:function(){ openDetail(u); }},[ photo, el("div",{class:"body"}, kids) ]);
@@ -476,7 +491,7 @@ ${SEO_PLACEHOLDER}
       if(f.areaSqm!=null) meta.push("📐 "+f.areaSqm+" m²");
       if(meta.length) kids.push(el("div",{class:"badges"}, meta.map(function(m){ return el("span",{},[m]); })));
       if(f.description) kids.push(el("p",{class:"desc"},[f.description]));
-      kids.push(el("div",{class:"price"},[ f.fromCents!=null? el("span",{},[money(f.fromCents)]) : el("span",{class:"muted"},["Contact for rates"]), el("small",{},[f.fromCents!=null?" from":""]) ]));
+      kids.push(el("div",{class:"price"},[ f.fromCents!=null? fromPrefix() : null, f.fromCents!=null? el("span",{},[money(f.fromCents)]) : el("span",{class:"muted"},["Contact for rates"]), f.fromCents!=null? el("small",{},[planSuffix(f)]) : null ]));
       kids.push(el("div",{class:"muted",style:"font-size:12.5px"},[f.unitCount+(f.unitCount===1?" residence":" residences")]));
       ps.appendChild(el("div",{class:"card"},[ el("div",{class:"body"}, kids) ]));
     });
@@ -499,7 +514,7 @@ ${SEO_PLACEHOLDER}
     document.getElementById("dFrom").value = document.getElementById("from").value;
     document.getElementById("dTo").value = document.getElementById("to").value;
     var pr=document.getElementById("dPrice");
-    pr.innerHTML=""; pr.appendChild(u.nightlyCents!=null? el("span",{},[money(u.nightlyCents)]) : el("span",{class:"muted"},["Contact for rates"])); pr.appendChild(el("small",{},[u.from?" from / night":" / night"]));
+    pr.innerHTML=""; pr.appendChild(u.nightlyCents!=null? el("span",{},[money(u.nightlyCents)]) : el("span",{class:"muted"},["Contact for rates"])); pr.appendChild(el("small",{},[u.from?fromSuffix(u):" / night"])); if(u.from&&u.nightlyCents!=null) pr.insertBefore(fromPrefix(), pr.firstChild);
     document.getElementById("dAvail").textContent="";
     document.getElementById("dBook").disabled=false;
     overlay.classList.add("on"); document.body.style.overflow="hidden";

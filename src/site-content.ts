@@ -32,6 +32,17 @@ export interface SiteTestimonial { quote: string; name: string; location?: strin
 /** Where the properties are, for a Location section + directions link. */
 export interface SiteLocation { address?: string; neighborhood?: string; mapsQuery?: string }
 
+/** How a rent figure is quoted. Markets differ: nightly for short stay, monthly
+ *  for most multifamily, and PER WEEK for UK/Australian student housing, where
+ *  students genuinely shop on a weekly number. The period is stored alongside
+ *  the figures it describes so a price can never be shown in the wrong unit. */
+export type RentPeriod = 'night' | 'week' | 'month';
+export const RENT_PERIODS: readonly RentPeriod[] = ['night', 'week', 'month'];
+export const isRentPeriod = (v: unknown): v is RentPeriod =>
+  typeof v === 'string' && (RENT_PERIODS as readonly string[]).includes(v);
+/** The suffix the public site prints after a price. */
+export const RENT_PERIOD_LABEL: Record<RentPeriod, string> = { night: '/ night', week: 'per week', month: '/ month' };
+
 export interface SiteContent {
   heroTitle?: string;
   /** A short line under the hero title. */
@@ -42,6 +53,11 @@ export interface SiteContent {
   whatsapp?: string;
   instagram?: string;
   facebook?: string;
+  /** How this site quotes rent. UK/Australian student housing advertises PER
+   *  WEEK; most multifamily per month; short stay per night. Setting this means
+   *  the operator enters their market rents in that period — the site labels the
+   *  figure they typed, it never converts one period into another. */
+  rentPeriod?: RentPeriod;
   /** Which of the 20 site templates to render (default: 'classic'). */
   template?: string;
   /** Per-template adjustments — corners, font, hero layout, card layout. */
@@ -131,6 +147,7 @@ export function sanitizeSiteContent(input: unknown): SiteContent {
   const heroTitle = str(raw['heroTitle']); if (heroTitle) out.heroTitle = heroTitle;
   const heroSubtitle = str(raw['heroSubtitle'], 300); if (heroSubtitle) out.heroSubtitle = heroSubtitle;
   const about = str(raw['about'], MAX_TEXT); if (about) out.about = about;
+  if (isRentPeriod(raw['rentPeriod'])) out.rentPeriod = raw['rentPeriod'];
   const seoDescription = str(raw['seoDescription'], 320); if (seoDescription) out.seoDescription = seoDescription;
   const domain = normalizeDomain(raw['domain']); if (domain) out.domain = domain;
   for (const k of ['contactEmail', 'contactPhone', 'whatsapp', 'instagram', 'facebook'] as const) {

@@ -12,12 +12,13 @@
 // any PII.
 
 import { computeQuote, type PricingRule } from './revenue.ts';
-import type { SiteContent, UnitSiteDetails } from './site-content.ts';
+import { RENT_PERIODS, RENT_PERIOD_LABEL, isRentPeriod, type SiteContent, type UnitSiteDetails, type RentPeriod } from './site-content.ts';
+export { RENT_PERIODS, RENT_PERIOD_LABEL, isRentPeriod, type RentPeriod };
 import { resolveTheme, type ResolvedTheme } from './site-templates.ts';
 
 export interface SiteUnit { id: string; label: string; active: boolean; typeId?: string }
 export interface SiteHold { unitId: string; start: string; end: string; status: string }
-export interface SiteAgreementRate { unitId: string; rateCents: number; start: string }
+export interface SiteAgreementRate { unitId: string; rateCents: number; start: string; period?: RentPeriod }
 
 /** A floorplan/unit type — multifamily portfolios merchandise these, not the
  *  individual doors. Marketing details live once on the type. */
@@ -25,6 +26,8 @@ export interface SiteUnitType {
   id: string; code: string; name: string;
   bedrooms?: number; bathrooms?: number; maxGuests?: number; areaSqm?: number;
   baseRentCents?: number; description?: string;
+  /** The period baseRentCents is quoted in (default month for a floorplan). */
+  rentPeriod?: RentPeriod;
 }
 
 /** One floorplan section on the public site: its details, how many published
@@ -79,7 +82,7 @@ export interface SiteListing {
   sampleData?: boolean;
   /** True when a photo-less design preview borrowed stock photography. */
   samplePhotos?: boolean;
-  units: Array<{ id: string; label: string; fromCents: number | null; typeId?: string; details?: UnitSiteDetails }>;
+  units: Array<{ id: string; label: string; fromCents: number | null; pricePeriod?: RentPeriod; typeId?: string; details?: UnitSiteDetails }>;
   /** Floorplan sections (only types with ≥1 published unit), largest first. */
   floorplans: SiteFloorplan[];
 }
@@ -109,6 +112,22 @@ export function isValidDate(d: unknown): d is string {
  *  (authored per type — beats the generic pricing rule so a nightly dynamic
  *  rule can't mask a multifamily monthly asking rent), else the tenant rule's
  *  base, else null ("contact for rates"). */
+/** The advertised "from" price AND the period it is quoted in. The period always
+ *  follows the SOURCE of the number — an agreement's rate is per its kind, a
+ *  floorplan's market rent is per the floorplan's own period, a dynamic pricing
+ *  rule is nightly — so the label can never contradict the figure. */
+function unitBaseRate(unitId: string, inp: BookingSiteInput, type?: SiteUnitType): { cents: number; period: RentPeriod } | null {
+  // An explicit site-level period wins: the operator has told us how they quote,
+  // and entered their rents in that period. Otherwise infer from the source of
+  // the figure, so the label can never contradict it.
+  const declared = inp.content?.rentPeriod;
+  const forUnit = inp.agreements.filter((a) => a.unitId === unitId).sort((a, b) => (a.start < b.start ? 1 : -1));
+  const live = forUnit[0];
+  if (live && live.rateCents > 0) return { cents: live.rateCents, period: declared ?? live.period ?? 'night' };
+  if (type?.baseRentCents && type.baseRentCents > 0) return { cents: type.baseRentCents, period: declared ?? type.rentPeriod ?? 'month' };
+  if (inp.rule && inp.rule.baseCents > 0) return { cents: inp.rule.baseCents, period: declared ?? 'night' };
+  return null;
+}
 function unitBaseCents(unitId: string, inp: BookingSiteInput, typeRentCents?: number): number | null {
   const forUnit = inp.agreements.filter((a) => a.unitId === unitId).sort((a, b) => (a.start < b.start ? 1 : -1));
   if (forUnit.length && forUnit[0]!.rateCents > 0) return forUnit[0]!.rateCents;
@@ -199,10 +218,12 @@ export function siteListing(inp: BookingSiteInput): SiteListing {
             ...own,
           }
         : own;
+      const rate = unitBaseRate(u.id, inp, t);
       return {
         id: u.id,
         label: u.label,
-        fromCents: unitBaseCents(u.id, inp, t?.baseRentCents),
+        fromCents: rate ? rate.cents : null,
+        ...(rate ? { pricePeriod: rate.period } : {}),
         ...(u.typeId ? { typeId: u.typeId } : {}),
         ...(inherited && Object.keys(inherited).length ? { details: inherited } : {}),
       };
@@ -213,7 +234,8 @@ export function siteListing(inp: BookingSiteInput): SiteListing {
     .map((t) => {
       const inType = units.filter((u) => u.typeId === t.id);
       const prices = inType.map((u) => u.fromCents).filter((c): c is number => c != null);
-      return { ...t, unitCount: inType.length, fromCents: prices.length ? Math.min(...prices) : null };
+      const period = inType.find((u) => u.pricePeriod)?.pricePeriod ?? t.rentPeriod ?? 'month';
+      return { ...t, rentPeriod: period, unitCount: inType.length, fromCents: prices.length ? Math.min(...prices) : null };
     })
     .filter((f) => f.unitCount > 0)
     .sort((a, b) => b.unitCount - a.unitCount || a.name.localeCompare(b.name));

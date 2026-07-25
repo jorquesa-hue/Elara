@@ -4228,6 +4228,7 @@
     var heroSub=h("input",{value:w.heroSubtitle||"",placeholder:"Beachfront homes with sunset views — book direct"});
     var about=textarea(4,w.about);
     var seoDesc=textarea(2,w.seoDescription,"One line shown in Google results & when the link is shared (optional).");
+    var periodSel=selectFrom([["","Match the rate (default)"],["week","Per week — UK/Australian student housing"],["month","Per month — multifamily / long lets"],["night","Per night — short stay & hotel"]], w.rentPeriod||"");
     var cEmail=h("input",{value:w.contactEmail||"",placeholder:"reservas@example.com"});
     var cPhone=h("input",{value:w.contactPhone||"",placeholder:"+55 12 3896-0000"});
     var cWhats=h("input",{value:w.whatsapp||"",placeholder:"+55 12 99999-0000"});
@@ -4237,7 +4238,15 @@
     slot.appendChild(h("div",{class:"panel"},[
       h("div",{class:"grid"},[ field("Hero title",heroTitle), field("Hero subtitle",heroSub), field("Contact email",cEmail), field("Phone",cPhone), field("WhatsApp",cWhats), field("Instagram",cInsta), field("Facebook",cFace) ]),
       h("div",{style:"margin-top:10px"},[ h("label",{},[tfld("About your properties (shown on the site)")]), about ]),
-      h("div",{style:"margin-top:10px"},[ h("label",{},["Search & share description (SEO)"]), seoDesc ])
+      h("div",{style:"margin-top:10px"},[ h("label",{},["Search & share description (SEO)"]), seoDesc ]),
+      // How rent is quoted. UK/AU student housing advertises per week; most
+      // multifamily per month; short stay per night. Elara labels the figure the
+      // operator typed — it never converts one period into another.
+      h("div",{style:"margin-top:10px"},[
+        h("label",{},["How prices are shown"]),
+        periodSel,
+        h("p",{class:"sub",style:"margin:6px 0 0"},["Enter your floorplan market rents in this same period — Elara shows the figure you typed, it does not convert between weekly and monthly."])
+      ])
     ]));
     // --- rich sections (gallery / highlights / location / good-to-know / FAQ / reviews) ---
     function repeater(cols, initial, addLabel){
@@ -4327,7 +4336,7 @@
     // --- save ----------------------------------------------------------------
     if(editable){
       slot.appendChild(h("div",{style:"margin:6px 0 30px"},[ h("button",{class:"btn",onclick:function(){
-        var body=readDesign({ heroTitle:heroTitle.value, heroSubtitle:heroSub.value, about:about.value, seoDescription:seoDesc.value, contactEmail:cEmail.value, contactPhone:cPhone.value, whatsapp:cWhats.value, instagram:cInsta.value, facebook:cFace.value, units:{} });
+        var body=readDesign({ heroTitle:heroTitle.value, heroSubtitle:heroSub.value, about:about.value, seoDescription:seoDesc.value, rentPeriod:periodSel.value, contactEmail:cEmail.value, contactPhone:cPhone.value, whatsapp:cWhats.value, instagram:cInsta.value, facebook:cFace.value, units:{} });
         var gp=gallery.value.split(/\n+/).map(function(s){return s.trim();}).filter(Boolean); if(gp.length) body.galleryPhotos=gp;
         var hl=highlights.value.split(",").map(function(s){return s.trim();}).filter(Boolean); if(hl.length) body.highlights=hl;
         var lo={}; if(locAddr.value.trim())lo.address=locAddr.value.trim(); if(locHood.value.trim())lo.neighborhood=locHood.value.trim(); if(locMaps.value.trim())lo.mapsQuery=locMaps.value.trim(); if(Object.keys(lo).length) body.location=lo;
