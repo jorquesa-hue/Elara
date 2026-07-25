@@ -140,9 +140,14 @@ test('a photo URL that fails falls forward to a real photo before giving up', ()
   // The stock CDN ids cannot be verified from a build, so the page must not
   // depend on any one of them resolving: one retry against a placeholder that
   // always resolves, then the template gradient. The retry marker terminates it.
-  assert.ok(SITE.includes('function altPhoto(seed,w)'), 'a fallback source exists');
-  assert.ok(SITE.includes('if(!t.getAttribute("data-alt")){ t.setAttribute("data-alt","1")'), 'retries exactly once');
+  assert.ok(SITE.includes('function altPhoto(step,seed,w)'), 'a fallback source exists');
+  // Step 1 is keyword-matched so a rescued tile still shows a home, not a random
+  // photo — a design preview is meant to help you picture YOUR property there.
+  assert.ok(SITE.includes('loremflickr.com'), 'the first fallback is property imagery');
+  assert.ok(SITE.includes('"apartment,building":"apartment,interior"'), 'exterior vs interior keywords');
+  assert.ok(SITE.includes('var ALT_STEPS = 2;'), 'a bounded chain');
+  assert.ok(SITE.includes('if(step<ALT_STEPS){ t.setAttribute("data-alt",String(step+1))'), 'terminates');
   assert.ok(SITE.includes('t.style.display="none"'), 'then reveals the gradient');
-  assert.ok(SITE.includes('hpi.onerror=function(){ if(hpi.src===hp) hpi.src=altPhoto('), 'the hero retries too');
+  assert.ok(SITE.includes('var hstep=0; hpi.onerror=function(){ if(hstep<ALT_STEPS)'), 'the hero retries too');
   assert.ok(SITE.includes('cfg.samplePhotos?"Stock photos'), 'the ribbon is honest about borrowed photos');
 });

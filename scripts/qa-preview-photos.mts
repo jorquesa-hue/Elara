@@ -35,6 +35,7 @@ async function run(label: string, cdnWorks: boolean) {
   await pg.route('**images.unsplash.com/**', (r) => cdnWorks
     ? r.fulfill({ status: 200, contentType: 'image/png', body: CDN_PNG })                          // the real CDN
     : r.fulfill({ status: 404, contentType: 'text/plain', body: 'gone' }));                        // a dead id
+  await pg.route('**loremflickr.com/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: ALT_PNG }));
   await pg.route('**picsum.photos/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: ALT_PNG }));
 
   await pg.goto(`http://127.0.0.1:${port}/site/jq?template=belmont&demo=1`);
@@ -54,13 +55,14 @@ async function run(label: string, cdnWorks: boolean) {
       unpainted: imgs.filter(i => !(i.complete && i.naturalWidth > 0)).map(i => (i.getAttribute('alt')||'?') + ' :: ' + i.src.slice(0, 60)),
       painted: shown.length,
       hidden: imgs.filter(i => i.style.display === 'none').length,
-      viaFallback: imgs.filter(i => /picsum/.test(i.src)).length,
-      hero: hero && hero !== 'none' ? (/picsum/.test(hero) ? 'fallback photo' : 'cdn photo') : 'GRADIENT (no photo)',
+      viaFallback: imgs.filter(i => /picsum|loremflickr/.test(i.src)).length,
+      propertyKeyword: imgs.filter(i => /loremflickr/.test(i.src)).length,
+      hero: hero && hero !== 'none' ? (/picsum|loremflickr/.test(hero) ? 'fallback photo' : 'cdn photo') : 'GRADIENT (no photo)',
     };
   })()`);
   if (info.unpainted.length) console.log('   unpainted →', info.unpainted.join(' ; '));
   console.log(label.padEnd(26), '→ imgs painted ' + info.painted + '/' + info.total,
-    '| hidden=' + info.hidden, '| via fallback=' + info.viaFallback, '| hero=' + info.hero);
+    '| hidden=' + info.hidden, '| via fallback=' + info.viaFallback + ' (property-keyword ' + info.propertyKeyword + ')', '| hero=' + info.hero);
   await pg.screenshot({ path: `/home/user/Elara/tpl-shots/photos-${cdnWorks ? 'cdn' : 'fallback'}.png` });
   return info;
 }

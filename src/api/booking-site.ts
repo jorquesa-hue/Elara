@@ -251,10 +251,20 @@ ${SEO_PLACEHOLDER}
   // against a deterministic placeholder that always resolves, and only then
   // give up and reveal the template gradient underneath. Terminates: the retry
   // is marked on the element, so a second failure hides it.
-  function altPhoto(seed,w){ return "https://picsum.photos/seed/"+encodeURIComponent(String(seed).replace(/[^a-zA-Z0-9]/g,"").slice(-16)||"home")+"/"+(w||1200)+"/800"; }
+  // Step 1 is keyword-matched, so a rescued tile still shows a HOME rather than
+  // an arbitrary photo — the point of a design preview is to picture your own
+  // property here. Step 2 is a source that always resolves. Then the gradient.
+  function altPhoto(step,seed,w){
+    var s=String(seed||"").replace(/[^a-zA-Z0-9]/g,"").slice(-16)||"home";
+    var W=w||1200;
+    if(step===0) return "https://loremflickr.com/"+W+"/800/"+(/hero|exterior|building/i.test(String(seed))?"apartment,building":"apartment,interior")+"?lock="+(s.length+W);
+    return "https://picsum.photos/seed/"+encodeURIComponent(s)+"/"+W+"/800";
+  }
+  var ALT_STEPS = 2;
   function hideImg(e){
     var t=e&&e.target; if(!t) return;
-    if(!t.getAttribute("data-alt")){ t.setAttribute("data-alt","1"); t.src=altPhoto(t.getAttribute("alt")||t.src); return; }
+    var step=Number(t.getAttribute("data-alt")||0);
+    if(step<ALT_STEPS){ t.setAttribute("data-alt",String(step+1)); t.src=altPhoto(step, t.getAttribute("alt")||t.src); return; }
     t.style.display="none";
   }
   function photosOf(d){ d=d||{}; var out=[]; if(d.photoDataUrl) out.push(d.photoDataUrl); (d.photos||[]).forEach(function(p){ if(out.indexOf(p)<0) out.push(p); }); return out; }
@@ -292,7 +302,7 @@ ${SEO_PLACEHOLDER}
       document.body.setAttribute("data-hero", th.hero||"classic");
       document.body.setAttribute("data-cards", th.cards||"grid");
       document.body.setAttribute("data-feel", th.feel||"corporate");
-      if(content.heroPhotoDataUrl){ var hp=content.heroPhotoDataUrl; if(/^data:/.test(hp)){ rs.setProperty("--heroimg","url("+JSON.stringify(hp)+")"); } else { var hpi=new Image(); hpi.onload=function(){ rs.setProperty("--heroimg","url("+JSON.stringify(hpi.src)+")"); }; hpi.onerror=function(){ if(hpi.src===hp) hpi.src=altPhoto("hero"+cfg.tenantId,1800); }; hpi.src=hp; } }
+      if(content.heroPhotoDataUrl){ var hp=content.heroPhotoDataUrl; if(/^data:/.test(hp)){ rs.setProperty("--heroimg","url("+JSON.stringify(hp)+")"); } else { var hpi=new Image(); hpi.onload=function(){ rs.setProperty("--heroimg","url("+JSON.stringify(hpi.src)+")"); }; var hstep=0; hpi.onerror=function(){ if(hstep<ALT_STEPS){ hpi.src=altPhoto(hstep++,"hero"+cfg.tenantId,1800); } }; hpi.src=hp; } }
       if(th.hero==="split"){ var hv=document.createElement("div"); hv.className="hero-visual"; var hd=document.querySelector("header.hero"); hd.insertBefore(hv, hd.querySelector(".searchbar")); }
       // ?chrome=0 suppresses the preview ribbon — the design catalog renders this
       // page as a thumbnail, where the banner would just be noise on every card.
