@@ -2,7 +2,8 @@
 // by looking at the REAL site rendered in it: the portal lays out one live microsite
 // iframe per template, scaled down to a thumbnail. These tests guard the contract
 // that catalog rests on — the markup/CSS the portal ships, and the ?chrome=0 preview
-// param the thumbnails use to drop the "design preview" ribbon. 8 tests.
+// param the thumbnails use to drop the "design preview" ribbon, and the stock
+// photography a photo-less preview borrows so a design can be judged. 11 tests.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -91,4 +92,57 @@ test('every gallery template a card is built from resolves a live preview URL', 
     assert.equal(body.previewTemplate, tp.id);
     assert.ok(tp.swatch.length === 5 && tp.feel, `${tp.id} has card metadata`);
   }
+});
+
+test('a design preview of a real, photo-less portfolio borrows stock photography', () => {
+  // THE BUG this closes: the photo-carrying sample only loaded for a tenant with
+  // NO published units, so any real operator previewed their own photo-less
+  // inventory and saw nothing but gradients — you cannot judge a design that way.
+  const app = seededApp();
+  const plain = app.dispatch({ method: 'GET', path: '/site/jq/config', body: {} }).body as {
+    content: { heroPhotoDataUrl?: string; galleryPhotos?: string[] };
+    units: Array<{ details?: { photoDataUrl?: string } }>;
+    samplePhotos?: boolean;
+  };
+  // The PUBLIC site is untouched — nobody's live site silently sprouts stock photos.
+  assert.equal(plain.content.heroPhotoDataUrl, undefined);
+  assert.equal(plain.units.filter((u) => u.details?.photoDataUrl).length, 0);
+  assert.equal(plain.samplePhotos, undefined);
+
+  const prev = app.dispatch({ method: 'GET', path: '/site/jq/config', body: { template: 'noir', demo: '1' } }).body as typeof plain;
+  assert.equal(prev.samplePhotos, true, 'flagged so the ribbon can say so');
+  assert.ok(prev.content.heroPhotoDataUrl, 'hero gets a photo');
+  assert.ok((prev.content.galleryPhotos ?? []).length >= 4, 'the gallery section fills');
+  assert.equal(prev.units.filter((u) => u.details?.photoDataUrl).length, prev.units.length, 'every unit tile');
+  assert.ok(prev.units.length > 1, 'a real portfolio, not the 3-unit sample');
+
+  // Dressing a preview must never leak into saved content — otherwise a borrowed
+  // photo would persist and show up on the operator's real, public site.
+  const saved = app.dispatch({ method: 'GET', path: '/site-content', bearer: 'Bearer mgr', body: {} }).body as { content: { heroPhotoDataUrl?: string } };
+  assert.equal(saved.content.heroPhotoDataUrl, undefined, 'the store is untouched');
+  const again = app.dispatch({ method: 'GET', path: '/site/jq/config', body: {} }).body as typeof plain;
+  assert.equal(again.content.heroPhotoDataUrl, undefined, 'the public site stays photo-less');
+});
+
+test('an operator photo always wins — dressing is a no-op once one exists', () => {
+  const app = seededApp();
+  const units = (app.dispatch({ method: 'GET', path: '/master-data', bearer: 'Bearer mgr', body: {} }).body as { units: Array<{ id: string }> }).units;
+  const mine = 'https://cdn.example.com/my-building.jpg';
+  app.dispatch({ method: 'PUT', path: '/site-content', bearer: 'Bearer mgr', body: { content: { units: { [units[0]!.id]: { published: true, photoDataUrl: mine } } } } });
+  const prev = app.dispatch({ method: 'GET', path: '/site/jq/config', body: { template: 'noir', demo: '1' } }).body as {
+    units: Array<{ id: string; details?: { photoDataUrl?: string } }>; samplePhotos?: boolean;
+  };
+  assert.equal(prev.samplePhotos, undefined, 'the listing has photography, so nothing is borrowed');
+  assert.equal(prev.units.find((u) => u.id === units[0]!.id)?.details?.photoDataUrl, mine);
+});
+
+test('a photo URL that fails falls forward to a real photo before giving up', () => {
+  // The stock CDN ids cannot be verified from a build, so the page must not
+  // depend on any one of them resolving: one retry against a placeholder that
+  // always resolves, then the template gradient. The retry marker terminates it.
+  assert.ok(SITE.includes('function altPhoto(seed,w)'), 'a fallback source exists');
+  assert.ok(SITE.includes('if(!t.getAttribute("data-alt")){ t.setAttribute("data-alt","1")'), 'retries exactly once');
+  assert.ok(SITE.includes('t.style.display="none"'), 'then reveals the gradient');
+  assert.ok(SITE.includes('hpi.onerror=function(){ if(hpi.src===hp) hpi.src=altPhoto('), 'the hero retries too');
+  assert.ok(SITE.includes('cfg.samplePhotos?"Stock photos'), 'the ribbon is honest about borrowed photos');
 });

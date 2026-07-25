@@ -247,7 +247,16 @@ ${SEO_PLACEHOLDER}
   function api(path, opts){ var u="/site/"+TENANT+path; if(PROPERTY){ u += (u.indexOf("?")<0?"?":"&")+"property="+encodeURIComponent(PROPERTY); } return fetch(u, opts).then(function(r){ return r.json().then(function(j){ return {status:r.status, body:j}; }); }); }
   function toast(m){ var t=document.createElement("div"); t.className="toast"; t.textContent=m; document.body.appendChild(t); setTimeout(function(){ t.remove(); },3200); }
   function el(tag, attrs, kids){ var e=document.createElement(tag); attrs=attrs||{}; Object.keys(attrs).forEach(function(k){ if(k==="html") e.innerHTML=attrs[k]; else if(k.slice(0,2)==="on"&&typeof attrs[k]==="function") e.addEventListener(k.slice(2),attrs[k]); else if(attrs[k]!=null) e.setAttribute(k, attrs[k]); }); (kids||[]).forEach(function(c){ if(c==null) return; e.appendChild(typeof c==="string"?document.createTextNode(c):c); }); return e; }
-  function hideImg(e){ if(e&&e.target){ e.target.style.display="none"; } }
+  // A photo URL that fails must not leave a hole in the design. Retry once
+  // against a deterministic placeholder that always resolves, and only then
+  // give up and reveal the template gradient underneath. Terminates: the retry
+  // is marked on the element, so a second failure hides it.
+  function altPhoto(seed,w){ return "https://picsum.photos/seed/"+encodeURIComponent(String(seed).replace(/[^a-zA-Z0-9]/g,"").slice(-16)||"home")+"/"+(w||1200)+"/800"; }
+  function hideImg(e){
+    var t=e&&e.target; if(!t) return;
+    if(!t.getAttribute("data-alt")){ t.setAttribute("data-alt","1"); t.src=altPhoto(t.getAttribute("alt")||t.src); return; }
+    t.style.display="none";
+  }
   function photosOf(d){ d=d||{}; var out=[]; if(d.photoDataUrl) out.push(d.photoDataUrl); (d.photos||[]).forEach(function(p){ if(out.indexOf(p)<0) out.push(p); }); return out; }
 
   function today(o){ var d=new Date(Date.now()+(o||0)*86400000); return d.toISOString().slice(0,10); }
@@ -283,11 +292,11 @@ ${SEO_PLACEHOLDER}
       document.body.setAttribute("data-hero", th.hero||"classic");
       document.body.setAttribute("data-cards", th.cards||"grid");
       document.body.setAttribute("data-feel", th.feel||"corporate");
-      if(content.heroPhotoDataUrl){ var hp=content.heroPhotoDataUrl; if(/^data:/.test(hp)){ rs.setProperty("--heroimg","url("+JSON.stringify(hp)+")"); } else { var hpi=new Image(); hpi.onload=function(){ rs.setProperty("--heroimg","url("+JSON.stringify(hp)+")"); }; hpi.src=hp; } }
+      if(content.heroPhotoDataUrl){ var hp=content.heroPhotoDataUrl; if(/^data:/.test(hp)){ rs.setProperty("--heroimg","url("+JSON.stringify(hp)+")"); } else { var hpi=new Image(); hpi.onload=function(){ rs.setProperty("--heroimg","url("+JSON.stringify(hpi.src)+")"); }; hpi.onerror=function(){ if(hpi.src===hp) hpi.src=altPhoto("hero"+cfg.tenantId,1800); }; hpi.src=hp; } }
       if(th.hero==="split"){ var hv=document.createElement("div"); hv.className="hero-visual"; var hd=document.querySelector("header.hero"); hd.insertBefore(hv, hd.querySelector(".searchbar")); }
       // ?chrome=0 suppresses the preview ribbon — the design catalog renders this
       // page as a thumbnail, where the banner would just be noise on every card.
-      if((cfg.previewTemplate||cfg.sampleData) && PQS.get("chrome")!=="0"){ var rb=document.createElement("div"); rb.textContent=(cfg.sampleData?"Sample content — publish your own units to replace it. ":"")+(cfg.previewTemplate?("Design preview: "+(th.name||cfg.previewTemplate)+" — not saved. Pick it in your Website settings to apply."):"Design preview."); rb.style.cssText="position:fixed;left:0;right:0;bottom:0;z-index:80;background:#111827;color:#fff;font:600 13px system-ui;padding:9px 16px;text-align:center;opacity:.94"; document.body.appendChild(rb); }
+      if((cfg.previewTemplate||cfg.sampleData) && PQS.get("chrome")!=="0"){ var rb=document.createElement("div"); rb.textContent=(cfg.sampleData?"Sample content — publish your own units to replace it. ":"")+(cfg.samplePhotos?"Stock photos — upload your own in the Website editor. ":"")+(cfg.previewTemplate?("Design preview: "+(th.name||cfg.previewTemplate)+" — not saved. Pick it in your Website settings to apply."):"Design preview."); rb.style.cssText="position:fixed;left:0;right:0;bottom:0;z-index:80;background:#111827;color:#fff;font:600 13px system-ui;padding:9px 16px;text-align:center;opacity:.94"; document.body.appendChild(rb); }
     }
     if(b.logoDataUrl){ var l=document.querySelector(".logo"); if(l){ var img=document.createElement("img"); img.src=b.logoDataUrl; img.alt=cfg.displayName; img.style.cssText="height:34px;width:auto;border-radius:6px"; l.replaceWith(img); } }
     if(content.heroTitle){ document.getElementById("heroTitle").textContent = content.heroTitle; }

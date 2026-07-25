@@ -32,7 +32,11 @@ pg.on('pageerror', (e) => errs.push('PE:' + e.message));
 // first paint of every framed microsite (a pending render-blocking stylesheet).
 // A real browser resolves it; stub it so the thumbnails actually paint here.
 await pg.route('**fonts.googleapis.com/**', (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
-await pg.route('**images.unsplash.com/**', (r) => r.abort());
+// The photo CDN is unreachable from this sandbox. Serve a stand-in image so the
+// thumbnails show the photo-led composition a real browser will render.
+const stubPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOo6qsAIgYIBQAqFgYB3zJ6IgAAAABJRU5ErkJggg==', 'base64');
+await pg.route('**images.unsplash.com/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: stubPng }));
+await pg.route('**picsum.photos/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: stubPng }));
 
 await pg.goto(`http://127.0.0.1:${port}/`);
 await pg.evaluate(`localStorage.setItem('usos.token','o')`);
@@ -71,6 +75,14 @@ const rendered = await pg.evaluate(`(() => {
   return { feel: d.body.getAttribute('data-feel'), hero: d.body.getAttribute('data-hero'), units: d.querySelectorAll('#results .card').length };
 })()`);
 console.log('first thumbnail rendered →', JSON.stringify(rendered));
+const photos = await pg.evaluate(`(() => {
+  const f = document.querySelector('.tplthumb iframe'); const d = f.contentDocument;
+  const imgs = Array.from(d.images).filter(i => !!i.getAttribute('src'));
+  return { imgs: imgs.length, painted: imgs.filter(i => i.complete && i.naturalWidth > 0).length,
+    hero: (d.documentElement.style.getPropertyValue('--heroimg')||'none').slice(0,40),
+    first: imgs.length ? imgs[0].src.slice(0,52) : '(none)' };
+})()`);
+console.log('thumbnail photography →', JSON.stringify(photos));
 
 // Filter by personality.
 await pg.evaluate(`Array.from(document.querySelectorAll('.tplchip')).find(c => c.textContent === 'Boutique').click()`);

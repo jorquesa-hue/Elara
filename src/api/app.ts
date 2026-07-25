@@ -81,7 +81,7 @@ import { buildSubjectAccessReport, redactPartyRecord, redactRecipient, type Eras
 import { recommendAccess } from '../access-advisor.ts';
 import { buildReport, computeInsights, REPORT_CATALOG, type ReportingInput } from '../reporting.ts';
 import { buildCustomReport, dataSources, type CustomReportSpec } from '../report-builder.ts';
-import { siteListing, checkAvailability, isValidDate, type BookingSiteInput } from '../booking-site.ts';
+import { siteListing, checkAvailability, isValidDate, dressWithStockPhotos, stockPhotoUrl, STOCK_PHOTOS, type BookingSiteInput } from '../booking-site.ts';
 import { SiteContentStore, SiteContentError, sanitizeSiteContent } from '../site-content.ts';
 import { templateGallery, isKnownTemplate, resolveTheme } from '../site-templates.ts';
 import { buildDemoWorld, DEMO_MARKER_UNIT_ID, buildEuropeWorld, EUROPE_MARKER_UNIT_ID, buildPortfolioWorld, PORTFOLIO_MARKER_UNIT_ID } from '../demo-data.ts';
@@ -4219,11 +4219,9 @@ export class App {
     // PREVIEW only — so the template gallery shows real homes, not a gradient.
     // These are direct CDN URLs; on the live site a visitor's browser loads them
     // (the microsite falls back to the template gradient for any that don't).
-    const U = (id: string) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=1280&q=70`;
-    const EXTERIOR = ['1512917774080-9991f1c4c750', '1568605114967-8130f3a36994', '1600596542815-ffad4c1539a9', '1545324418-cc1a3fa10c00'];
-    const INTERIOR = ['1560448204-e02f11c3d0e2', '1502672260266-1c1ef2d93688', '1493809842364-78817add7ffb', '1484154218962-a197022b5858', '1600607687939-ce8a6c25118c', '1522708323590-d24dbb6b0267'];
-    const SCENIC = ['1519501025264-65ba15a82390', '1600585154340-be6161a56a0c'];
-    const heroPhoto = U('1600585154340-be6161a56a0c'); // a modern home exterior
+    const U = stockPhotoUrl;
+    const EXTERIOR = STOCK_PHOTOS.exterior, INTERIOR = STOCK_PHOTOS.interior, SCENIC = STOCK_PHOTOS.scenic;
+    const heroPhoto = U(SCENIC[1]!, 1800); // a modern home exterior
     // Representative rich content so the design preview showcases every section.
     // Operator-authored content (spread AFTER) always wins over these defaults.
     const sampleBase = {
@@ -4403,6 +4401,11 @@ export class App {
       if (!effective) return { status: 404, body: { error: 'no published inventory for this site' } };
       const listing = siteListing(effective);
       if (demo && effective !== inp) listing.sampleData = true;
+      // A design preview of a real portfolio that has no photography yet would
+      // render every tile as a flat gradient — you cannot judge a design that
+      // way. Borrow stock imagery for the preview only; the operator's own
+      // photos, once uploaded, always win (dressWithStockPhotos no-ops then).
+      if (demo && dressWithStockPhotos(listing)) listing.samplePhotos = true;
       const preview = this.optString(body, 'template');
       if (preview && isKnownTemplate(preview)) {
         const opts = sanitizeSiteContent({

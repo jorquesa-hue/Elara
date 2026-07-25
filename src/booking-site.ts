@@ -77,6 +77,8 @@ export interface SiteListing {
   previewTemplate?: string;
   /** True when the listing is representative sample data (design preview only). */
   sampleData?: boolean;
+  /** True when a photo-less design preview borrowed stock photography. */
+  samplePhotos?: boolean;
   units: Array<{ id: string; label: string; fromCents: number | null; typeId?: string; details?: UnitSiteDetails }>;
   /** Floorplan sections (only types with ≥1 published unit), largest first. */
   floorplans: SiteFloorplan[];
@@ -122,6 +124,61 @@ function isPublished(u: SiteUnit, inp: BookingSiteInput): boolean {
 
 /** The marketing listing: every published unit with a "from" price + its
  *  operator-authored details, plus the page content (hero/about/contact). */
+/** Curated free-license (Unsplash) real-estate photography, used ONLY to dress a
+ *  DESIGN PREVIEW. A design cannot be judged against grey gradients — the sales
+ *  team needs to see the template the way a finished site looks — but the kernel
+ *  never fetches image bytes: these are CDN URLs the VIEWER's browser loads.
+ *  An operator's own photos always win; this only fills a preview that has none. */
+export const STOCK_PHOTOS = {
+  exterior: ['1512917774080-9991f1c4c750', '1568605114967-8130f3a36994', '1600596542815-ffad4c1539a9', '1545324418-cc1a3fa10c00', '1580587771525-78b9dba3b914', '1570129477492-45c003edd2be'],
+  interior: ['1560448204-e02f11c3d0e2', '1502672260266-1c1ef2d93688', '1493809842364-78817add7ffb', '1484154218962-a197022b5858', '1600607687939-ce8a6c25118c', '1522708323590-d24dbb6b0267', '1586023492125-27b2c045efd7', '1616486338812-3dadae4b4ace'],
+  scenic: ['1519501025264-65ba15a82390', '1600585154340-be6161a56a0c'],
+} as const;
+
+/** A CDN URL for one curated photo, sized for the web. */
+export const stockPhotoUrl = (id: string, w = 1280): string =>
+  `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w}&q=70`;
+
+/** The pool a preview draws from, ordered so consecutive tiles look different. */
+export function stockPhotoPool(): string[] {
+  const { exterior, interior, scenic } = STOCK_PHOTOS;
+  const out: string[] = [];
+  const most = Math.max(exterior.length, interior.length, scenic.length);
+  for (let i = 0; i < most; i++) {
+    if (interior[i]) out.push(stockPhotoUrl(interior[i]!));
+    if (exterior[i]) out.push(stockPhotoUrl(exterior[i]!));
+    if (scenic[i]) out.push(stockPhotoUrl(scenic[i]!));
+  }
+  return out;
+}
+
+/** True when a listing carries no photography at all — hero, gallery or units. */
+export function listingHasPhotos(l: SiteListing): boolean {
+  if (l.content.heroPhotoDataUrl) return true;
+  if ((l.content.galleryPhotos ?? []).length) return true;
+  return l.units.some((u) => !!(u.details?.photoDataUrl || (u.details?.photos ?? []).length));
+}
+
+/** Dress a photo-less DESIGN PREVIEW with curated stock photography, in place.
+ *  Content, prices and unit labels stay the operator's — only the imagery is
+ *  borrowed, so the preview shows their portfolio in a finished-looking design.
+ *  A no-op (returns false) the moment the listing has a photo of its own. */
+export function dressWithStockPhotos(l: SiteListing): boolean {
+  if (listingHasPhotos(l)) return false;
+  const pool = stockPhotoPool();
+  if (!pool.length) return false;
+  const at = (i: number) => pool[((i % pool.length) + pool.length) % pool.length]!;
+  l.content.heroPhotoDataUrl = stockPhotoUrl(STOCK_PHOTOS.scenic[1]!, 1800);
+  l.content.galleryPhotos = [0, 3, 6, 1, 4, 7].map(at);
+  l.units.forEach((u, i) => {
+    const details = { ...(u.details ?? {}) };
+    details.photoDataUrl = at(i * 3);
+    details.photos = [at(i * 3 + 1), at(i * 3 + 2)];
+    u.details = details;
+  });
+  return true;
+}
+
 export function siteListing(inp: BookingSiteInput): SiteListing {
   const { units: _unitDetails, ...page } = inp.content ?? {};
   const typeById = new Map((inp.unitTypes ?? []).map((t) => [t.id, t]));
