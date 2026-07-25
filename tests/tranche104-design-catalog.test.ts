@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { templateGallery, FEEL_KEYS } from '../src/site-templates.ts';
+import { templateGallery, FEEL_KEYS, SEGMENT_KEYS, SEGMENT_LABELS, segmentFor, segmentForBusiness, SITE_TEMPLATES } from '../src/site-templates.ts';
 import { bookingSiteHtml } from '../src/api/booking-site.ts';
 import { App } from '../src/api/app.ts';
 import { StaticTokenAuthenticator, type AuthContext } from '../src/api/context.ts';
@@ -55,18 +55,68 @@ test('picking a card still drives the saved template + the big live preview', ()
   assert.ok(PORTAL.includes('body.template = pickedTemplate'), 'the pick is what Save writes');
 });
 
-test('the feel filter offers every personality the gallery actually uses', () => {
-  const feels = new Set(templateGallery().map((t) => t.feel));
-  assert.equal(feels.size, 5);
-  for (const f of feels) assert.ok(FEEL_KEYS.includes(f), `${f} is a known feel`);
-  // The chip row is built from the gallery, not a hardcoded list, so it cannot drift.
-  assert.ok(PORTAL.includes('if(tp.feel && feelsPresent.indexOf(tp.feel)<0) feelsPresent.push(tp.feel)'));
-  assert.ok(PORTAL.includes('[["","All designs"]].concat('), 'an all-designs chip leads the row');
+test('every template is filed under exactly one asset segment, all three in use', () => {
+  const segs = templateGallery().map((t) => t.segment);
+  assert.equal(segs.length, 30);
+  for (const s of segs) assert.ok(SEGMENT_KEYS.includes(s), `${s} is a known segment`);
+  assert.equal(new Set(segs).size, 3, 'multifamily, student and short-stay all populated');
+  for (const key of SEGMENT_KEYS) {
+    assert.ok(segs.filter((s) => s === key).length >= 5, `${key} has a real choice of designs`);
+  }
+  // Every template resolves a segment even without declaring one inline.
+  for (const t of SITE_TEMPLATES) assert.ok(SEGMENT_KEYS.includes(segmentFor(t)), t.id);
+  // The gallery carries the human label so the chip row cannot drift from the data.
+  assert.equal(templateGallery().find((t) => t.id === 'metropolitan')!.segmentLabel, SEGMENT_LABELS.multifamily);
+  assert.equal(templateGallery().find((t) => t.id === 'urbannest')!.segment, 'student');
+  assert.equal(templateGallery().find((t) => t.id === 'atlantica')!.segment, 'shortstay');
+});
+
+test('the catalog opens on the segment matching the operator\'s business', () => {
+  assert.equal(segmentForBusiness('multifamily'), 'multifamily');
+  assert.equal(segmentForBusiness('corporate_housing'), 'multifamily');
+  assert.equal(segmentForBusiness('student_housing'), 'student');
+  assert.equal(segmentForBusiness('short_stay'), 'shortstay');
+  assert.equal(segmentForBusiness('boutique_hotel'), 'shortstay');
+  assert.equal(segmentForBusiness('mixed_portfolio'), '', 'a mixed portfolio sees everything');
+  assert.equal(segmentForBusiness(undefined), '');
+  const app = seededApp();
+  app.dispatch({ method: 'PUT', path: '/config', bearer: 'Bearer mgr', body: { businessStructure: 'student_housing' } });
+  const res = app.dispatch({ method: 'GET', path: '/site-templates', bearer: 'Bearer mgr', body: {} });
+  assert.equal((res.body as { recommendedSegment: string }).recommendedSegment, 'student');
+  assert.ok(PORTAL.includes('segsPresent.indexOf(recommendedSegment)>=0'), 'the portal opens on it');
 });
 
 test('a filtered-out card is hidden, not destroyed (its frame stays loaded)', () => {
-  assert.ok(PORTAL.includes('cardEls[id].style.display = (!activeFeel || cardFeel[id]===activeFeel) ? "" : "none"'));
+  assert.ok(PORTAL.includes('cardEls[id].style.display = (!activeSeg || cardSeg[id]===activeSeg) ? "" : "none"'));
   assert.ok(!PORTAL.includes('grid.innerHTML=""'), 'the grid is never rebuilt by the filter');
+});
+
+test('?thumb=1 trims the site to what a thumbnail shows (the catalog was slow)', () => {
+  const app = seededApp();
+  app.dispatch({ method: 'POST', path: '/units/bulk', bearer: 'Bearer mgr', body: { codePrefix: 'APT', count: 60, startNumber: 100 } });
+  const full = app.dispatch({ method: 'GET', path: '/site/jq/config', body: { template: 'noir', demo: '1' } }).body as {
+    units: unknown[]; floorplans: unknown[]; content: Record<string, unknown>;
+  };
+  const thumb = app.dispatch({ method: 'GET', path: '/site/jq/config', body: { template: 'noir', demo: '1', thumb: '1' } }).body as typeof full;
+  assert.ok(full.units.length > 50, 'a real portfolio is large');
+  assert.equal(thumb.units.length, 6, 'a thumbnail only ever shows the first row');
+  assert.ok(thumb.floorplans.length <= 3);
+  // Below-fold sections are invisible at thumbnail scale — do not build them.
+  for (const k of ['faqs', 'testimonials', 'policies', 'highlights', 'location', 'about']) {
+    assert.equal(thumb.content[k], undefined, `${k} dropped`);
+  }
+  assert.ok(JSON.stringify(thumb).length * 5 < JSON.stringify(full).length, 'dramatically smaller payload');
+  // The design itself is untouched — that is the whole point of the thumbnail.
+  assert.deepEqual(thumb.content['heroTitle'], full.content['heroTitle']);
+  assert.equal((thumb as unknown as { theme: { id: string } }).theme.id, 'noir');
+});
+
+test('thumbnails load through a bounded queue, not thirty at once', () => {
+  assert.ok(PORTAL.includes('var MAX_INFLIGHT=3'), 'a small concurrency window');
+  assert.ok(PORTAL.includes('function enqueueFrame(fr,url)'), 'frames are queued, not fired immediately');
+  assert.ok(PORTAL.includes('setTimeout(release, 8000)'), 'a slow frame cannot wedge the queue');
+  assert.ok(PORTAL.includes('thumb: "1"'), 'and each asks for the trimmed site');
+  assert.ok(PORTAL.includes('.replace("&thumb=1","")'), 'while "Open full" gets the real one');
 });
 
 test('?chrome=0 drops the preview ribbon so thumbnails are clean', () => {

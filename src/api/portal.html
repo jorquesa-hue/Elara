@@ -4012,6 +4012,7 @@
       if(rs[0].status!==200){ slot.appendChild(h("p",{class:"muted"},[t("msg.denied")])); return; }
       var allUnits=(rs[0].body.units||[]).slice().sort(function(a,b){return a.label.localeCompare(b.label);});
       var templates=(rs[1].body&&rs[1].body.templates)||[];
+      var recommendedSegment=(rs[1].body&&rs[1].body.recommendedSegment)||"";
       var props=(rs[2].status===200?(rs[2].body.properties||[]):[]).slice().sort(function(a,b){return (a.name||"").localeCompare(b.name||"");});
       var byId={}; props.forEach(function(p){ byId[p.id]=p; });
       // Which site are you editing? Portfolio default, or one property.
@@ -4025,7 +4026,7 @@
         editorWrap.innerHTML=""; editorWrap.appendChild(h("div",{class:"muted",style:"margin-top:14px"},["Loading site content…"]));
         api("/site-content"+(pid?("?propertyId="+encodeURIComponent(pid)):"")).then(function(r){
           editorWrap.innerHTML="";
-          buildSiteEditor(editorWrap, (r.body&&r.body.content)||{}, unitsScoped, templates, scope);
+          buildSiteEditor(editorWrap, (r.body&&r.body.content)||{}, unitsScoped, templates, scope, recommendedSegment);
         });
       }
       scopeSel.addEventListener("change", loadScope);
@@ -4062,7 +4063,7 @@
     });
     return wrap;
   }
-  function buildSiteEditor(slot, content, units, templates, scope){
+  function buildSiteEditor(slot, content, units, templates, scope, recommendedSegment){
     var editable = can("masterdata.manage");
     var w = JSON.parse(JSON.stringify(content||{})); w.units = w.units||{};
     scope = scope || { propertyId:"", code:"", name:"Whole portfolio" };
@@ -4106,23 +4107,43 @@
       // Frames load lazily as they scroll into view (30 designs at once is a lot).
       var THUMB_W=1280, THUMB_H=920;
       var thumbs=[];
+      // Never let more than a few frames load at once. Thirty simultaneous site
+      // boots saturate the connection pool and the main thread; a small window
+      // keeps scrolling smooth and each card still fills in quickly.
+      var MAX_INFLIGHT=3, inflight=0, frameQueue=[];
+      function pumpFrames(){
+        while(inflight<MAX_INFLIGHT && frameQueue.length){
+          var job=frameQueue.shift(); inflight++;
+          (function(j){
+            var done=false;
+            var release=function(){ if(done) return; done=true; inflight--; pumpFrames(); };
+            j.fr.addEventListener("load", release);
+            j.fr.addEventListener("error", release);
+            setTimeout(release, 8000); // never wedge the queue on a slow frame
+            j.fr.src=j.url;
+          })(job);
+        }
+      }
+      function enqueueFrame(fr,url){ frameQueue.push({fr:fr,url:url}); pumpFrames(); }
       function designThumb(tplId){
         var box=h("div",{class:"tplthumb"},[ h("div",{class:"tplskel"},["Loading design…"]) ]);
         var fr=document.createElement("iframe");
         fr.setAttribute("scrolling","no"); fr.setAttribute("tabindex","-1"); fr.setAttribute("title",tplId+" preview"); fr.setAttribute("aria-hidden","true");
         fr.style.cssText="width:"+THUMB_W+"px;height:"+THUMB_H+"px";
-        var q=new URLSearchParams({ template: tplId, demo: "1", chrome: "0" });
+        // thumb=1 trims the site to what a thumbnail actually shows — without it
+        // every card rebuilds the whole portfolio and browsing crawls.
+        var q=new URLSearchParams({ template: tplId, demo: "1", chrome: "0", thumb: "1" });
         if(scope.propertyId) q.set("property", scope.code);
         var url="/site/"+encodeURIComponent(catTenant)+"?"+q.toString();
         var loaded=false;
         function fit(){ var wpx=box.clientWidth||264; fr.style.transform="scale("+(wpx/THUMB_W)+")"; box.style.height=Math.round(wpx*THUMB_H/THUMB_W)+"px"; }
-        function load(){ if(loaded) return; loaded=true; fit(); box.appendChild(fr); fr.src=url; }
+        function load(){ if(loaded) return; loaded=true; fit(); box.appendChild(fr); enqueueFrame(fr, url); }
         fit();
-        return { node: box, fit: fit, load: load, url: url, openUrl: url.replace("&chrome=0","") };
+        return { node: box, fit: fit, load: load, url: url, openUrl: url.replace("&chrome=0","").replace("&thumb=1","") };
       }
       var filterRow=h("div",{class:"tplfilter"},[]);
       var grid=h("div",{class:"tplgrid"},[]);
-      var cardEls={}, cardFeel={};
+      var cardEls={}, cardSeg={};
       function highlight(){ Object.keys(cardEls).forEach(function(id){ cardEls[id].classList.toggle("sel", id===pickedTemplate); }); }
       templates.forEach(function(tp){
         var th=designThumb(tp.id); thumbs.push(th);
@@ -4138,18 +4159,23 @@
             open
           ])
         ]);
-        cardEls[tp.id]=cardEl; cardFeel[tp.id]=tp.feel||""; grid.appendChild(cardEl);
+        cardEls[tp.id]=cardEl; cardSeg[tp.id]=tp.segment||""; grid.appendChild(cardEl);
       });
-      // Filter by design personality — hidden cards keep any frame they already loaded.
-      var activeFeel="";
-      var feelsPresent=[]; templates.forEach(function(tp){ if(tp.feel && feelsPresent.indexOf(tp.feel)<0) feelsPresent.push(tp.feel); });
+      // Filter by ASSET TYPE — how the sales team actually shops for a design.
+      // A hidden card has no layout box, so it never triggers a frame load; an
+      // already-loaded frame survives being hidden and comes back instantly.
+      var segsPresent=[]; templates.forEach(function(tp){ if(tp.segment && segsPresent.indexOf(tp.segment)<0) segsPresent.push(tp.segment); });
+      var segLabel={}; templates.forEach(function(tp){ if(tp.segment) segLabel[tp.segment]=tp.segmentLabel||tp.segment; });
+      // Open on the segment matching this operator's business, so they land on the
+      // designs built for their asset class (and a third of the frames, not all).
+      var activeSeg = (segsPresent.indexOf(recommendedSegment)>=0) ? recommendedSegment : "";
       function applyFilter(){
-        Object.keys(cardEls).forEach(function(id){ cardEls[id].style.display = (!activeFeel || cardFeel[id]===activeFeel) ? "" : "none"; });
-        Array.prototype.forEach.call(filterRow.children,function(ch){ ch.classList.toggle("on", ch.getAttribute("data-feel")===activeFeel); });
-        thumbs.forEach(function(t){ t.fit(); });
+        Object.keys(cardEls).forEach(function(id){ cardEls[id].style.display = (!activeSeg || cardSeg[id]===activeSeg) ? "" : "none"; });
+        Array.prototype.forEach.call(filterRow.children,function(ch){ ch.classList.toggle("on", ch.getAttribute("data-seg")===activeSeg); });
+        thumbs.forEach(function(t){ if(t.node.clientWidth) t.fit(); });
       }
-      [["","All designs"]].concat(feelsPresent.map(function(f){ return [f, FEEL_LABEL[f]||f]; })).forEach(function(pair){
-        var chip=h("button",{type:"button",class:"tplchip","data-feel":pair[0],onclick:function(){ activeFeel=pair[0]; applyFilter(); }},[pair[1]]);
+      [["","All designs"]].concat(segsPresent.map(function(sg){ return [sg, segLabel[sg]]; })).forEach(function(pair){
+        var chip=h("button",{type:"button",class:"tplchip","data-seg":pair[0],onclick:function(){ activeSeg=pair[0]; applyFilter(); }},[pair[1]]);
         filterRow.appendChild(chip);
       });
       slot.appendChild(filterRow);

@@ -84,15 +84,17 @@ const photos = await pg.evaluate(`(() => {
 })()`);
 console.log('thumbnail photography →', JSON.stringify(photos));
 
-// Filter by personality.
-await pg.evaluate(`Array.from(document.querySelectorAll('.tplchip')).find(c => c.textContent === 'Boutique').click()`);
+// Filter by asset type.
+await pg.evaluate(`Array.from(document.querySelectorAll('.tplchip')).find(c => c.textContent === 'Student housing').click()`);
 await pg.waitForTimeout(350);
 const filtered = await pg.evaluate(`(() => {
   const all = Array.from(document.querySelectorAll('.tplcard'));
   const vis = all.filter(c => c.style.display !== 'none');
   return { visible: vis.length, total: all.length, onChip: (document.querySelector('.tplchip.on') || {}).textContent };
 })()`);
-console.log('filter Boutique →', filtered.visible + '/' + filtered.total, 'visible | active chip=' + filtered.onChip);
+console.log('filter Student housing →', filtered.visible + '/' + filtered.total, 'visible | active chip=' + filtered.onChip);
+const segLoads = await pg.evaluate(`document.querySelectorAll('.tplthumb iframe').length`);
+console.log('frames loaded after filtering →', segLoads, '(hidden cards never start a frame)');
 await pg.evaluate(`Array.from(document.querySelectorAll('.tplchip')).find(c => c.textContent === 'All designs').click()`);
 await pg.waitForTimeout(250);
 

@@ -279,7 +279,7 @@ ${SEO_PLACEHOLDER}
   if(PREVIEW || PQS.get("demo")){
     var pq = new URLSearchParams();
     if(PREVIEW) pq.set("template", PREVIEW);
-    ["radius","font","hero","cards","demo"].forEach(function(k){ var v = PQS.get(k); if(v) pq.set(k, v); });
+    ["radius","font","hero","cards","demo","thumb"].forEach(function(k){ var v = PQS.get(k); if(v) pq.set(k, v); });
     PPARAMS = "?" + pq.toString();
   }
   api("/config" + PPARAMS).then(function(r){

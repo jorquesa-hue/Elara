@@ -83,7 +83,7 @@ import { buildReport, computeInsights, REPORT_CATALOG, type ReportingInput } fro
 import { buildCustomReport, dataSources, type CustomReportSpec } from '../report-builder.ts';
 import { siteListing, checkAvailability, isValidDate, dressWithStockPhotos, stockPhotoUrl, STOCK_PHOTOS, type BookingSiteInput } from '../booking-site.ts';
 import { SiteContentStore, SiteContentError, sanitizeSiteContent } from '../site-content.ts';
-import { templateGallery, isKnownTemplate, resolveTheme } from '../site-templates.ts';
+import { templateGallery, isKnownTemplate, resolveTheme, segmentForBusiness } from '../site-templates.ts';
 import { buildDemoWorld, DEMO_MARKER_UNIT_ID, buildEuropeWorld, EUROPE_MARKER_UNIT_ID, buildPortfolioWorld, PORTFOLIO_MARKER_UNIT_ID } from '../demo-data.ts';
 
 export interface ApiRequest {
@@ -1579,7 +1579,12 @@ export class App {
     });
 
     // The 20-template design gallery the Website builder's picker renders.
-    this.add('GET', '/site-templates', 'masterdata.read', () => ({ status: 200, body: { templates: templateGallery() } }));
+    // recommendedSegment opens the catalog on the designs built for this
+    // operator's asset class rather than all thirty at once.
+    this.add('GET', '/site-templates', 'masterdata.read', (ctx) => ({
+      status: 200,
+      body: { templates: templateGallery(), recommendedSegment: segmentForBusiness(this.config.get(ctx.tenantId).businessStructure) },
+    }));
 
     this.add('PUT', '/site-content', 'masterdata.manage', (ctx, _p, body) => {
       const propertyId = this.optString(body, 'propertyId');
@@ -4406,6 +4411,16 @@ export class App {
       // way. Borrow stock imagery for the preview only; the operator's own
       // photos, once uploaded, always win (dressWithStockPhotos no-ops then).
       if (demo && dressWithStockPhotos(listing)) listing.samplePhotos = true;
+      // ?thumb=1 — the catalog renders this page as a small thumbnail, where only
+      // the top of the site is ever visible. Building 600+ unit cards per card (×30
+      // designs) is what made browsing the catalog crawl, so trim to what shows.
+      if (body['thumb'] === '1') {
+        listing.units = listing.units.slice(0, 6);
+        listing.floorplans = listing.floorplans.slice(0, 3);
+        const c = listing.content as Record<string, unknown>;
+        if (Array.isArray(c['galleryPhotos'])) c['galleryPhotos'] = (c['galleryPhotos'] as string[]).slice(0, 4);
+        for (const belowFold of ['faqs', 'testimonials', 'policies', 'highlights', 'location', 'about']) delete c[belowFold];
+      }
       const preview = this.optString(body, 'template');
       if (preview && isKnownTemplate(preview)) {
         const opts = sanitizeSiteContent({

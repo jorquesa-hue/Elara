@@ -111,6 +111,8 @@ export interface SiteTemplate {
   pairing?: PairingKey;
   /** The design personality (section/heading/button/card treatment bundle). */
   feel?: FeelKey;
+  /** The asset class the design is built to sell (defaults via SEGMENT_BY_ID). */
+  segment?: SegmentKey;
 }
 
 const T = (t: SiteTemplate) => t;
@@ -127,6 +129,45 @@ const FEEL_BY_ID: Record<string, FeelKey> = {
 };
 export function feelFor(t: SiteTemplate): FeelKey {
   return t.feel ?? FEEL_BY_ID[t.id] ?? 'corporate';
+}
+
+/** Which kind of asset a design is built to sell. This is how the sales team
+ *  actually shops for a template — you pick the segment first, then the look. */
+export type SegmentKey = 'multifamily' | 'student' | 'shortstay';
+export const SEGMENT_KEYS: readonly SegmentKey[] = ['multifamily', 'student', 'shortstay'];
+export const SEGMENT_LABELS: Record<SegmentKey, string> = {
+  multifamily: 'Multifamily',
+  student: 'Student housing',
+  shortstay: 'Short-stay & hotel',
+};
+
+const SEGMENT_BY_ID: Record<string, SegmentKey> = {
+  // Multifamily — apartment communities, leasing sites, residence brokerages.
+  classic: 'multifamily', bluecorp: 'multifamily', metropolitan: 'multifamily', skyline: 'multifamily',
+  highline: 'multifamily', belmont: 'multifamily', sablewood: 'multifamily', archer: 'multifamily',
+  maison: 'multifamily', verdant: 'multifamily', onyx: 'multifamily',
+  // Student housing — co-living, community-led, younger and more playful.
+  urbannest: 'student', loftworks: 'student', ipanema: 'student', palmcourt: 'student',
+  minima: 'student', zen: 'student',
+  // Short-stay & hotel — nightly stays, resorts, inns, villas, lodges.
+  horizon: 'shortstay', atlantica: 'shortstay', tropicalia: 'shortstay', residence: 'shortstay',
+  nordic: 'shortstay', vineyard: 'shortstay', alpine: 'shortstay', noir: 'shortstay',
+  hacienda: 'shortstay', harborlight: 'shortstay', saltair: 'shortstay', terracotta: 'shortstay',
+  aspen: 'shortstay',
+};
+export function segmentFor(t: SiteTemplate): SegmentKey {
+  return t.segment ?? SEGMENT_BY_ID[t.id] ?? 'multifamily';
+}
+
+/** The catalog segment that best matches a tenant's business structure, so the
+ *  picker opens on the designs that operator is actually shopping for. */
+export function segmentForBusiness(structure: string | undefined): SegmentKey | '' {
+  switch (structure) {
+    case 'multifamily': case 'corporate_housing': return 'multifamily';
+    case 'student_housing': return 'student';
+    case 'short_stay': case 'boutique_hotel': return 'shortstay';
+    default: return ''; // mixed_portfolio (or unknown) → show everything
+  }
 }
 
 export const SITE_TEMPLATES: readonly SiteTemplate[] = [
@@ -263,10 +304,11 @@ export function resolveTheme(templateId?: string, options?: TemplateOptions, bra
 }
 
 /** The gallery summaries the portal's template picker renders. */
-export function templateGallery(): Array<{ id: string; name: string; description: string; inspiration: string; hero: HeroStyle; cards: CardStyle; feel: FeelKey; font: FontKey; radius: RadiusKey; swatch: string[] }> {
+export function templateGallery(): Array<{ id: string; name: string; description: string; inspiration: string; hero: HeroStyle; cards: CardStyle; feel: FeelKey; segment: SegmentKey; segmentLabel: string; font: FontKey; radius: RadiusKey; swatch: string[] }> {
   return SITE_TEMPLATES.map((t) => ({
     id: t.id, name: t.name, description: t.description, inspiration: t.inspiration,
-    hero: t.hero, cards: t.cards, feel: feelFor(t), font: t.font, radius: t.radius,
+    hero: t.hero, cards: t.cards, feel: feelFor(t), segment: segmentFor(t), segmentLabel: SEGMENT_LABELS[segmentFor(t)],
+    font: t.font, radius: t.radius,
     swatch: [t.palette.bg, t.palette.card, t.palette.accent, t.palette.accent2, t.palette.text],
   }));
 }
