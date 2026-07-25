@@ -463,6 +463,27 @@
     /* an actions cell (buttons) spans the card full-width */
     .tablewrap tbody td .row, .tablewrap tbody td .btn { flex: 1; }
   }
+
+  /* Design catalog — each card shows the REAL site rendered in that template,
+     an iframe laid out at desktop width then scaled down to thumbnail size, so
+     the sales team browses actual designs (photos and all) instead of swatches. */
+  .tplgrid { display: grid; grid-template-columns: repeat(auto-fill,minmax(268px,1fr)); gap: 14px; }
+  .tplcard { background: var(--surface); border: 2px solid var(--border); border-radius: var(--radius); overflow: hidden;
+    cursor: pointer; transition: border-color .14s, box-shadow .14s, transform .1s; }
+  .tplcard:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+  .tplcard.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .tplthumb { position: relative; overflow: hidden; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+  .tplthumb iframe { border: 0; transform-origin: top left; pointer-events: none; background: #fff; }
+  .tplthumb .tplskel { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: var(--subtle); font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; }
+  .tplmeta { padding: 12px 13px 13px; }
+  .tplswatch { display: flex; gap: 0; margin: 8px 0 7px; border-radius: 6px; overflow: hidden; }
+  .tplswatch span { flex: 1; height: 12px; }
+  .tplfeel { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .tplfilter { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 0 14px; }
+  .tplchip { background: var(--surface-2); border: 1px solid var(--border); color: var(--muted); border-radius: 999px;
+    padding: 5px 13px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .tplchip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 </style>
 </head>
 <body>
@@ -4078,21 +4099,69 @@
     var FEEL_LABEL={ editorial:"Editorial", boutique:"Boutique", resort:"Resort", minimal:"Minimal", corporate:"Corporate" };
     if(templates && templates.length){
       slot.appendChild(h("h2",{},["Design — pick a template"]));
-      slot.appendChild(h("p",{class:"sub"},[templates.length+" finished designs modeled on the best real-estate marketing sites. Pick one and see it live below — your logo, brand color and content flow into it automatically."]));
-      var gallery=h("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px"},[]);
-      var cardEls={};
-      function highlight(){ Object.keys(cardEls).forEach(function(id){ cardEls[id].style.borderColor = id===pickedTemplate ? "var(--accent)" : "var(--border)"; cardEls[id].style.boxShadow = id===pickedTemplate ? "0 0 0 2px var(--accent-soft)" : "none"; }); }
+      slot.appendChild(h("p",{class:"sub"},[templates.length+" finished designs modeled on the best real-estate marketing sites. Every card below is the REAL site rendered in that design — photography, type and all. Click one to select it; your logo, brand color and content flow in automatically."]));
+      var catTenant=(state.me&&state.me.tenantId)||(state.config&&state.config.tenantId)||"";
+      // Each thumbnail is the live microsite in an iframe laid out at desktop width
+      // and scaled down, so the sales team browses actual designs, not swatches.
+      // Frames load lazily as they scroll into view (30 designs at once is a lot).
+      var THUMB_W=1280, THUMB_H=920;
+      var thumbs=[];
+      function designThumb(tplId){
+        var box=h("div",{class:"tplthumb"},[ h("div",{class:"tplskel"},["Loading design…"]) ]);
+        var fr=document.createElement("iframe");
+        fr.setAttribute("scrolling","no"); fr.setAttribute("tabindex","-1"); fr.setAttribute("title",tplId+" preview"); fr.setAttribute("aria-hidden","true");
+        fr.style.cssText="width:"+THUMB_W+"px;height:"+THUMB_H+"px";
+        var q=new URLSearchParams({ template: tplId, demo: "1", chrome: "0" });
+        if(scope.propertyId) q.set("property", scope.code);
+        var url="/site/"+encodeURIComponent(catTenant)+"?"+q.toString();
+        var loaded=false;
+        function fit(){ var wpx=box.clientWidth||264; fr.style.transform="scale("+(wpx/THUMB_W)+")"; box.style.height=Math.round(wpx*THUMB_H/THUMB_W)+"px"; }
+        function load(){ if(loaded) return; loaded=true; fit(); box.appendChild(fr); fr.src=url; }
+        fit();
+        return { node: box, fit: fit, load: load, url: url, openUrl: url.replace("&chrome=0","") };
+      }
+      var filterRow=h("div",{class:"tplfilter"},[]);
+      var grid=h("div",{class:"tplgrid"},[]);
+      var cardEls={}, cardFeel={};
+      function highlight(){ Object.keys(cardEls).forEach(function(id){ cardEls[id].classList.toggle("sel", id===pickedTemplate); }); }
       templates.forEach(function(tp){
-        var sw=h("div",{class:"row",style:"gap:0;margin:9px 0 8px;border-radius:8px;overflow:hidden;border:1px solid rgba(0,0,0,.10)"}, (tp.swatch||[]).map(function(c){ return h("span",{style:"flex:1;height:30px;background:"+c},[]) ; }));
-        var cardEl=h("div",{class:"panel",style:"cursor:pointer;padding:13px;border:2px solid var(--border)",onclick:function(){ pickedTemplate=tp.id; highlight(); refreshPreview(); }},[
-          h("div",{class:"row",style:"justify-content:space-between;align-items:baseline;gap:6px"},[ h("strong",{style:"font-size:14.5px"},[tp.name]), h("span",{class:"muted",style:"font-size:10.5px;text-transform:uppercase;letter-spacing:.06em"},[FEEL_LABEL[tp.feel]||""]) ]),
-          sw,
-          h("div",{class:"muted",style:"font-size:12px;line-height:1.4"},[tp.description])
+        var th=designThumb(tp.id); thumbs.push(th);
+        var open=h("a",{href:th.openUrl,target:"_blank",rel:"noopener",style:"font-size:11.5px;font-weight:600;color:var(--accent);text-decoration:none"},["Open full ↗"]);
+        open.addEventListener("click",function(e){ e.stopPropagation(); });
+        var sw=h("div",{class:"tplswatch"}, (tp.swatch||[]).map(function(c){ return h("span",{style:"background:"+c},[]); }));
+        var cardEl=h("div",{class:"tplcard",title:tp.inspiration||tp.name,onclick:function(){ pickedTemplate=tp.id; highlight(); refreshPreview(); }},[
+          th.node,
+          h("div",{class:"tplmeta"},[
+            h("div",{class:"row",style:"justify-content:space-between;align-items:baseline;gap:6px"},[ h("strong",{style:"font-size:14.5px"},[tp.name]), h("span",{class:"tplfeel"},[FEEL_LABEL[tp.feel]||""]) ]),
+            sw,
+            h("div",{class:"muted",style:"font-size:12px;line-height:1.4;margin-bottom:7px"},[tp.description]),
+            open
+          ])
         ]);
-        cardEls[tp.id]=cardEl; gallery.appendChild(cardEl);
+        cardEls[tp.id]=cardEl; cardFeel[tp.id]=tp.feel||""; grid.appendChild(cardEl);
       });
-      highlight();
-      slot.appendChild(gallery);
+      // Filter by design personality — hidden cards keep any frame they already loaded.
+      var activeFeel="";
+      var feelsPresent=[]; templates.forEach(function(tp){ if(tp.feel && feelsPresent.indexOf(tp.feel)<0) feelsPresent.push(tp.feel); });
+      function applyFilter(){
+        Object.keys(cardEls).forEach(function(id){ cardEls[id].style.display = (!activeFeel || cardFeel[id]===activeFeel) ? "" : "none"; });
+        Array.prototype.forEach.call(filterRow.children,function(ch){ ch.classList.toggle("on", ch.getAttribute("data-feel")===activeFeel); });
+        thumbs.forEach(function(t){ t.fit(); });
+      }
+      [["","All designs"]].concat(feelsPresent.map(function(f){ return [f, FEEL_LABEL[f]||f]; })).forEach(function(pair){
+        var chip=h("button",{type:"button",class:"tplchip","data-feel":pair[0],onclick:function(){ activeFeel=pair[0]; applyFilter(); }},[pair[1]]);
+        filterRow.appendChild(chip);
+      });
+      slot.appendChild(filterRow);
+      slot.appendChild(grid);
+      highlight(); applyFilter();
+      if(typeof IntersectionObserver==="function"){
+        var io=new IntersectionObserver(function(entries){
+          entries.forEach(function(en){ if(en.isIntersecting){ var t=thumbs[Number(en.target.getAttribute("data-thumb"))]; if(t) t.load(); io.unobserve(en.target); } });
+        },{ rootMargin:"400px 0px" });
+        thumbs.forEach(function(t,i){ t.node.setAttribute("data-thumb",String(i)); io.observe(t.node); });
+      } else thumbs.forEach(function(t){ t.load(); });
+      window.addEventListener("resize",function(){ thumbs.forEach(function(t){ t.fit(); }); });
       // Optional hero photo (content, not a design knob).
       var heroPrev=h("div",{class:"row",style:"gap:10px;align-items:center"},[]);
       function drawHero(){ heroPrev.innerHTML=""; if(heroPhotoData){ var im=document.createElement("img"); im.src=heroPhotoData; im.style.cssText="height:54px;width:120px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"; heroPrev.appendChild(im); var rm=h("button",{class:"btn ghost sm"},[tbtn("Remove")]); rm.addEventListener("click",function(e){e.preventDefault(); heroPhotoData=""; drawHero();}); heroPrev.appendChild(rm); } else heroPrev.appendChild(h("span",{class:"muted",style:"font-size:12.5px"},["No hero photo yet — photo-led designs fall back to the template's colors"])); }

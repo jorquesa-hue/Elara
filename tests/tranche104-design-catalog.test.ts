@@ -1,0 +1,94 @@
+// Tranche 104 — the Website module's Design catalog. The sales team picks a design
+// by looking at the REAL site rendered in it: the portal lays out one live microsite
+// iframe per template, scaled down to a thumbnail. These tests guard the contract
+// that catalog rests on — the markup/CSS the portal ships, and the ?chrome=0 preview
+// param the thumbnails use to drop the "design preview" ribbon. 8 tests.
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+import { templateGallery, FEEL_KEYS } from '../src/site-templates.ts';
+import { bookingSiteHtml } from '../src/api/booking-site.ts';
+import { App } from '../src/api/app.ts';
+import { StaticTokenAuthenticator, type AuthContext } from '../src/api/context.ts';
+
+const PORTAL = readFileSync(new URL('../src/api/portal.html', import.meta.url), 'utf8');
+const SITE = bookingSiteHtml();
+const NOW = '2026-07-25T00:00:00Z';
+
+function seededApp() {
+  const mgr: AuthContext = { actor: 'm', tenantId: 'jq', role: 'owner' };
+  const app = new App({ authenticator: new StaticTokenAuthenticator({ mgr }), now: () => NOW });
+  app.dispatch({ method: 'POST', path: '/demo/seed', bearer: 'Bearer mgr', body: {} });
+  return app;
+}
+
+test('the portal ships the design-catalog markup contract (grid, card, thumb, filter)', () => {
+  for (const cls of ['tplgrid', 'tplcard', 'tplthumb', 'tplmeta', 'tplswatch', 'tplfeel', 'tplfilter', 'tplchip']) {
+    assert.ok(PORTAL.includes('.' + cls), `CSS for .${cls}`);
+    assert.ok(PORTAL.includes('"' + cls) || PORTAL.includes(cls + '"'), `.${cls} used in markup`);
+  }
+});
+
+test('a catalog thumbnail is a real microsite iframe laid out wide then scaled down', () => {
+  // The whole point: the card shows the live site, not a swatch. Desktop layout
+  // width + transform-origin top-left + a scale factor derived from the box width.
+  assert.ok(PORTAL.includes('THUMB_W=1280'), 'desktop layout width');
+  assert.ok(PORTAL.includes('transform-origin: top left'), 'scales from the top-left corner');
+  assert.ok(PORTAL.includes('fr.style.transform="scale("+(wpx/THUMB_W)+")"'), 'scale derived from the rendered box width');
+  assert.ok(PORTAL.includes('/site/"+encodeURIComponent(catTenant)+"?"+q.toString()'), 'targets the live microsite');
+  assert.ok(PORTAL.includes('.tplthumb iframe { border: 0; transform-origin: top left; pointer-events: none;'),
+    'the frame does not swallow the card click');
+});
+
+test('thumbnails load lazily and re-fit on resize (30 live frames is not free)', () => {
+  assert.ok(PORTAL.includes('IntersectionObserver'), 'lazy-loads frames as they scroll in');
+  assert.ok(PORTAL.includes('if(loaded) return; loaded=true;'), 'each frame loads at most once');
+  assert.ok(PORTAL.includes('window.addEventListener("resize",function(){ thumbs.forEach'), 're-fits on resize');
+});
+
+test('picking a card still drives the saved template + the big live preview', () => {
+  assert.ok(PORTAL.includes('pickedTemplate=tp.id; highlight(); refreshPreview();'), 'click picks + retargets');
+  assert.ok(PORTAL.includes('classList.toggle("sel", id===pickedTemplate)'), 'selection is visible');
+  assert.ok(PORTAL.includes('body.template = pickedTemplate'), 'the pick is what Save writes');
+});
+
+test('the feel filter offers every personality the gallery actually uses', () => {
+  const feels = new Set(templateGallery().map((t) => t.feel));
+  assert.equal(feels.size, 5);
+  for (const f of feels) assert.ok(FEEL_KEYS.includes(f), `${f} is a known feel`);
+  // The chip row is built from the gallery, not a hardcoded list, so it cannot drift.
+  assert.ok(PORTAL.includes('if(tp.feel && feelsPresent.indexOf(tp.feel)<0) feelsPresent.push(tp.feel)'));
+  assert.ok(PORTAL.includes('[["","All designs"]].concat('), 'an all-designs chip leads the row');
+});
+
+test('a filtered-out card is hidden, not destroyed (its frame stays loaded)', () => {
+  assert.ok(PORTAL.includes('cardEls[id].style.display = (!activeFeel || cardFeel[id]===activeFeel) ? "" : "none"'));
+  assert.ok(!PORTAL.includes('grid.innerHTML=""'), 'the grid is never rebuilt by the filter');
+});
+
+test('?chrome=0 drops the preview ribbon so thumbnails are clean', () => {
+  assert.ok(SITE.includes('PQS.get("chrome")!=="0"'), 'the microsite honors chrome=0');
+  assert.ok(PORTAL.includes('template: tplId, demo: "1", chrome: "0"'), 'thumbnails request it');
+  // …but "Open full ↗" opens the normal preview, ribbon and all.
+  assert.ok(PORTAL.includes('openUrl: url.replace("&chrome=0","")'));
+  assert.ok(PORTAL.includes('h("a",{href:th.openUrl'));
+});
+
+test('every gallery template a card is built from resolves a live preview URL', () => {
+  const app = seededApp();
+  const res = app.dispatch({ method: 'GET', path: '/site-templates', bearer: 'Bearer mgr', body: {} });
+  assert.equal(res.status, 200);
+  const tps = (res.body as { templates: Array<{ id: string; feel: string; swatch: string[] }> }).templates;
+  assert.equal(tps.length, 30);
+  for (const tp of tps) {
+    // What the thumbnail asks for must actually theme the public site.
+    const cfg = app.dispatch({ method: 'GET', path: '/site/jq/config', body: { template: tp.id, demo: '1', chrome: '0' } });
+    assert.equal(cfg.status, 200, tp.id);
+    const body = cfg.body as { theme: { id: string }; previewTemplate?: string };
+    assert.equal(body.theme.id, tp.id, `${tp.id} themes the preview`);
+    assert.equal(body.previewTemplate, tp.id);
+    assert.ok(tp.swatch.length === 5 && tp.feel, `${tp.id} has card metadata`);
+  }
+});
