@@ -4345,7 +4345,15 @@ export class App {
         ...(t.description !== undefined ? { description: t.description } : {}),
       })),
       holds: this.calendar.allHolds().filter((h) => agIds.has(h.holderId)).map((h) => ({ unitId: h.unitId, start: h.start, end: h.end, status: h.status })),
-      agreements: entries.map((e) => ({ unitId: e.agreement.currentUnitId, rateCents: e.agreement.rateCents, start: e.agreement.period.start })),
+      // An agreement's rate is per its KIND — a nightly booking quotes per night,
+      // a monthly/lease agreement per month. Carrying that through stops the site
+      // advertising a month's rent as if it were a nightly rate.
+      agreements: entries.map((e) => ({
+        unitId: e.agreement.currentUnitId,
+        rateCents: e.agreement.rateCents,
+        start: e.agreement.period.start,
+        period: e.agreement.kind === 'nightly' ? ('night' as const) : ('month' as const),
+      })),
       rule: this.revenue.listRules(tenantId)[0],
       brand: { color: cfg.brandColor, logoDataUrl: cfg.logoDataUrl, tagline: cfg.tagline, locale: cfg.locale },
       content,

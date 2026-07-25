@@ -132,3 +132,24 @@ test('the public site prints the period instead of a hardcoded "/ night"', () =>
   // A DATED quote stays nightly — that is genuinely what the pricing engine computed.
   assert.ok(SITE.includes('" / night · "'), 'dated availability quotes stay nightly');
 });
+
+test("a lease's rate is quoted per month, not per night", () => {
+  // Found live: a student floorplan at £1,150 was labelled "/ night" because the
+  // agreement rate reached the site with no period and defaulted to nightly.
+  const mgr: AuthContext = { actor: 'm', tenantId: 'jq', role: 'owner' };
+  const app = new App({ authenticator: new StaticTokenAuthenticator({ mgr }), now: () => NOW });
+  const D = (method: string, path: string, body?: Record<string, unknown>) =>
+    app.dispatch({ method, path, bearer: 'Bearer mgr', body: body ?? {} });
+  D('PUT', '/config', { displayName: 'Northgate', country: 'GB' });
+  D('POST', '/units', { id: 'unit-L1', code: 'L1', label: 'Room 1' });
+  D('POST', '/units', { id: 'unit-N1', code: 'N1', label: 'Suite 1' });
+  D('POST', '/agreements', { id: 'ag-lease', guestId: 'g1', unitId: 'unit-L1', kind: 'lease', start: '2026-09-01', end: '2027-08-31', rateCents: 115_000 });
+  D('POST', '/agreements', { id: 'ag-night', guestId: 'g2', unitId: 'unit-N1', kind: 'nightly', start: '2026-08-01', end: '2026-08-05', rateCents: 19_000 });
+  const l = listing(app);
+  const byLabel = (s: string) => l.units.find((u) => (u as unknown as { label: string }).label === s)!;
+  assert.equal(byLabel('Room 1').pricePeriod, 'month', 'a lease rate is monthly');
+  assert.equal(byLabel('Suite 1').pricePeriod, 'night', 'a nightly booking stays nightly');
+  // …and a weekly site still labels both per week, on the operator's word.
+  D('PUT', '/site-content', { content: { rentPeriod: 'week' } });
+  for (const u of listing(app).units) assert.equal(u.pricePeriod, 'week');
+});
